@@ -1,45 +1,36 @@
 /**
  * The piano roll proper: rulers, keyboard, notes and velocity lane (DIRECCION_ARTISTICA.md, 6.1
- * items 4–6). Drawing only; the gestures are plugged in through `handlers` (gestures.ts).
+ * items 4–6). Draws, and passes the pointer to the Editor (editor.ts).
  */
-import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { type Note, barAt } from "@fourhands/core";
 import { activeTrack, notesByTrack, trackColors, useApp, useSize, useSong, useView } from "../context.js";
 import { scalePitchClasses } from "../music.js";
 import { drawGrid, drawKeyboard, drawNotes, drawVelocity, prepare } from "../roll/draw.js";
-import type { RollView } from "../roll/geometry.js";
+import { T } from "../theme.js";
+import { type RollView, yToPitch } from "../roll/geometry.js";
+import { type Editor, modKey } from "../editor.js";
 import { BarRuler, FormRuler, HarmonyRuler } from "./Rulers.js";
-
-export interface RollHandlers {
-  onNotesPointerDown?(e: React.PointerEvent<HTMLCanvasElement>): void;
-  onNotesPointerMove?(e: React.PointerEvent<HTMLCanvasElement>): void;
-  onNotesPointerUp?(e: React.PointerEvent<HTMLCanvasElement>): void;
-  onNotesDoubleClick?(e: React.MouseEvent<HTMLCanvasElement>): void;
-  onNotesContextMenu?(e: React.MouseEvent<HTMLCanvasElement>): void;
-  onKeysPointerDown?(e: React.PointerEvent<HTMLCanvasElement>): void;
-  onVelocityPointerDown?(e: React.PointerEvent<HTMLCanvasElement>): void;
-  onWheel?(e: WheelEvent): void;
-  cursor?: string;
-}
-
-export interface RollOverlay {
-  /** Notes as the current gesture would leave them (preview before the single command is sent). */
-  preview?: ReadonlyMap<string, Note> | null;
-  /** Notes being created by the current gesture. */
-  creating?: readonly Note[];
-  /** Rubber band, in pixels. */
-  marquee?: { x0: number; y0: number; x1: number; y1: number } | null;
-  playhead: number | null;
-}
 
 export interface RollAreaProps {
   v: RollView;
-  overlay: RollOverlay;
-  handlers: RollHandlers;
+  editor: Editor;
+  playhead: number | null;
   onResize(size: { width: number; height: number }): void;
+  onWheel(e: WheelEvent): void;
+  onKeyPress(pitch: number): void;
 }
 
-export function RollArea({ v, overlay, handlers, onResize }: RollAreaProps) {
+type PointerHandler = (e: React.PointerEvent<HTMLElement>) => void;
+
+function local(e: { clientX: number; clientY: number; currentTarget: Element }): { x: number; y: number } {
+  const r = e.currentTarget.getBoundingClientRect();
+  return { x: e.clientX - r.left, y: e.clientY - r.top };
+}
+
+const mods = (e: { shiftKey: boolean; altKey: boolean; ctrlKey: boolean; metaKey: boolean }) => ({ shift: e.shiftKey, alt: e.altKey, mod: modKey(e) });
+
+export function RollArea({ v, editor, playhead, onResize, onWheel, onKeyPress }: RollAreaProps) {
   const { t, replica } = useApp();
   const song = useSong();
   const view = useView();
@@ -50,6 +41,9 @@ export function RollArea({ v, overlay, handlers, onResize }: RollAreaProps) {
   const velRef = useRef<HTMLCanvasElement>(null);
   const byTrack = useMemo(() => notesByTrack(song), [replica.version]);
   const colors = useMemo(() => trackColors(song), [replica.version]);
+  useSyncExternalStore(editor.subscribe, editor.getVersion);
+  const overlay = editor.overlay;
+  editor.v = v;
 
   useLayoutEffect(() => {
     if (size.width > 0) onResize(size);
@@ -58,18 +52,17 @@ export function RollArea({ v, overlay, handlers, onResize }: RollAreaProps) {
   // Wheel: native listener, because React's is passive and cannot prevent the page from scrolling.
   useEffect(() => {
     const el = notesRef.current;
-    if (!el || !handlers.onWheel) return;
-    const fn = (e: WheelEvent) => handlers.onWheel!(e);
-    el.addEventListener("wheel", fn, { passive: false });
-    return () => el.removeEventListener("wheel", fn);
-  }, [handlers.onWheel]);
+    if (!el) return;
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [onWheel]);
 
   const own = useMemo(() => {
     const list = track ? (byTrack.get(track.id) ?? []) : [];
-    if (!overlay.preview && !overlay.creating?.length) return list;
-    const out = list.map((n) => overlay.preview?.get(n.id) ?? n);
-    return overlay.creating?.length ? [...out, ...overlay.creating] : out;
-  }, [byTrack, track?.id, overlay.preview, overlay.creating]);
+    if (!overlay.preview && !overlay.creating.length && !overlay.hidden) return list;
+    const out = list.filter((n) => !overlay.hidden?.has(n.id)).map((n) => overlay.preview?.get(n.id) ?? n);
+    return overlay.creating.length ? [...out, ...overlay.creating] : out;
+  }, [byTrack, track?.id, overlay.preview, overlay.creating, overlay.hidden]);
 
   const ghosts = useMemo(() => {
     const list: { note: Note; color: string }[] = [];
@@ -107,12 +100,13 @@ export function RollArea({ v, overlay, handlers, onResize }: RollAreaProps) {
           names: view.noteNames,
           song,
           band: null,
-          playhead: overlay.playhead,
+          playhead,
           fresh,
         });
         if (overlay.marquee) {
+          // Rubber band: dashed, neutral (no token of its own; uses the selected-note ring colour).
           const m = overlay.marquee;
-          notes.ctx.strokeStyle = "#ece6dc";
+          notes.ctx.strokeStyle = T.selectNote;
           notes.ctx.globalAlpha = 0.6;
           notes.ctx.setLineDash([3, 3]);
           notes.ctx.strokeRect(Math.min(m.x0, m.x1) + 0.5, Math.min(m.y0, m.y1) + 0.5, Math.abs(m.x1 - m.x0), Math.abs(m.y1 - m.y0));
@@ -127,6 +121,12 @@ export function RollArea({ v, overlay, handlers, onResize }: RollAreaProps) {
     draw();
     return () => cancelAnimationFrame(frame);
   });
+
+  const notesDown: PointerHandler = (e) => {
+    if (e.button === 0) e.currentTarget.setPointerCapture(e.pointerId);
+    const p = local(e);
+    editor.pointerDown(p.x, p.y, e.button, mods(e));
+  };
 
   const formEmpty = Object.keys(song.sections).length === 0;
   const harmonyEmpty = Object.keys(song.harmony).length === 0;
@@ -149,21 +149,44 @@ export function RollArea({ v, overlay, handlers, onResize }: RollAreaProps) {
         <HarmonyRuler song={song} v={v} t={t} />
       </div>
       <div className="rlab">{t("bar")}</div>
-      <div className="rrow">
+      <div
+        className="rrow bars"
+        onPointerDown={(e) => {
+          e.currentTarget.setPointerCapture(e.pointerId);
+          editor.rulerDown(local(e).x);
+        }}
+        onPointerMove={(e) => e.currentTarget.hasPointerCapture(e.pointerId) && editor.rulerMove(local(e).x)}
+        onPointerUp={(e) => editor.rulerUp(local(e).x)}
+        onDoubleClick={() => editor.clearLoop()}
+      >
         <BarRuler song={song} v={v} />
       </div>
       <div className="keys">
-        <canvas ref={keysRef} onPointerDown={handlers.onKeysPointerDown} />
+        <canvas ref={keysRef} onPointerDown={(e) => onKeyPress(yToPitch(v, local(e).y))} />
       </div>
       <div className="pgrid" ref={gridRef} aria-label={t("notesOf", { track: track?.name ?? "", from, to })} role="img">
         <canvas
           ref={notesRef}
-          style={{ cursor: handlers.cursor ?? "default" }}
-          onPointerDown={handlers.onNotesPointerDown}
-          onPointerMove={handlers.onNotesPointerMove}
-          onPointerUp={handlers.onNotesPointerUp}
-          onDoubleClick={handlers.onNotesDoubleClick}
-          onContextMenu={handlers.onNotesContextMenu}
+          style={{ cursor: overlay.cursor }}
+          onPointerDown={notesDown}
+          onPointerMove={(e) => {
+            const p = local(e);
+            editor.pointerMove(p.x, p.y, mods(e));
+          }}
+          onPointerUp={(e) => {
+            const p = local(e);
+            editor.pointerUp(p.x, p.y);
+          }}
+          onPointerCancel={() => editor.escape()}
+          onDoubleClick={(e) => {
+            const p = local(e);
+            editor.doubleClick(p.x, p.y);
+          }}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            const p = local(e);
+            editor.contextMenu(p.x, p.y, e.clientX, e.clientY);
+          }}
         />
       </div>
       <div className="vtab">
@@ -171,7 +194,23 @@ export function RollArea({ v, overlay, handlers, onResize }: RollAreaProps) {
         <span>{t("pedal")}</span>
       </div>
       <div className="vlane">
-        <canvas ref={velRef} onPointerDown={handlers.onVelocityPointerDown} />
+        <canvas
+          ref={velRef}
+          onPointerDown={(e) => {
+            e.currentTarget.setPointerCapture(e.pointerId);
+            const p = local(e);
+            editor.velocityDown(p.x, p.y, e.currentTarget.clientHeight);
+          }}
+          onPointerMove={(e) => {
+            if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
+            const p = local(e);
+            editor.velocityMove(p.x, p.y);
+          }}
+          onPointerUp={(e) => {
+            const p = local(e);
+            editor.pointerUp(p.x, p.y);
+          }}
+        />
       </div>
     </div>
   );

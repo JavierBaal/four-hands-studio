@@ -24,6 +24,8 @@ export interface ViewState {
   noteNames: NoteNames;
   /** Ctrl/Cmd held: the arrow works as a pencil (ESPEC_PIANO_ROLL.md, 3). */
   pencilHeld: boolean;
+  /** Track whose notes the vertical scroll was last centred on (centred once per track). */
+  centredTrack: string | null;
 }
 
 export class ViewStore {
@@ -67,5 +69,6 @@ export function initialView(lang: "es" | "en"): ViewState {
     panelOpen: true,
     noteNames: lang === "es" ? "solfege" : "letters",
     pencilHeld: false,
+    centredTrack: null,
   };
 }
