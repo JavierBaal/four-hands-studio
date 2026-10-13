@@ -240,3 +240,32 @@ describe("commands", () => {
     expect(patches[0]!.ops.filter((op) => op.path[0] === "notes")).toEqual([{ op: "set", path: ["notes", "n1", "velocity"], value: 90 }]);
   });
 });
+
+describe("commands as data", () => {
+  it("run as one transaction and return what they create", async () => {
+    const { runCommands } = await import("./command-data.js");
+    const doc = new SongDocument(emptySong());
+    const results = doc.transact({ actor: USER, label: "Gesto" }, (tx) =>
+      runCommands(tx, [
+        { type: "addTrack", spec: { name: "Piano" } },
+        { type: "addNotes", trackId: "t1", notes: [{ pitch: 60, start: 0, duration: PPQ, velocity: 80 }] },
+        { type: "moveNotes", ids: ["n1"], semitones: 2 },
+        { type: "setChord", tick: 0, symbol: "D" },
+      ]),
+    );
+    expect(results).toEqual(["t1", ["n1"], null, null]);
+    expect(doc.song.notes.n1!.pitch).toBe(62);
+    expect(doc.song.revision).toBe(1);
+  });
+
+  it("reject unknown commands without changing anything", async () => {
+    const { runCommands } = await import("./command-data.js");
+    const doc = new SongDocument(emptySong());
+    expect(() =>
+      doc.transact({ actor: USER, label: "x" }, (tx) =>
+        runCommands(tx, [{ type: "addTrack", spec: { name: "P" } }, { type: "explode" } as never]),
+      ),
+    ).toThrow(/Unknown command/);
+    expect(doc.song.trackOrder).toEqual([]);
+  });
+});
