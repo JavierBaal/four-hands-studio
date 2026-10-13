@@ -35,7 +35,7 @@ async function start(): Promise<void> {
   const onEditor = harness ? (editor: unknown) => Object.assign(window, { fhTest: { replica, view, editor } }) : undefined;
   root.render(
     <Ctx.Provider value={{ replica, view, bridge, t: translator(lang), lang }}>
-      <App onEditor={onEditor} />
+      {onEditor ? <App onEditor={onEditor} /> : <App />}
     </Ctx.Provider>,
   );
   (window as unknown as { fhReady?: boolean }).fhReady = true;
