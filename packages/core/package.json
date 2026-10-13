@@ -16,6 +16,7 @@
     "build": "tsc -b"
   },
   "dependencies": {
-    "midi-file": "^1.2.4"
+    "midi-file": "^1.2.4",
+    "zod": "4.6.7"
   }
 }

@@ -12,7 +12,7 @@
     "node": ">=24"
   },
   "scripts": {
-    "typecheck": "tsc -b packages/core packages/mcp-tools packages/bridge packages/desktop",
+    "typecheck": "tsc -b packages/core packages/mcp-tools packages/bridge packages/desktop && tsc -p packages/core/tsconfig.tests.json",
     "test": "vitest run",
     "build:bridge": "npm run build -w @fourhands/bridge",
     "check": "npm run typecheck && npm test",

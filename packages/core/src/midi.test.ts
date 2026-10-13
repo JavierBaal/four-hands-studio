@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import midiFile from "midi-file";
 import type { MidiEvent } from "midi-file";
 import { describe, expect, it } from "vitest";
@@ -6,11 +5,11 @@ import { addNotes, moveNotes, updateNotes } from "./commands.js";
 import { SongDocument } from "./document.js";
 import { MidiFileError, exportMidi, importMidi } from "./midi.js";
 import { USER, notesOf, orderedSections, orderedTracks } from "./model.js";
+import { DILATACION } from "./test-support/dilatacion.js";
 import { PPQ } from "./time.js";
 
 const { parseMidi, writeMidi } = midiFile;
 
-export const DILATACION = new Uint8Array(readFileSync(new URL("../test-data/Dilatacion.mid", import.meta.url)));
 
 /** Events of each track with absolute ticks, without file-only details, sorted. */
 function eventsByTrack(bytes: ArrayLike<number>) {
