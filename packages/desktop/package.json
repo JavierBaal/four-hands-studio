@@ -1,0 +1,7 @@
+{
+  "name": "@fourhands/desktop",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Four Hands desktop app (Electron). Starts with the sound and latency spike S0 (ARQUITECTURA.md, 12).",
+  "type": "module"
+}

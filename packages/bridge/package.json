@@ -1,0 +1,19 @@
+{
+  "name": "@fourhands/bridge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Four Hands bridge: stdio MCP server packaged as a Claude Desktop extension (.mcpb) that talks to the open app over a local WebSocket.",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -b ../mcp-tools && node build.mjs"
+  },
+  "dependencies": {
+    "@fourhands/mcp-tools": "*",
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "ws": "8.22.0"
+  },
+  "devDependencies": {
+    "@anthropic-ai/mcpb": "2.1.2",
+    "@types/ws": "^8.18.1"
+  }
+}

@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Four Hands · app de prueba</title>
+<style>
+  :root {
+    --bg: #f6f4ef; --panel: #fffdf9; --ink: #23212b; --muted: #6d6a75; --line: #e3dfd6;
+    --user: #c98a2e; --ai: #3f7cc4; --ok: #2f8a57; --warn: #b4552d; --mark: #f2c14e;
+    --font: "Inter", "Segoe UI", system-ui, sans-serif; --mono: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #17161c; --panel: #1f1e26; --ink: #ecebf1; --muted: #9d9aa8; --line: #34323e; --mark: #e0b040; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 var(--font); }
+  header { display: flex; align-items: center; gap: 12px; padding: 14px 20px; border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 2; flex-wrap: wrap; }
+  .logo { display: flex; gap: 3px; align-items: flex-end; height: 22px; }
+  .logo i { width: 5px; border-radius: 2px; display: block; }
+  h1 { font-size: 15px; margin: 0; font-weight: 600; }
+  h1 small { color: var(--muted); font-weight: 400; }
+  .pill { margin-left: auto; padding: 5px 12px; border-radius: 999px; font-size: 13px; border: 1px solid var(--line); display: flex; align-items: center; gap: 8px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .pill.on .dot { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 25%, transparent); }
+  main > * { min-width: 0; }
+  main { max-width: 1100px; margin: 0 auto; padding: 18px 20px 40px; display: grid; gap: 16px; }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 10px; font-weight: 600; }
+  .connect { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+  .connect p { margin: 0; flex: 1 1 300px; }
+  button { font: inherit; border: 0; border-radius: 8px; padding: 9px 16px; background: var(--ai); color: #fff; cursor: pointer; font-weight: 600; }
+  button:disabled { opacity: .5; cursor: default; }
+  .song-meta { color: var(--muted); margin-bottom: 10px; }
+  .strip { overflow-x: auto; padding-bottom: 6px; }
+  .grid { display: grid; grid-template-columns: 90px repeat(52, 34px); gap: 2px; min-width: max-content; }
+  .cell { height: 26px; border-radius: 3px; background: color-mix(in srgb, var(--ai) 14%, transparent); font: 11px var(--mono); display: flex; align-items: center; justify-content: center; color: var(--muted); }
+  .sec { font-size: 11px; font-weight: 600; padding: 3px 6px; border-radius: 3px; background: color-mix(in srgb, var(--ink) 7%, transparent); white-space: nowrap; overflow: hidden; }
+  .lbl { font-size: 11px; color: var(--muted); display: flex; align-items: center; white-space: nowrap; overflow: hidden; }
+  .num { font: 10px var(--mono); color: var(--muted); text-align: center; }
+  .cell.hit { background: color-mix(in srgb, var(--mark) 55%, transparent); color: var(--ink); }
+  .cell.flash { animation: flash 1.4s ease 2; }
+  @keyframes flash { 50% { outline: 2px solid var(--mark); outline-offset: 1px; } }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 860px) { .two { grid-template-columns: 1fr; } }
+  .mark { border-left: 4px solid var(--mark); padding: 8px 10px; margin-bottom: 8px; background: color-mix(in srgb, var(--mark) 10%, transparent); border-radius: 0 6px 6px 0; cursor: pointer; }
+  .mark b { font-family: var(--mono); font-size: 12px; }
+  .mark .why { margin-top: 2px; }
+  .empty { color: var(--muted); font-style: italic; }
+  .log { font: 12px/1.5 var(--mono); max-height: 360px; overflow: auto; }
+  .log div { padding: 3px 0; border-bottom: 1px dashed var(--line); word-break: break-word; }
+  .log .err { color: var(--warn); }
+  .log time { color: var(--muted); margin-right: 6px; }
+  .kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; font-size: 13px; }
+  .kv dt { color: var(--muted); }
+  .kv dd { margin: 0; font-family: var(--mono); font-size: 12px; word-break: break-all; }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo"><i style="height:20px;background:var(--user)"></i><i style="height:14px;background:var(--user)"></i><i style="height:17px;background:var(--ai)"></i><i style="height:11px;background:var(--ai)"></i></div>
+  <h1>Four Hands Studio <small>· app de prueba del puente</small></h1>
+  <div class="pill" id="pill"><span class="dot"></span><span id="pillText">Esperando a la IA…</span></div>
+</header>
+<main>
+  <section>
+    <h2>Conectar con Claude</h2>
+    <div class="connect">
+      <p id="connectText">El botón pide al sistema que abra <code>fourhands-prueba.mcpb</code>. Claude Desktop debería mostrar su ventana de instalación. Cuando el puente se conecte, el indicador de arriba se pondrá en verde.</p>
+      <button id="connectBtn">Conectar con Claude</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Partitura de prueba</h2>
+    <div class="song-meta" id="meta"></div>
+    <div class="strip"><div class="grid" id="grid"></div></div>
+  </section>
+
+  <div class="two">
+    <section>
+      <h2>Lo que te señala la IA (point_to)</h2>
+      <div id="marks"><div class="empty">Todavía nada. Pídele a Claude que te señale un lugar.</div></div>
+    </section>
+    <section>
+      <h2>Conexión</h2>
+      <dl class="kv" id="conn"></dl>
+    </section>
+  </div>
+
+  <section>
+    <h2>Actividad</h2>
+    <div class="log" id="log"></div>
+  </section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+let song = null;
+
+function esc(s) { return String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+function hhmmss(iso) { return new Date(iso).toLocaleTimeString("es-ES"); }
+
+function renderSong() {
+  $("meta").textContent = `«${song.title}» · ${song.key === "A minor" ? "La menor" : song.key} · ${song.tempo} BPM · ${song.meter} · ${song.bars} compases · ${song.tracks.length} pistas (datos de prueba)`;
+  const g = $("grid"); g.innerHTML = "";
+  const add = (html, cls, style) => { const d = document.createElement("div"); d.className = cls; if (style) d.style.cssText = style; d.innerHTML = html; g.appendChild(d); return d; };
+  add("Forma", "lbl");
+  for (const s of song.sections) add(esc(s.name), "sec", `grid-column: span ${s.to - s.from + 1}`);
+  add("Compás", "lbl");
+  for (let b = 1; b <= song.bars; b++) add(b, "num");
+  add("Armonía", "lbl");
+  for (let b = 1; b <= song.bars; b++) { const c = add(esc(song.harmony[b - 1]), "cell"); c.dataset.bar = b; }
+}
+
+function highlight(from, to, flash) {
+  document.querySelectorAll(".cell").forEach((c) => {
+    const b = +c.dataset.bar; const on = b >= from && b <= to;
+    c.classList.toggle("hit", on);
+    c.classList.remove("flash");
+    if (on && flash) { void c.offsetWidth; c.classList.add("flash"); }
+  });
+  if (flash) { const first = document.querySelector(`.cell[data-bar="${from}"]`); first && first.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" }); }
+}
+
+const marks = [];
+function addMark(m, isNew) {
+  marks.unshift(m);
+  const box = $("marks"); if (marks.length === 1) box.innerHTML = "";
+  const d = document.createElement("div"); d.className = "mark";
+  const tr = m.tracks.length ? " · " + m.tracks.map((t) => esc(t.name)).join(", ") : "";
+  d.innerHTML = `<b>c. ${m.from}–${m.to}${tr}</b> <span class="empty" style="font-style:normal">· ${hhmmss(m.at)}</span><div class="why">${esc(m.reason)}</div>`;
+  d.onclick = () => highlight(m.from, m.to, true);
+  box.prepend(d);
+  highlight(m.from, m.to, false);
+}
+
+function setBridge(b) {
+  const on = !!b;
+  $("pill").classList.toggle("on", on);
+  $("pillText").textContent = on ? `IA conectada · ${b.client ? b.client.name + " " + (b.client.version || "") : "cliente desconocido"}` : "Esperando a la IA…";
+  $("connectBtn").textContent = on ? "Conectado" : "Conectar con Claude";
+  $("connectBtn").disabled = on;
+  const rows = on ? [["Cliente (clientInfo)", b.client ? `${b.client.name} ${b.client.version || ""}` : "—"], ["Título del cliente", b.client && b.client.title || "—"], ["Puente", b.bridge], ["Node del puente", b.node], ["Sistema", b.platform], ["Conectado desde", hhmmss(b.since)]] : [["Estado", "Puente sin conectar"]];
+  $("conn").innerHTML = rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("");
+}
+
+const labels = { app_started: "App abierta", bridge_connected: "Puente conectado", bridge_disconnected: "Puente desconectado", bridge_rejected: "Conexión rechazada (token)", tool_call: "Herramienta", connect_button: "Botón Conectar con Claude", connect_alias_error: "Fallo al pasar el archivo a Claude", app_closed: "App cerrada" };
+function addEvent(e) {
+  const d = document.createElement("div");
+  let txt = labels[e.type] || e.type;
+  if (e.type === "tool_call") { txt += `: ${e.tool} ${JSON.stringify(e.args || {})} → ${e.ok ? "ok" : "error: " + e.error} (${e.ms} ms${e.transitMs != null ? ", tránsito " + e.transitMs + " ms" : ""}${e.chars ? ", " + e.chars + " caracteres" : ""})`; if (!e.ok) d.className = "err"; }
+  if (e.type === "bridge_connected") txt += `: ${e.client ? e.client.name + " " + (e.client.version || "") : "?"}`;
+  if (e.type === "connect_button") txt += e.method ? ` → vía ${e.method}` : "";
+  if (e.type === "connect_alias_error") { d.className = "err"; txt += `: ${e.error}`; }
+  d.innerHTML = `<time>${hhmmss(e.t)}</time>${esc(txt)}`;
+  $("log").prepend(d);
+}
+
+const MSG = {
+  assoc: "He abierto el archivo con Claude Desktop. Confirma la instalación en su ventana.",
+  alias: "He pasado el archivo a Claude Desktop. Debería aparecer su ventana de instalación: confírmala.",
+  "open-a-claude": "He pasado el archivo a Claude Desktop. Confirma la instalación en su ventana.",
+  explorer: "En Claude Desktop, ve a Ajustes > Extensiones > Configuración avanzada > Instalar extensión… y pega la ruta del archivo, que ya tienes copiada. Te he abierto también la carpeta con el archivo seleccionado. Ojo: si lo arrastras a la conversación, Claude lo toma como adjunto.",
+};
+async function connectClaude(method) {
+  $("connectBtn").disabled = true;
+  try {
+    const r = await fetch("/connect-claude" + (method ? "?method=" + method : ""), { method: "POST" }).then((r) => r.json());
+    const txt = r.ok ? (MSG[r.method] || "Hecho.") : r.error;
+    $("connectText").innerHTML = esc(txt) + (r.ok && r.method !== "explorer" ? ' <a href="#" id="noWindow">¿No se ha abierto nada?</a>' : "");
+    const nw = $("noWindow"); if (nw) nw.onclick = (e) => { e.preventDefault(); connectClaude("explorer"); };
+  } catch (e) { $("connectText").textContent = "No he podido pedirlo: " + e.message; }
+  setTimeout(() => { if (!$("pill").classList.contains("on")) $("connectBtn").disabled = false; }, 4000);
+}
+$("connectBtn").onclick = () => connectClaude();
+
+function connectUi() {
+  const ws = new WebSocket(`ws://${location.host}/ui`);
+  ws.onmessage = (ev) => {
+    const m = JSON.parse(ev.data);
+    if (m.type === "init") { song = m.song; marks.length = 0; $("marks").innerHTML = '<div class="empty">Todavía nada. Pídele a Claude que te señale un lugar.</div>'; renderSong(); $("log").innerHTML = ""; m.events.forEach(addEvent); setBridge(m.state.bridge); m.state.marks.slice().reverse().forEach((x) => addMark(x)); }
+    if (m.type === "event") addEvent(m.event);
+    if (m.type === "bridge") setBridge(m.bridge);
+    if (m.type === "mark") addMark(m.mark, true);
+  };
+  ws.onclose = () => { $("pillText").textContent = "La app de prueba está cerrada"; $("pill").classList.remove("on"); setTimeout(connectUi, 2000); };
+}
+connectUi();
+</script>
+</body>
+</html>
