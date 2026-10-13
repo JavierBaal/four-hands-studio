@@ -1,9 +1,9 @@
 name: CI
 
+# Manual only for now: GitHub Actions is not available on this account (billing).
+# Restore the push and pull_request triggers when it is (ARQUITECTURA.md, 11.1).
 on:
-  push:
-    branches: [main]
-  pull_request:
+  workflow_dispatch:
 
 jobs:
   check:

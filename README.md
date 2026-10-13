@@ -32,6 +32,10 @@ npm run check          # tipos y pruebas
 npm run build:bridge   # genera packages/bridge/dist/fourhands-mcp-<versión>.mcpb
 ```
 
+## Pruebas automáticas
+
+`npm run check` se ejecuta antes de cada subida. La configuración de GitHub Actions (`.github/workflows/ci.yml`) está lista para Windows, Mac y Linux, pero de momento solo se lanza a mano: Actions no está disponible en esta cuenta.
+
 ## Copia en el ordenador de Fran
 
 La carpeta `codigo/` dentro de `H:\SALA_CREATIVA\Four Hands Studio` es una copia de trabajo de este repositorio. Solo se actualiza con git (`git pull` o GitHub Desktop), nunca copiando archivos a mano.
