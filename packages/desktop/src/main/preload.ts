@@ -15,6 +15,8 @@ const CH = {
   info: "fh:info",
   log: "fh:log",
   menu: "fh:menu",
+  sfList: "fh:sf-list",
+  sfLoad: "fh:sf-load",
 } as const;
 
 function listen(channel: string, listener: (value: unknown) => void): () => void {
@@ -33,4 +35,6 @@ contextBridge.exposeInMainWorld("fh", {
   onMenu: (l: (v: unknown) => void) => listen(CH.menu, l),
   soundFont: () => ipcRenderer.invoke(CH.soundFont),
   log: (entry: Record<string, unknown>) => ipcRenderer.send(CH.log, entry),
+  sfList: () => ipcRenderer.invoke(CH.sfList),
+  sfLoad: (index: number) => ipcRenderer.invoke(CH.sfLoad, index),
 });

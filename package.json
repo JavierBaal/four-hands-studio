@@ -21,7 +21,8 @@
     "app": "npm run start -w @fourhands/desktop",
     "capturas": "npm run build -w @fourhands/desktop -- --harness && node packages/desktop/scripts/capturas.mjs capturas",
     "interaccion": "npm run build -w @fourhands/desktop -- --harness && node packages/desktop/scripts/interaccion.mjs",
-    "arranque": "npm run build -w @fourhands/desktop && node packages/desktop/scripts/arranque.mjs"
+    "arranque": "npm run build -w @fourhands/desktop && node packages/desktop/scripts/arranque.mjs",
+    "escucha": "npm run start -w @fourhands/desktop -- --escucha"
   },
   "devDependencies": {
     "@types/node": "^22.18.0",

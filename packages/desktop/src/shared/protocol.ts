@@ -55,6 +55,8 @@ export const CH = {
   info: "fh:info",
   log: "fh:log",
   menu: "fh:menu",
+  sfList: "fh:sf-list",
+  sfLoad: "fh:sf-load",
 } as const;
 
 /** Menu commands handled by the window (edit and view actions live there). */

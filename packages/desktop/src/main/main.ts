@@ -67,6 +67,22 @@ function findSoundFont(): string | null {
   return candidates.find((p) => fs.existsSync(p)) ?? null;
 }
 
+/** Candidate SoundFonts for the blind listening: every .sf2 / .sf3 next to the default one. */
+function soundFontCandidates(): string[] {
+  const dirs = new Set<string>();
+  if (projectRoot) dirs.add(path.join(projectRoot, "recursos", "soundfonts"));
+  dirs.add(path.join(repoRoot, "recursos", "soundfonts"));
+  if (soundFontPath) dirs.add(path.dirname(soundFontPath));
+  const files = new Set<string>();
+  for (const dir of dirs) {
+    for (const sub of [dir, path.join(dir, "candidatos")]) {
+      if (!fs.existsSync(sub)) continue;
+      for (const f of fs.readdirSync(sub)) if (/\.sf[23]$/i.test(f)) files.add(path.join(sub, f));
+    }
+  }
+  return [...files].sort();
+}
+
 function logFile(): string {
   return path.join(projectRoot ?? dataDir(), "registro-app.jsonl");
 }
@@ -228,11 +244,25 @@ function buildMenu(): void {
         { label: t("menuBackups"), click: () => void shell.openPath(path.join(dataDir(), "copias")) },
         { type: "separator" },
         { label: t("menuSoundTest"), click: () => void openSoundTest() },
+        { label: t("menuBlind"), click: () => void openBlindListening() },
         { label: t("menuDevTools"), accelerator: "F12", click: () => win?.webContents.toggleDevTools() },
       ],
     },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
+async function openBlindListening(): Promise<void> {
+  const w = new BrowserWindow({
+    width: 760,
+    height: 720,
+    backgroundColor: "#1b1916",
+    title: `${t("blindTitle")} · Four Hands Studio`,
+    autoHideMenuBar: true,
+    webPreferences: { preload: path.join(here, "preload.cjs"), contextIsolation: true, nodeIntegration: false, sandbox: true },
+  });
+  w.on("page-title-updated", (e) => e.preventDefault());
+  await w.loadFile(path.join(here, "escucha", "index.html"));
 }
 
 async function openSoundTest(): Promise<void> {
@@ -296,6 +326,13 @@ function registerIpc(): void {
     return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
   });
   ipcMain.on(CH.log, (_e, entry: Record<string, unknown>) => appendLog(entry));
+  ipcMain.handle(CH.sfList, () => soundFontCandidates().map((file, index) => ({ index, name: path.basename(file) })));
+  ipcMain.handle(CH.sfLoad, async (_e, index: number) => {
+    const file = soundFontCandidates()[index];
+    if (!file) return null;
+    const buf = await fs.promises.readFile(file);
+    return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+  });
 }
 
 app.whenReady().then(async () => {
@@ -308,6 +345,11 @@ app.whenReady().then(async () => {
   // `--s0`: only the sound and latency test (Abrir prueba de sonido.bat).
   if (process.argv.includes("--s0")) {
     await openSoundTest();
+    return;
+  }
+  // `--escucha`: only the blind listening window.
+  if (process.argv.includes("--escucha")) {
+    await openBlindListening();
     return;
   }
   buildMenu();

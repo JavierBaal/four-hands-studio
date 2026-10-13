@@ -1,0 +1,22 @@
+/* Blind listening window, with the tokens of DIRECCION_ARTISTICA.md. */
+@import "@fontsource/ibm-plex-sans/400.css";
+@import "@fontsource/ibm-plex-sans/600.css";
+@import "@fontsource/ibm-plex-mono/400.css";
+body { margin: 0; background: var(--bg-app); color: var(--text); font: 13px/1.35 'IBM Plex Sans', system-ui, sans-serif; }
+#root { max-width: 640px; margin: 0 auto; padding: 24px 16px; display: flex; flex-direction: column; gap: 16px; }
+h1 { font-size: 17px; font-weight: 600; margin: 0; }
+.hint { color: var(--text-2); font-size: 12px; margin: 0; }
+.ah { font-size: 11px; color: var(--text-2); text-transform: uppercase; letter-spacing: .05em; margin: 0 0 8px; }
+.card { border: 1px solid var(--line-control); border-radius: 10px; padding: 16px; background: var(--bg-card); display: flex; flex-direction: column; gap: 10px; }
+.row { display: flex; align-items: center; gap: 12px; }
+.row.end { justify-content: flex-end; margin-top: 6px; }
+.letter { width: 24px; font-size: 15px; }
+.mono { font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; }
+.btn { height: 36px; padding: 0 16px; border-radius: 8px; cursor: pointer; border: 1px solid var(--line-strong); background: transparent; color: var(--text); font: inherit; }
+.btn.pri { background: var(--text); color: var(--text-on-light); border-color: var(--text); font-weight: 600; }
+.stars { display: inline-flex; gap: 4px; margin-left: auto; }
+.star { width: 32px; height: 32px; border-radius: 7px; border: 1px solid var(--line-control); background: var(--bg-control); color: var(--text-2); cursor: pointer; font: inherit; }
+.star[aria-pressed="true"] { background: var(--bg-control-on); border-color: var(--line-on); color: var(--text); }
+table { border-collapse: collapse; width: 100%; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line-soft); }
+th { font-size: 11px; color: var(--text-2); font-weight: 400; }

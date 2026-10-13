@@ -29,6 +29,17 @@ await Promise.all([
   build({ ...common, entryPoints: [path.join(src, "main", "main.ts")], outfile: path.join(out, "main.mjs"), platform: "node", format: "esm", target: "node22", external: ["electron"], banner: { js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);" } }),
   build({ ...common, entryPoints: [path.join(src, "main", "preload.ts")], outfile: path.join(out, "preload.cjs"), platform: "node", format: "cjs", target: "node22", external: ["electron"] }),
   windowBundle(path.join(out, "renderer")),
+  // Blind listening of SoundFonts (Ayuda > Escucha a ciegas de sonidos).
+  (async () => {
+    const dir = path.join(out, "escucha");
+    fs.mkdirSync(dir, { recursive: true });
+    await Promise.all([
+      build({ ...browser, entryPoints: [path.join(src, "escucha", "app.ts")], outfile: path.join(dir, "app.js"), loader: { ".mid": "binary" } }),
+      build({ ...css, entryPoints: [path.join(src, "escucha", "app.css")], outfile: path.join(dir, "app.css") }),
+      build({ ...browser, entryPoints: [path.join(src, "worklet", "synth-worklet.ts")], outfile: path.join(dir, "worklet.js") }),
+    ]);
+    fs.copyFileSync(path.join(src, "escucha", "index.html"), path.join(dir, "index.html"));
+  })(),
   // S0: the sound and latency test, kept as a diagnostic (Ayuda > Prueba de sonido y latencia).
   (async () => {
     const dir = path.join(out, "s0");
