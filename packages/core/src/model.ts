@@ -184,6 +184,16 @@ export function emptySong(title = "Sin título"): Song {
   };
 }
 
+/** A new song as the app creates it: one piano track, active, so there is somewhere to write. */
+export function starterSong(title = "Sin título"): Song {
+  const song = emptySong(title);
+  song.tracks.t1 = { id: "t1", name: "Piano", program: 0, channel: 0, volume: 0.8, pan: 0, mute: false, solo: false, color: 0, pedal: [], extraEvents: [] };
+  song.trackOrder = ["t1"];
+  song.counters.t = 2;
+  song.context.activeTrackId = "t1";
+  return song;
+}
+
 // ---------------------------------------------------------------------------
 // Time helpers that depend on the meter. The MVP has one meter and one tempo per song.
 

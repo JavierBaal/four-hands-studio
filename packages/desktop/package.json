@@ -10,12 +10,17 @@
     "start": "npm run build && electron ."
   },
   "dependencies": {
-    "@fourhands/core": "*",
     "@fontsource/ibm-plex-mono": "5.3.0",
     "@fontsource/ibm-plex-sans": "5.3.0",
+    "@fourhands/core": "*",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
     "spessasynth_core": "4.3.22"
   },
   "devDependencies": {
-    "electron": "44.7.0"
+    "@types/react": "18.3.12",
+    "@types/react-dom": "18.3.1",
+    "electron": "44.7.0",
+    "playwright-core": "1.56.1"
   }
 }

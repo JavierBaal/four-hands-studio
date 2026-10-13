@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self'">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Four Hands Studio · prueba de sonido (S0)</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header class="bar">
+  <div class="brand"><span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>Four Hands Studio <span class="dim">· prueba de sonido (S0)</span></div>
+  <div class="chips">
+    <span class="chip" id="chipSound"><span class="dot"></span><span>Cargando sonidos…</span></span>
+    <button class="chip" id="chipPiano" type="button" title="Ctrl + K"><span class="dot"></span><span>Teclado como piano</span></button>
+    <span class="chip" id="chipMidi"><span class="dot"></span><span>MIDI: buscando…</span></span>
+  </div>
+</header>
+
+<main>
+  <section class="card span2">
+    <h2>Instrumento</h2>
+    <div class="row wrap" id="instruments"></div>
+  </section>
+
+  <section class="card span2">
+    <h2>Teclado del ordenador <span class="hint">Ctrl + K lo enciende y lo apaga · Z / X octava · C / V intensidad</span></h2>
+    <div class="kbd" id="kbd"></div>
+    <p class="note" id="kbdState"></p>
+  </section>
+
+  <section class="card">
+    <h2>Pruebas</h2>
+    <div class="stack">
+      <button type="button" class="btn primary" id="btnListen">Escuchar piano y cuerdas</button>
+      <button type="button" class="btn" id="btnTempo">Prueba de tempo · 120 BPM, 8 compases</button>
+      <button type="button" class="btn toggle" id="btnStress" aria-pressed="false">Estresar la interfaz</button>
+      <button type="button" class="btn" id="btnLoad">Prueba de carga · 10 instrumentos a la vez</button>
+      <button type="button" class="btn" id="btnStop">Parar todo</button>
+    </div>
+    <p class="note" id="testState">Durante la prueba de tempo puedes estresar la interfaz: si el pulso no se tuerce, la programación en el hilo de audio funciona.</p>
+  </section>
+
+  <section class="card">
+    <h2>Diagnóstico</h2>
+    <dl class="kv" id="diag"></dl>
+  </section>
+
+  <section class="card">
+    <h2>Medición física</h2>
+    <ol class="steps">
+      <li>Pon el móvil a grabar audio cerca del teclado y del altavoz (o de un auricular).</li>
+      <li>Toca diez notas sueltas con el teclado del ordenador, golpeando la tecla con decisión.</li>
+      <li>Abre la grabación en Audacity y mide, en cada nota, la distancia entre el golpe de la tecla y el inicio del sonido.</li>
+      <li>Escribe aquí la media y cómo has escuchado (altavoces, auriculares con cable, Bluetooth).</li>
+    </ol>
+    <div class="row">
+      <input id="physMs" type="number" min="0" max="500" step="1" placeholder="ms">
+      <select id="physOut">
+        <option>Auriculares con cable</option>
+        <option>Altavoces del ordenador</option>
+        <option>Interfaz de audio</option>
+        <option>Bluetooth</option>
+      </select>
+      <button type="button" class="btn" id="btnPhys">Guardar medición</button>
+    </div>
+    <p class="note" id="physState"></p>
+  </section>
+
+  <section class="card">
+    <h2>Teclado MIDI</h2>
+    <ul class="list" id="midiList"><li class="dim">Buscando dispositivos…</li></ul>
+    <p class="note">Sin teclado MIDI, prueba con VMPK y loopMIDI: lo que toques en VMPK debe sonar aquí.</p>
+    <p class="mono note" id="midiLast"></p>
+  </section>
+
+  <section class="card span2">
+    <div class="row between">
+      <h2>Resultados</h2>
+      <button type="button" class="btn primary" id="btnSave">Guardar resultados</button>
+    </div>
+    <p class="note" id="saveState">Se guardan en <span class="mono" id="logPath">…</span>. Claude los lee desde ahí.</p>
+    <p class="note dim mono" id="versions"></p>
+  </section>
+</main>
+<script src="app.js"></script>
+</body>
+</html>

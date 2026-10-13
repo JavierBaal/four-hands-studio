@@ -72,7 +72,10 @@ describe("SongSession", () => {
   it("creates a new song already on disk, in Documents/Four Hands", async () => {
     const s = await SongSession.createNew(options());
     expect(s.path).toBe(path.join(root, "Four Hands", "Sin título.fourhands"));
-    expect(parseSongFile(fs.readFileSync(s.path, "utf8")).song.title).toBe("Sin título");
+    const saved = parseSongFile(fs.readFileSync(s.path, "utf8")).song;
+    expect(saved.title).toBe("Sin título");
+    expect(saved.tracks.t1).toMatchObject({ name: "Piano", program: 0 });
+    expect(saved.context.activeTrackId).toBe("t1");
     expect(files.at(-1)).toMatchObject({ name: "Sin título", dirty: false, savedAt: clock, error: null });
     s.dispose();
   });
@@ -115,7 +118,7 @@ describe("SongSession", () => {
 
   it("autosaves shortly after the last change, and marks the song dirty meanwhile", async () => {
     const s = await SongSession.createNew(options());
-    s.run("Pista", [{ type: "addTrack", spec: { name: "Piano" } }]);
+    s.run("Pista", [{ type: "addTrack", spec: { name: "Chelo" } }]);
     expect(files.at(-1)).toMatchObject({ dirty: true });
     s.run("Nota", [{ type: "addNotes", trackId: "t1", notes: [{ pitch: 60, start: 0, duration: PPQ, velocity: 80 }] }]);
     expect(Object.keys(parseSongFile(fs.readFileSync(s.path, "utf8")).song.notes)).toHaveLength(0);
@@ -139,7 +142,7 @@ describe("SongSession", () => {
     const s = await SongSession.createNew(options({ autosaveDelayMs: 60_000 }));
     s.run("Pista", [{ type: "addTrack", spec: { name: "Piano" } }]);
     await s.flush();
-    expect(parseSongFile(fs.readFileSync(s.path, "utf8")).song.trackOrder).toEqual(["t1"]);
+    expect(parseSongFile(fs.readFileSync(s.path, "utf8")).song.trackOrder).toEqual(["t1", "t2"]);
     s.dispose();
   });
 
@@ -163,9 +166,9 @@ describe("SongSession", () => {
     const target = path.join(root, "mis canciones", "Nocturno");
     await s.saveAs(target);
     expect(s.path).toBe(`${target}.fourhands`);
-    s.run("Pista", [{ type: "addTrack", spec: { name: "Piano" } }]);
+    s.run("Pista", [{ type: "addTrack", spec: { name: "Chelo" } }]);
     await s.flush();
-    expect(parseSongFile(fs.readFileSync(s.path, "utf8")).song.trackOrder).toEqual(["t1"]);
+    expect(parseSongFile(fs.readFileSync(s.path, "utf8")).song.trackOrder).toEqual(["t1", "t2"]);
     s.dispose();
   });
 

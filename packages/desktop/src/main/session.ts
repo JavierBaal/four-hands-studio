@@ -18,7 +18,7 @@ import {
   type Song,
   SongDocument,
   USER,
-  emptySong,
+  starterSong,
   exportMidi,
   importMidi,
   parseSongFile,
@@ -76,7 +76,7 @@ export class SongSession {
   /** A new empty song, already on disk under a provisional name. */
   static async createNew(options: SessionOptions): Promise<SongSession> {
     const file = uniquePath(options.songsDir, options.untitledName, SONG_EXT);
-    const session = new SongSession(options, new SongDocument(emptySong(options.untitledName), { now: options.now ?? Date.now }), file);
+    const session = new SongSession(options, new SongDocument(starterSong(options.untitledName), { now: options.now ?? Date.now }), file);
     await session.saveNow();
     return session;
   }
@@ -104,7 +104,7 @@ export class SongSession {
   async newSong(): Promise<void> {
     await this.flush();
     const file = uniquePath(this.options.songsDir, this.options.untitledName, SONG_EXT);
-    this.swap(new SongDocument(emptySong(this.options.untitledName), { now: this.now }), file);
+    this.swap(new SongDocument(starterSong(this.options.untitledName), { now: this.now }), file);
     this.savedAt = null;
     await this.saveNow();
     this.options.onReload?.();

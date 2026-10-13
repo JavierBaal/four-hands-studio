@@ -3,8 +3,8 @@
  * Runs inside Electron (window.fh from the preload) or in a plain browser for automated tests.
  */
 import type { WorkletStats } from "../shared/messages.js";
-import { Engine, INSTRUMENTS, LookaheadPlayer, listeningDemo, loadTest, tempoTest, type Instrument, type LatencySample } from "./engine.js";
-import { INITIAL_KEYBOARD, isPianoToggle, keyAction, noteNameEs, NOTE_KEYS, type KeyboardState } from "./keyboard.js";
+import { Engine, INSTRUMENTS, LookaheadPlayer, listeningDemo, loadTest, tempoTest, type Instrument, type LatencySample } from "../audio/engine.js";
+import { INITIAL_KEYBOARD, isPianoToggle, keyAction, noteNameEs, NOTE_KEYS, type KeyboardState } from "../audio/keyboard.js";
 
 interface FhApi {
   info(): Promise<{ soundFont: string | null; logFile: string; versions: Record<string, string>; platform: string; arch: string }>;

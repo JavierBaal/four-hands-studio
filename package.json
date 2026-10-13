@@ -17,7 +17,9 @@
     "build:bridge": "npm run build -w @fourhands/bridge",
     "check": "npm run typecheck && npm test",
     "s0": "npm run start -w @fourhands/desktop",
-    "build:prueba": "node tools/prueba-mcpb/build.mjs"
+    "build:prueba": "node tools/prueba-mcpb/build.mjs",
+    "app": "npm run start -w @fourhands/desktop",
+    "capturas": "npm run build -w @fourhands/desktop -- --harness && node packages/desktop/scripts/capturas.mjs capturas"
   },
   "devDependencies": {
     "@types/node": "^22.18.0",
