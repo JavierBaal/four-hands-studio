@@ -230,6 +230,44 @@ export function drawVelocity(s: Surface, v: RollView, notes: readonly Note[], se
   ctx.globalAlpha = 1;
 }
 
+/** The freehand stroke while it is being drawn: what the bars will follow. */
+export function drawStroke(s: Surface, points: readonly { x: number; y: number }[]): void {
+  const { ctx } = s;
+  if (points.length < 1) return;
+  ctx.save();
+  ctx.strokeStyle = T.text;
+  ctx.globalAlpha = 0.7;
+  ctx.lineWidth = 1.5;
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(points[0]!.x, points[0]!.y);
+  for (const p of points.slice(1)) ctx.lineTo(p.x, p.y);
+  if (points.length === 1) ctx.lineTo(points[0]!.x + 0.1, points[0]!.y);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/** Sustain pedal: each pressed stretch as a band, neutral (the pedal has no author). */
+export function drawPedal(s: Surface, v: RollView, spans: readonly { start: number; end: number }[]): void {
+  const { ctx, height } = s;
+  const top = 16;
+  const h = height - 32;
+  for (const p of spans) {
+    const x0 = tickToX(v, p.start);
+    const x1 = tickToX(v, p.end);
+    if (x1 < 0 || x0 > s.width) continue;
+    ctx.globalAlpha = 0.35;
+    ctx.fillStyle = T.authorOff;
+    roundRect(ctx, x0, top, Math.max(2, x1 - x0), h, 3);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = T.authorOff;
+    ctx.fillRect(x0, top, Math.max(2, x1 - x0), 2);
+  }
+  ctx.globalAlpha = 1;
+}
+
 // ---------------------------------------------------------------------------
 // Arrangement: every track in miniature over the whole song
 

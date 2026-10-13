@@ -179,6 +179,38 @@ export function velocityAt(y: number, laneHeight: number, maxBar = 56): number {
   return Math.max(1, Math.min(127, Math.round((h / maxBar) * 127)));
 }
 
+/**
+ * A freehand stroke as a value per pixel column: every segment between two mouse positions is
+ * filled in, and a later pass over the same column wins. Curves come out as drawn.
+ */
+export function strokeColumns(points: readonly { x: number; y: number }[], into = new Map<number, number>(), from = 0): Map<number, number> {
+  for (let i = Math.max(1, from); i < points.length; i++) {
+    const a = points[i - 1]!;
+    const b = points[i]!;
+    const x0 = Math.round(a.x);
+    const x1 = Math.round(b.x);
+    const steps = Math.max(1, Math.abs(x1 - x0));
+    for (let k = 0; k <= steps; k++) {
+      const t = k / steps;
+      into.set(Math.round(x0 + (x1 - x0) * t), a.y + (b.y - a.y) * t);
+    }
+  }
+  if (points.length === 1) into.set(Math.round(points[0]!.x), points[0]!.y);
+  return into;
+}
+
+/** Pedal spans after drawing a new one: overlapping or touching spans merge. */
+export function addPedalSpan(spans: readonly { start: number; end: number }[], add: { start: number; end: number }): { start: number; end: number }[] {
+  const all = [...spans, add].filter((p) => p.end > p.start).sort((a, b) => a.start - b.start);
+  const out: { start: number; end: number }[] = [];
+  for (const p of all) {
+    const last = out.at(-1);
+    if (last && p.start <= last.end) last.end = Math.max(last.end, p.end);
+    else out.push({ ...p });
+  }
+  return out;
+}
+
 /** Commands that turn `before` into `after` for the same notes (only the fields that changed). */
 export function changeCommands(before: readonly Note[], after: readonly Note[]): CommandData[] {
   const changes = after

@@ -3,7 +3,7 @@
  * and the clipboard. A gesture draws a local preview while it lasts and sends one command list
  * when it ends: one gesture, one undo step (ESPEC, 1.4).
  */
-import { type CommandData, type Note, type Song, barAt, barStart, barTicks } from "@fourhands/core";
+import { type CommandData, type Note, type PedalSpan, type Song, barAt, barStart, barTicks } from "@fourhands/core";
 import type { Strings, Translate } from "../shared/i18n.js";
 import { activeTrack } from "./context.js";
 import { barRange } from "./music.js";
@@ -28,8 +28,11 @@ import {
   resizeRight,
   toClipboard,
   velocityAt,
+  EDGE_PX,
+  addPedalSpan,
+  strokeColumns,
 } from "./roll/edit.js";
-import { type GridValue, ROW, type RollView, gridTicks, snapFloor, tickToX, xToTick, yToPitch } from "./roll/geometry.js";
+import { type GridValue, ROW, type RollView, gridTicks, snapFloor, snapNearest, tickToX, xToTick, yToPitch } from "./roll/geometry.js";
 import type { Replica } from "./replica.js";
 import type { Tool, ViewStore } from "./view.js";
 
@@ -51,6 +54,10 @@ export interface Overlay {
   menu: { x: number; y: number; items: MenuItem[] } | null;
   quantizeDialog: { x: number; y: number } | null;
   cursor: string;
+  /** The freehand stroke being drawn in the velocity or pedal lane, in lane pixels. */
+  stroke: { x: number; y: number }[] | null;
+  /** Pedal spans as the current gesture would leave them. */
+  pedalPreview: PedalSpan[] | null;
 }
 
 export interface QuantizeSettings {
@@ -68,7 +75,8 @@ type Gesture =
   | { kind: "marquee"; x0: number; y0: number; x1: number; y1: number; add: boolean; base: string[] }
   | { kind: "pencil"; note: Note }
   | { kind: "erase"; ids: Set<string> }
-  | { kind: "velocity"; x0: number; y0: number; originals: Note[]; bar: Note | null; height: number }
+  | { kind: "velocity"; x0: number; y0: number; originals: Note[]; bar: Note | null; height: number; path: { x: number; y: number }[]; columns: Map<number, number> }
+  | { kind: "pedal"; mode: "draw" | "start" | "end" | "move"; x0: number; tick0: number; original: PedalSpan[]; index: number }
   | { kind: "loop"; tick0: number; tick1: number };
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
@@ -86,7 +94,7 @@ function loadQuantize(): QuantizeSettings {
 }
 
 export class Editor {
-  overlay: Overlay = { preview: null, hidden: null, creating: [], marquee: null, menu: null, quantizeDialog: null, cursor: "default" };
+  overlay: Overlay = { preview: null, hidden: null, creating: [], marquee: null, menu: null, quantizeDialog: null, cursor: "default", stroke: null, pedalPreview: null };
   version = 0;
   v: RollView = { startTick: 0, pxPerTick: 0.02, scrollY: 0, width: 0, height: 0 };
   quantizeSettings: QuantizeSettings = loadQuantize();
@@ -299,7 +307,7 @@ export class Editor {
     const g = this.gesture;
     this.gesture = null;
     if (!g) return;
-    const clear = { preview: null, hidden: null, creating: [], marquee: null };
+    const clear = { preview: null, hidden: null, creating: [], marquee: null, stroke: null, pedalPreview: null };
     switch (g.kind) {
       case "pending":
         // A click on an empty spot clears the selection; a click on a note was handled on press.
@@ -345,6 +353,15 @@ export class Editor {
         if (commands.length) {
           this.lastVelocity = changed.at(-1)?.velocity ?? this.lastVelocity;
           void this.run(this.label("Velocity", changed), commands);
+        }
+        break;
+      }
+      case "pedal": {
+        const trackId = this.trackId();
+        const after = this.overlay.pedalPreview;
+        if (trackId && after && JSON.stringify(after) !== JSON.stringify(g.original)) {
+          const name = this.song.tracks[trackId]?.name ?? "";
+          void this.run(this.t("hPedal", { name }), [{ type: "setPedal", trackId, spans: after }]);
         }
         break;
       }
@@ -416,36 +433,121 @@ export class Editor {
   // -------------------------------------------------------------------------
   // Velocity lane (ESPEC_PIANO_ROLL.md, 7)
 
-  velocityDown(x: number, y: number, height: number): void {
+  velocityDown(x: number, y: number, height: number, mods: Mods): void {
     const own = this.ownNotes();
     const sel = this.selected();
     const pool = sel.length > 0 ? sel : own;
-    const bar = pool.find((n) => Math.abs(tickToX(this.v, n.start) - x) <= 4) ?? null;
-    this.gesture = { kind: "velocity", x0: x, y0: y, originals: bar && sel.some((n) => n.id === bar.id) ? sel : bar ? [bar] : pool, bar, height };
-    this.velocityMove(x, y);
+    // A bar is grabbed by its head (the top 8 px); anywhere else starts a freehand stroke, so dense
+    // passages can still be drawn over.
+    const head = (n: Note) => height - (n.velocity / 127) * 56;
+    const bar = pool.find((n) => Math.abs(tickToX(this.v, n.start) - x) <= 4 && Math.abs(y - head(n)) <= 8) ?? null;
+    const originals = bar && sel.some((n) => n.id === bar.id) ? sel : bar ? [bar] : pool;
+    this.gesture = { kind: "velocity", x0: x, y0: y, originals, bar, height, path: [{ x, y }], columns: new Map() };
+    this.velocityMove(x, y, mods);
   }
 
-  velocityMove(x: number, y: number): void {
+  /**
+   * Dragging a bar moves it (and the rest of the selection by the same amount). Starting away from
+   * the bars draws freehand: every bar under the stroke takes its value, so curves come out as drawn.
+   * Shift draws a straight line from where the stroke started.
+   */
+  velocityMove(x: number, y: number, mods: Mods): void {
     const g = this.gesture;
     if (!g || g.kind !== "velocity") return;
     let out: Note[];
     if (g.bar) {
-      // Dragging one bar: it takes the new value; the rest of the selection moves by the same amount.
       const target = velocityAt(y, g.height);
       const delta = target - g.bar.velocity;
       out = g.originals.map((n) => ({ ...n, velocity: Math.max(1, Math.min(127, n === g.bar ? target : n.velocity + delta)) }));
-    } else {
-      // Drawing a line: every bar it crosses takes the line's value there.
-      const x0 = Math.min(g.x0, x);
-      const x1 = Math.max(g.x0, x);
-      out = g.originals.map((n) => {
-        const nx = tickToX(this.v, n.start);
-        if (nx < x0 || nx > x1) return n;
-        const k = x1 === x0 ? 1 : (nx - g.x0) / (x - g.x0);
-        return { ...n, velocity: velocityAt(g.y0 + (y - g.y0) * k, g.height) };
-      });
+      this.set({ preview: new Map(out.map((n) => [n.id, n])) });
+      return;
     }
-    this.set({ preview: new Map(out.map((n) => [n.id, n])) });
+    let path: { x: number; y: number }[];
+    let columns: Map<number, number>;
+    if (mods.shift) {
+      path = [g.path[0]!, { x, y }];
+      columns = strokeColumns(path);
+    } else {
+      g.path.push({ x, y });
+      strokeColumns(g.path, g.columns, g.path.length - 1);
+      path = g.path;
+      columns = g.columns;
+    }
+    out = g.originals.map((n) => {
+      const value = columns.get(Math.round(tickToX(this.v, n.start)));
+      return value === undefined ? n : { ...n, velocity: velocityAt(value, g.height) };
+    });
+    this.set({ preview: new Map(out.map((n) => [n.id, n])), stroke: [...path] });
+  }
+
+  // -------------------------------------------------------------------------
+  // Pedal lane (ESPEC_PIANO_ROLL.md, 7): drag on empty space draws a pressed stretch; drag an edge
+  // to move it; drag the middle to move the whole stretch; double click removes it.
+
+  private pedalSpans(): PedalSpan[] {
+    const id = this.trackId();
+    return id ? (this.song.tracks[id]?.pedal ?? []).map((p) => ({ ...p })) : [];
+  }
+
+  /** Which stretch and which part is under x (6 px edges, like the notes). */
+  pedalHit(x: number): { index: number; part: "start" | "end" | "move" } | null {
+    const spans = this.pedalSpans();
+    for (let i = spans.length - 1; i >= 0; i--) {
+      const a = tickToX(this.v, spans[i]!.start);
+      const b = tickToX(this.v, spans[i]!.end);
+      if (x < a - 3 || x > b + 3) continue;
+      if (Math.abs(x - a) <= EDGE_PX) return { index: i, part: "start" };
+      if (Math.abs(x - b) <= EDGE_PX) return { index: i, part: "end" };
+      return { index: i, part: "move" };
+    }
+    return null;
+  }
+
+  pedalDown(x: number): void {
+    const original = this.pedalSpans();
+    const hit = this.pedalHit(x);
+    const tick = Math.max(0, xToTick(this.v, x));
+    this.gesture = { kind: "pedal", mode: hit ? hit.part : "draw", x0: x, tick0: tick, original, index: hit?.index ?? -1 };
+    this.pedalMove(x);
+  }
+
+  pedalMove(x: number): void {
+    const g = this.gesture;
+    if (!g || g.kind !== "pedal") {
+      const hit = this.pedalHit(x);
+      const cursor = hit ? (hit.part === "move" ? "move" : "ew-resize") : "crosshair";
+      if (cursor !== this.overlay.cursor) this.set({ cursor });
+      return;
+    }
+    const grid = this.grid();
+    const snap = (t: number) => Math.max(0, grid.on ? snapNearest(t, grid.step) : Math.round(t));
+    const tick = xToTick(this.v, x);
+    const spans = g.original.map((p) => ({ ...p }));
+    if (g.mode === "draw") {
+      const a = snap(Math.min(g.tick0, tick));
+      const b = snap(Math.max(g.tick0, tick));
+      this.set({ pedalPreview: b > a ? addPedalSpan(spans, { start: a, end: b }) : spans });
+      return;
+    }
+    const span = spans[g.index]!;
+    const others = spans.filter((_, i) => i !== g.index);
+    const min = grid.on ? grid.step : 10;
+    if (g.mode === "start") span.start = Math.min(snap(tick), span.end - min);
+    else if (g.mode === "end") span.end = Math.max(snap(tick), span.start + min);
+    else {
+      const d = snap(g.original[g.index]!.start + (tick - g.tick0)) - g.original[g.index]!.start;
+      span.start = Math.max(0, g.original[g.index]!.start + d);
+      span.end = span.start + (g.original[g.index]!.end - g.original[g.index]!.start);
+    }
+    this.set({ pedalPreview: others.reduce((acc, p) => addPedalSpan(acc, p), [span]) });
+  }
+
+  pedalDoubleClick(x: number): void {
+    const hit = this.pedalHit(x);
+    const trackId = this.trackId();
+    if (!hit || !trackId) return;
+    const spans = this.pedalSpans().filter((_, i) => i !== hit.index);
+    void this.run(this.t("hPedal", { name: this.song.tracks[trackId]?.name ?? "" }), [{ type: "setPedal", trackId, spans }]);
   }
 
   // -------------------------------------------------------------------------

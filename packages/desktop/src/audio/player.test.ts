@@ -62,11 +62,31 @@ describe("Player", () => {
   it("loops inside the loop region and cuts notes at its end", () => {
     const { doc, player, scheduled, advance } = setup();
     doc.setContext({ loop: { start: 0, end: 1920 } });
-    player.toggleLoop();
     player.play(0);
     advance(2.1);
     expect(ons(scheduled).map(([n]) => n)).toEqual([60, 62, 60, 62, 60]); // the fifth is already in the 200 ms lookahead
     expect(player.position()).toBeLessThan(1920);
+  });
+
+  it("applies a loop drawn while playing, and drops it when it is removed", () => {
+    const { doc, player, scheduled, advance } = setup();
+    player.play(0);
+    advance(0.3);
+    doc.setContext({ loop: { start: 0, end: 1920 } });
+    advance(1.5);
+    expect(player.position()).toBeLessThan(1920);
+    expect(ons(scheduled).map(([n]) => n).slice(0, 4)).toEqual([60, 62, 60, 62]);
+    doc.setContext({ loop: null });
+    advance(1.2);
+    expect(player.position()).toBeGreaterThan(1920);
+  });
+
+  it("ignores the loop while recording", () => {
+    const { doc, player, advance } = setup();
+    doc.setContext({ loop: { start: 0, end: 960 } });
+    player.play(0, { noLoop: true });
+    advance(0.8);
+    expect(player.position()).toBeGreaterThan(960);
   });
 
   it("counts in one bar with the metronome before the first note", () => {

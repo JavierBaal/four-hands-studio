@@ -154,6 +154,48 @@ await page.mouse.move(X(3 * BAR + 100), bars.y + 10, { steps: 4 });
 await page.mouse.up();
 await settle();
 check("loop", JSON.stringify((await song()).context.loop) === JSON.stringify({ start: BAR, end: 4 * BAR }), JSON.stringify((await song()).context.loop));
+check("drawing a loop turns the loop button on", (await page.locator('.topbar button[aria-label="Loop"]').getAttribute("aria-pressed")) === "true");
+await page.locator('.topbar button[aria-label="Loop"]').click();
+await settle();
+check("loop button off removes the loop", (await song()).context.loop === null);
+await page.keyboard.press("Escape"); // no selection: the loop takes the section under the cursor
+await page.locator('.topbar button[aria-label="Loop"]').click();
+await settle();
+check("loop button on creates one (section under the cursor)", JSON.stringify((await song()).context.loop) === JSON.stringify({ start: 0, end: 8 * BAR }), JSON.stringify((await song()).context.loop));
+await page.locator('.topbar button[aria-label="Loop"]').click();
+await settle();
+
+// 11b. Velocity lane: a freehand curve over the organ's bars of bar 1–2 (no selection).
+await page.keyboard.press("Escape");
+await settle();
+const organNotes = notesOf(await song()).filter((n) => n.start < 2 * BAR).sort((a, b) => a.start - b.start);
+const xs = [...new Set(organNotes.map((n) => n.start))];
+await page.mouse.move(vel.x + (240 - view.startTick) * view.pxPerTick, vel.y + 50);
+await page.mouse.down();
+await page.mouse.move(vel.x + (xs[0] - view.startTick) * view.pxPerTick, vel.y + 50, { steps: 2 });
+await page.mouse.move(vel.x + (BAR - view.startTick) * view.pxPerTick, vel.y + 10, { steps: 6 });
+await page.mouse.move(vel.x + (2 * BAR - view.startTick) * view.pxPerTick - 2, vel.y + 50, { steps: 6 });
+check("stroke is drawn while dragging", await page.evaluate(() => (window.fhTest.editor.overlay.stroke ?? []).length > 3));
+await page.mouse.up();
+await settle();
+const curved = notesOf(await song()).filter((n) => n.start < 2 * BAR);
+const atStart = curved.find((n) => n.start === xs[0]).velocity;
+const atMiddle = curved.find((n) => n.start === BAR)?.velocity;
+check("freehand curve: high in the middle, low at the ends", atMiddle > atStart + 30, JSON.stringify(curved.map((n) => [n.start, n.velocity])));
+
+// 11c. Pedal tab: draw a pressed stretch in bar 3, then remove it with a double click.
+await page.getByRole("tab", { name: "Pedal" }).click();
+await settle();
+await page.mouse.move(vel.x + (2 * BAR + 100 - view.startTick) * view.pxPerTick, vel.y + 30);
+await page.mouse.down();
+await page.mouse.move(vel.x + (3 * BAR - 100 - view.startTick) * view.pxPerTick, vel.y + 30, { steps: 5 });
+await page.mouse.up();
+await settle();
+check("pedal drawn on the grid", JSON.stringify((await song()).tracks.t1.pedal) === JSON.stringify([{ start: 2 * BAR, end: 3 * BAR }]), JSON.stringify((await song()).tracks.t1.pedal));
+await page.mouse.dblclick(vel.x + (2 * BAR + 1900 - view.startTick) * view.pxPerTick, vel.y + 30);
+await settle();
+check("pedal removed with a double click", (await song()).tracks.t1.pedal.length === 0);
+await page.getByRole("tab", { name: "Velocidad" }).click();
 
 // 12. Pencil (2) creates with a click and grows with a drag; eraser (3) deletes with a click.
 await page.keyboard.press("2");

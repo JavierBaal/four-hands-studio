@@ -26,6 +26,8 @@ export interface ViewState {
   pencilHeld: boolean;
   /** Track whose notes the vertical scroll was last centred on (centred once per track). */
   centredTrack: string | null;
+  /** Which lane shows under the piano roll (ESPEC_PIANO_ROLL.md, 7). */
+  lane: "velocity" | "pedal";
 }
 
 export class ViewStore {
@@ -70,5 +72,6 @@ export function initialView(lang: "es" | "en"): ViewState {
     noteNames: lang === "es" ? "solfege" : "letters",
     pencilHeld: false,
     centredTrack: null,
+    lane: "velocity",
   };
 }

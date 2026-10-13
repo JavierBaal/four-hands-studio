@@ -3,7 +3,7 @@
  * 8.2), Web MIDI input and recording (ESPEC, 8). Recording is a take: everything played goes in
  * as one command at the end, so the whole take undoes in one step, and it is never quantized.
  */
-import { type Note, type PedalSpan, PPQ } from "@fourhands/core";
+import { type Note, type PedalSpan, PPQ, barAt, barStart, orderedSections } from "@fourhands/core";
 import type { Strings, Translate } from "../shared/i18n.js";
 import { Engine } from "../audio/engine.js";
 import { INITIAL_KEYBOARD, type KeyboardState, keyAction } from "../audio/keyboard.js";
@@ -119,8 +119,30 @@ export class AudioLayer {
     this.player.stop();
   }
 
+  /**
+   * The loop button: on while there is a loop region. Off removes the region. On without a region
+   * creates one: the selection's bars, or the section under the cursor, or four bars from the cursor.
+   */
   toggleLoop(): void {
-    this.player.toggleLoop();
+    const song = this.replica.song;
+    if (song.context.loop) {
+      void this.replica.setContext({ loop: null });
+      return;
+    }
+    const meter = song.meter;
+    const selected = song.context.selection.map((id) => song.notes[id]).filter((n) => n !== undefined);
+    let startBar: number;
+    let endBar: number;
+    if (selected.length > 0) {
+      startBar = barAt(meter, Math.min(...selected.map((n) => n.start)));
+      endBar = barAt(meter, Math.max(...selected.map((n) => n.start + n.duration)) - 1);
+    } else {
+      const bar = barAt(meter, song.context.cursor);
+      const section = orderedSections(song).find((sec) => sec.startBar <= bar && sec.endBar >= bar);
+      startBar = section?.startBar ?? bar;
+      endBar = section?.endBar ?? bar + 3;
+    }
+    void this.replica.setContext({ loop: { start: barStart(meter, startBar), end: barStart(meter, endBar + 1) } });
   }
 
   toggleMetronome(): void {

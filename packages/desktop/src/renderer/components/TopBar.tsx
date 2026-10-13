@@ -74,7 +74,7 @@ export function TopBar({ audio }: { audio: AudioLayer }) {
         <button className="ibtn" aria-label={t("stop")} title={t("stop")} onClick={() => audio.stop()}>
           <StopIcon />
         </button>
-        <button className={p.looping ? "ibtn on" : "ibtn"} aria-label={t("loop")} title={t("loop")} aria-pressed={p.looping} onClick={() => audio.toggleLoop()}>
+        <button className={song.context.loop ? "ibtn on" : "ibtn"} aria-label={t("loop")} title={t("loop")} aria-pressed={!!song.context.loop} onClick={() => audio.toggleLoop()}>
           <LoopIcon />
         </button>
         <button className={recording ? "ibtn rec on" : "ibtn rec"} aria-label={t("record")} title={`${t("record")} (R)`} aria-pressed={recording} onClick={() => audio.toggleRecord()}>

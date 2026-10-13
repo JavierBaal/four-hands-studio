@@ -33,7 +33,6 @@ export interface LiveNote {
 
 export class Player {
   playing = false;
-  looping = false;
   metronome = false;
   /** Song tick where playback started (the cursor). */
   startTick = 0;
@@ -46,7 +45,12 @@ export class Player {
   private countInTicks = 0;
   private done = 0;
   private doneSong = 0;
+  /** The loop in force: the song's loop region (shared context), read again every 25 ms. */
   private loop: LoopRange | null = null;
+  private noLoop = false;
+  /** Where the playhead mapping starts: song tick `anchorSong` at linear tick `anchorLinear`. */
+  private anchorLinear = 0;
+  private anchorSong = 0;
   private spt = 0;
   private timer: ReturnType<typeof setInterval> | null = null;
   private listeners = new Set<() => void>();
@@ -97,8 +101,8 @@ export class Player {
     if (!this.setupDone) this.setup();
     const song = this.song();
     this.spt = secondsPerTick(song);
-    const loop = song.context.loop;
-    this.loop = this.looping && !options.noLoop && loop && loop.end > loop.start ? { start: loop.start, end: loop.end } : null;
+    this.noLoop = !!options.noLoop;
+    this.loop = this.currentLoop();
     if (this.loop && (from < this.loop.start || from >= this.loop.end) && !options.countIn) from = this.loop.start;
     this.startTick = from;
     this.countInTicks = Math.round((options.countIn ?? 0) * barTicks(song.meter));
@@ -106,6 +110,8 @@ export class Player {
     this.anchor = this.now() + START_DELAY;
     this.done = -this.countInTicks;
     this.doneSong = from;
+    this.anchorLinear = 0;
+    this.anchorSong = from;
     this.playing = true;
     this.schedule();
     this.timer = setInterval(() => this.schedule(), TICK_MS);
@@ -120,11 +126,6 @@ export class Player {
     this.held.clear();
     this.changed();
     this.onStop?.();
-  }
-
-  toggleLoop(): void {
-    this.looping = !this.looping;
-    this.changed();
   }
 
   private stopTimer(): void {
@@ -155,17 +156,38 @@ export class Player {
     return this.playing && this.elapsed() < 0;
   }
 
+  /** The song's loop region, unless this playback ignores it (recording). */
+  private currentLoop(): LoopRange | null {
+    const loop = this.song().context.loop;
+    return !this.noLoop && loop && loop.end > loop.start ? { start: loop.start, end: loop.end } : null;
+  }
+
   private songTickAt(linear: number): number {
     if (linear < 0) return this.startTick;
+    const s = this.anchorSong + (linear - this.anchorLinear);
     const loop = this.loop;
-    if (!loop || this.startTick >= loop.end) return this.startTick + linear;
-    const first = loop.end - this.startTick;
-    if (linear < first) return this.startTick + linear;
-    return loop.start + ((linear - first) % (loop.end - loop.start));
+    if (!loop || this.anchorSong >= loop.end || s < loop.end) return s;
+    return loop.start + ((s - loop.end) % (loop.end - loop.start));
+  }
+
+  /** The loop was drawn, moved or removed while playing: it applies from now on. */
+  private followLoop(): void {
+    const next = this.currentLoop();
+    const same = next === this.loop || (next && this.loop && next.start === this.loop.start && next.end === this.loop.end);
+    if (same) return;
+    const linear = Math.max(0, this.elapsed());
+    const doneAt = Math.max(0, this.done);
+    const posNow = this.songTickAt(linear);
+    this.anchorSong = posNow;
+    this.anchorLinear = linear;
+    this.loop = next;
+    // Recompute where the already scheduled window ends under the new loop.
+    this.doneSong = this.songTickAt(doneAt);
   }
 
   private schedule(): void {
     const song = this.song();
+    if (this.done >= 0) this.followLoop();
     const horizon = (this.now() + LOOKAHEAD - this.anchor) / this.spt - this.countInTicks;
     if (horizon <= this.done) return;
     const events: { time: number; ev: SynthEvent }[] = [];

@@ -2,6 +2,8 @@ import { USER, nominalGridPosition, type Note } from "@fourhands/core";
 import { describe, expect, it } from "vitest";
 import type { RollView } from "./geometry.js";
 import {
+  addPedalSpan,
+  strokeColumns,
   applyMove,
   changeCommands,
   clampMove,
@@ -129,5 +131,26 @@ describe("selection, quantize and clipboard", () => {
     const after = [{ ...ns[0]!, pitch: 74 }, ns[1]!];
     expect(changeCommands(ns.slice(0, 2), after)).toEqual([{ type: "updateNotes", changes: [{ id: "a", pitch: 74 }] }]);
     expect(changeCommands(ns, ns)).toEqual([]);
+  });
+});
+
+describe("freehand stroke and pedal", () => {
+  it("fills every column the stroke crosses, the last pass winning", () => {
+    const m = strokeColumns([
+      { x: 0, y: 60 },
+      { x: 10, y: 10 },
+      { x: 5, y: 40 },
+    ]);
+    expect(m.get(0)).toBe(60);
+    expect(m.get(10)).toBe(10);
+    expect(m.get(5)).toBe(40); // drawn again on the way back
+    expect([...m.keys()].sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  });
+  it("merges overlapping pedal spans", () => {
+    expect(addPedalSpan([{ start: 0, end: 100 }, { start: 300, end: 400 }], { start: 50, end: 320 })).toEqual([{ start: 0, end: 400 }]);
+    expect(addPedalSpan([{ start: 0, end: 100 }], { start: 200, end: 300 })).toEqual([
+      { start: 0, end: 100 },
+      { start: 200, end: 300 },
+    ]);
   });
 });

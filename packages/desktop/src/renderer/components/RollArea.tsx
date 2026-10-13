@@ -6,7 +6,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useSyncExternalStore } fro
 import { type Note, barAt } from "@fourhands/core";
 import { activeTrack, notesByTrack, trackColors, useApp, useSize, useSong, useView } from "../context.js";
 import { scalePitchClasses } from "../music.js";
-import { drawGrid, drawKeyboard, drawNotes, drawVelocity, prepare } from "../roll/draw.js";
+import { drawGrid, drawKeyboard, drawNotes, drawPedal, drawStroke, drawVelocity, prepare } from "../roll/draw.js";
 import { T } from "../theme.js";
 import { type RollView, yToPitch } from "../roll/geometry.js";
 import { type Editor, modKey } from "../editor.js";
@@ -147,7 +147,9 @@ export function RollArea({ v, editor, audio, playhead, onResize, onWheel, onKeyP
         }
       }
       const vel = velRef.current && prepare(velRef.current);
-      if (vel) drawVelocity(vel, v, own, selected, view.authorship);
+      if (vel && view.lane === "velocity") drawVelocity(vel, v, own, selected, view.authorship);
+      if (vel && view.lane === "pedal") drawPedal(vel, v, overlay.pedalPreview ?? track?.pedal ?? []);
+      if (vel && overlay.stroke) drawStroke(vel, overlay.stroke);
       if (fresh.size > 0 && !matchMedia("(prefers-reduced-motion: reduce)").matches) frame = requestAnimationFrame(draw);
     };
     draw();
@@ -222,27 +224,38 @@ export function RollArea({ v, editor, audio, playhead, onResize, onWheel, onKeyP
         />
         <canvas ref={headRef} className="playhead-layer" />
       </div>
-      <div className="vtab">
-        <b>{t("velocity")}</b>
-        <span>{t("pedal")}</span>
+      <div className="vtab" role="tablist">
+        <button role="tab" className={view.lane === "velocity" ? "vtabb on" : "vtabb"} aria-selected={view.lane === "velocity"} onClick={() => viewStore.set({ lane: "velocity" })}>
+          {t("velocity")}
+        </button>
+        <button role="tab" className={view.lane === "pedal" ? "vtabb on" : "vtabb"} aria-selected={view.lane === "pedal"} onClick={() => viewStore.set({ lane: "pedal" })}>
+          {t("pedal")}
+        </button>
       </div>
       <div className="vlane">
         <canvas
           ref={velRef}
+          style={{ cursor: view.lane === "pedal" ? overlay.cursor : "crosshair" }}
           onPointerDown={(e) => {
             e.currentTarget.setPointerCapture(e.pointerId);
             const p = local(e);
-            editor.velocityDown(p.x, p.y, e.currentTarget.clientHeight);
+            if (view.lane === "pedal") editor.pedalDown(p.x);
+            else editor.velocityDown(p.x, p.y, e.currentTarget.clientHeight, mods(e));
           }}
           onPointerMove={(e) => {
-            if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
             const p = local(e);
-            editor.velocityMove(p.x, p.y);
+            if (view.lane === "pedal") {
+              editor.pedalMove(p.x);
+              return;
+            }
+            if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
+            editor.velocityMove(p.x, p.y, mods(e));
           }}
           onPointerUp={(e) => {
             const p = local(e);
             editor.pointerUp(p.x, p.y);
           }}
+          onDoubleClick={(e) => view.lane === "pedal" && editor.pedalDoubleClick(local(e).x)}
         />
       </div>
     </div>
