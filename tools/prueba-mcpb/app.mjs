@@ -11,10 +11,21 @@ import { exec } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { WebSocketServer } from "ws";
 import { SONG, overviewText, overviewStructured, parseRange, resolveTracks } from "./song.mjs";
+import { userContext, readNotes, beginIntervention, addNotes, deleteNotes, endIntervention, S1_TOOLS } from "./s1.mjs";
 import PAGE from "./page.html";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const MCPB = path.resolve(HERE, "..", "fourhands-prueba.mcpb");
+// El .mcpb más reciente de la carpeta de arriba (S1: fourhands-mcp-0.2.0.mcpb; antes, fourhands-prueba.mcpb).
+function findMcpb() {
+  const dir = path.resolve(HERE, "..");
+  try {
+    const found = fs.readdirSync(dir).filter((f) => f.endsWith(".mcpb")).map((f) => path.join(dir, f));
+    found.sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
+    if (found[0]) return found[0];
+  } catch {}
+  return path.join(dir, "fourhands-prueba.mcpb");
+}
+const MCPB = findMcpb();
 const LOG_FILE = path.join(HERE, "registro-prueba.jsonl");
 const PREFERRED_PORT = 47474;
 
@@ -39,7 +50,7 @@ function record(type, data = {}) {
 }
 
 // ---------- Estado ----------
-const state = { bridge: null, marks: [], startedAt: new Date().toISOString(), platform: process.platform, node: process.version };
+const state = { bridge: null, marks: [], mcpb: path.basename(MCPB), tools: S1_TOOLS, startedAt: new Date().toISOString(), platform: process.platform, node: process.version };
 let markSeq = 0;
 
 // ---------- Herramientas ----------
@@ -59,6 +70,12 @@ function handle(tool, args = {}) {
     const where = `bars ${r.from}-${r.to}` + (mark.tracks.length ? ` · ${mark.tracks.map((t) => t.name).join(", ")}` : "");
     return { ok: true, text: `Pointed (${mark.id}) to ${where}. The user sees the mark; their view did not move.`, structured: { mark } };
   }
+  if (tool === "get_user_context") return { ok: true, text: userContext() };
+  if (tool === "read_notes") return readNotes(args);
+  if (tool === "begin_intervention") return beginIntervention(args);
+  if (tool === "add_notes") return addNotes(args);
+  if (tool === "delete_notes") return deleteNotes(args);
+  if (tool === "end_intervention") return endIntervention(args);
   return { ok: false, error: `Unknown tool ${tool}.` };
 }
 

@@ -54,6 +54,11 @@
   .kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; font-size: 13px; }
   .kv dt { color: var(--muted); }
   .kv dd { margin: 0; font-family: var(--mono); font-size: 12px; word-break: break-all; }
+  .s1help { margin: 0 0 10px; color: var(--muted); }
+  .s1tools { display: flex; flex-wrap: wrap; gap: 8px; }
+  .s1tools span { font: 12px var(--mono); padding: 5px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+  .s1tools span.used { border-color: var(--ok); color: var(--ok); font-weight: 600; }
+  .s1tools span.used::before { content: "✓ "; }
 </style>
 </head>
 <body>
@@ -66,9 +71,15 @@
   <section>
     <h2>Conectar con Claude</h2>
     <div class="connect">
-      <p id="connectText">El botón pide al sistema que abra <code>fourhands-prueba.mcpb</code>. Claude Desktop debería mostrar su ventana de instalación. Cuando el puente se conecte, el indicador de arriba se pondrá en verde.</p>
+      <p id="connectText">El botón pide al sistema que abra <code id="mcpbName">el puente (.mcpb)</code>. Claude Desktop debería mostrar su ventana de instalación. Cuando el puente se conecte, el indicador de arriba se pondrá en verde.</p>
       <button id="connectBtn">Conectar con Claude</button>
     </div>
+  </section>
+
+  <section>
+    <h2>Prueba de permisos (S1): herramientas usadas</h2>
+    <p class="s1help">Cuenta cuántas veces te pide permiso Claude y en qué herramientas. Cada herramienta se marca aquí cuando Claude la usa.</p>
+    <div class="s1tools" id="s1tools"></div>
   </section>
 
   <section>
@@ -97,6 +108,8 @@
 const $ = (id) => document.getElementById(id);
 let song = null;
 
+function renderTools(list) { $("s1tools").innerHTML = list.map((t) => `<span data-tool="${t}">${t}</span>`).join(""); }
+function markTool(e) { if (e.type === "tool_call" && e.ok) { const el = document.querySelector(`[data-tool="${e.tool}"]`); if (el) el.classList.add("used"); } }
 function esc(s) { return String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
 function hhmmss(iso) { return new Date(iso).toLocaleTimeString("es-ES"); }
 
@@ -178,8 +191,8 @@ function connectUi() {
   const ws = new WebSocket(`ws://${location.host}/ui`);
   ws.onmessage = (ev) => {
     const m = JSON.parse(ev.data);
-    if (m.type === "init") { song = m.song; marks.length = 0; $("marks").innerHTML = '<div class="empty">Todavía nada. Pídele a Claude que te señale un lugar.</div>'; renderSong(); $("log").innerHTML = ""; m.events.forEach(addEvent); setBridge(m.state.bridge); m.state.marks.slice().reverse().forEach((x) => addMark(x)); }
-    if (m.type === "event") addEvent(m.event);
+    if (m.type === "init") { song = m.song; marks.length = 0; $("marks").innerHTML = '<div class="empty">Todavía nada. Pídele a Claude que te señale un lugar.</div>'; renderSong(); $("log").innerHTML = ""; m.events.forEach(addEvent); renderTools(m.state.tools || []); m.events.forEach(markTool); if (m.state.mcpb) $("mcpbName").textContent = m.state.mcpb; setBridge(m.state.bridge); m.state.marks.slice().reverse().forEach((x) => addMark(x)); }
+    if (m.type === "event") { addEvent(m.event); markTool(m.event); }
     if (m.type === "bridge") setBridge(m.bridge);
     if (m.type === "mark") addMark(m.mark, true);
   };
