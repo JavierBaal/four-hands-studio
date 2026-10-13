@@ -16,11 +16,12 @@
     "test": "vitest run",
     "build:bridge": "npm run build -w @fourhands/bridge",
     "check": "npm run typecheck && npm test",
-    "s0": "npm run start -w @fourhands/desktop",
+    "s0": "npm run start -w @fourhands/desktop -- --s0",
     "build:prueba": "node tools/prueba-mcpb/build.mjs",
     "app": "npm run start -w @fourhands/desktop",
     "capturas": "npm run build -w @fourhands/desktop -- --harness && node packages/desktop/scripts/capturas.mjs capturas",
-    "interaccion": "npm run build -w @fourhands/desktop -- --harness && node packages/desktop/scripts/interaccion.mjs"
+    "interaccion": "npm run build -w @fourhands/desktop -- --harness && node packages/desktop/scripts/interaccion.mjs",
+    "arranque": "npm run build -w @fourhands/desktop && node packages/desktop/scripts/arranque.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.18.0",

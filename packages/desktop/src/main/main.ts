@@ -271,6 +271,8 @@ async function createWindow(): Promise<void> {
     if ((input.control || input.meta) && ["+", "-", "=", "0"].includes(input.key)) event.preventDefault();
   });
   win.on("closed", () => (win = null));
+  // The window title is the song's, not the page's.
+  win.on("page-title-updated", (e) => e.preventDefault());
   updateTitle();
   await win.loadFile(path.join(here, "renderer", "index.html"));
   if (process.env.FH_DEVTOOLS) win.webContents.openDevTools({ mode: "detach" });
@@ -303,6 +305,11 @@ app.whenReady().then(async () => {
 
   soundFontPath = findSoundFont();
   registerIpc();
+  // `--s0`: only the sound and latency test (Abrir prueba de sonido.bat).
+  if (process.argv.includes("--s0")) {
+    await openSoundTest();
+    return;
+  }
   buildMenu();
   try {
     songs = await openInitialSong();
@@ -316,6 +323,7 @@ app.whenReady().then(async () => {
 });
 
 // Save before quitting: the autosave may still be waiting for its second.
+// (In S0-only mode there is no song.)
 let quitting = false;
 app.on("before-quit", (event) => {
   if (quitting || !songs) return;
