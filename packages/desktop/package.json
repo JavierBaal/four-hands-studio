@@ -1,7 +1,20 @@
 {
   "name": "@fourhands/desktop",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "private": true,
-  "description": "Four Hands desktop app (Electron). Starts with the sound and latency spike S0 (ARQUITECTURA.md, 12).",
-  "type": "module"
+  "description": "Four Hands desktop app (Electron). Right now: the sound and latency spike S0 (ARQUITECTURA.md, 12).",
+  "type": "module",
+  "main": "dist/main.mjs",
+  "scripts": {
+    "build": "node build.mjs",
+    "start": "node build.mjs && electron ."
+  },
+  "dependencies": {
+    "@fontsource/ibm-plex-mono": "5.3.0",
+    "@fontsource/ibm-plex-sans": "5.3.0",
+    "spessasynth_core": "4.3.22"
+  },
+  "devDependencies": {
+    "electron": "44.7.0"
+  }
 }
