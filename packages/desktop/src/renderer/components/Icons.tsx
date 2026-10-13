@@ -50,3 +50,9 @@ export const HistoryIcon = () => (
     <path d="M8 5v3l2 1.5" fill="none" stroke={T.text} strokeWidth="1.4" strokeLinecap="round" />
   </svg>
 );
+export const KeyboardIcon = () => (
+  <svg {...svg}>
+    <rect x="1.5" y="3.5" width="13" height="9" rx="1.5" fill="none" stroke={T.text} strokeWidth="1.4" />
+    <path d="M4.5 3.5v5M8 3.5v5M11.5 3.5v5M3.5 10.5h9" fill="none" stroke={T.text} strokeWidth="1.4" strokeLinecap="round" />
+  </svg>
+);

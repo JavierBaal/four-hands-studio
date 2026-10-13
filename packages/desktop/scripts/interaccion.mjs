@@ -28,7 +28,7 @@ const view = { startTick: 0, pxPerTick: 0.025, scrollY: (127 - 84) * 15 };
 await page.goto(`http://localhost:${port}/index.html?view=${encodeURIComponent(JSON.stringify(view))}`);
 await page.waitForFunction(() => window.fhReady && window.fhTest);
 await page.waitForTimeout(300);
-const grid = await page.locator(".pgrid canvas").boundingBox();
+const grid = await page.locator(".pgrid canvas:not(.playhead-layer)").boundingBox();
 const vel = await page.locator(".vlane canvas").boundingBox();
 const bars = await page.locator(".rrow.bars").boundingBox();
 const X = (tick) => grid.x + (tick - view.startTick) * view.pxPerTick;
@@ -206,6 +206,57 @@ await settle();
 await page.keyboard.press("q");
 await settle();
 check("quantize 50 %", (await song()).notes[loose.id].start === 6 * BAR + 50, (await song()).notes[loose.id].start);
+
+// 16. Space plays and stops; the cursor stays where playback started.
+await page.mouse.click(X(200), bars.y + 10); // cursor at bar 1
+await settle();
+const cursor = (await song()).context.cursor;
+await page.keyboard.press("Space");
+await page.waitForTimeout(400);
+check("play", await page.evaluate(() => window.fhTest.audio.player.playing));
+check("playhead moves", (await page.evaluate(() => window.fhTest.audio.player.position())) > cursor);
+await page.keyboard.press("Space");
+await settle();
+check("stop", !(await page.evaluate(() => window.fhTest.audio.player.playing)));
+check("cursor kept", (await song()).context.cursor === cursor);
+
+// 17. Ctrl+K: the computer keyboard plays notes; its letters stop being shortcuts.
+await page.keyboard.press("Control+k");
+check("piano mode", await page.evaluate(() => window.fhTest.audio.pianoMode));
+const z1 = await page.evaluate(() => window.fhTest.view.state.pxPerTick);
+await page.keyboard.press("h");
+check("letters are notes", (await page.evaluate(() => window.fhTest.view.state.pxPerTick)) === z1);
+await page.keyboard.press("x"); // octave up
+check("octave up", (await page.evaluate(() => window.fhTest.audio.keyboard.base)) === 72);
+await page.keyboard.press("z");
+
+// 18. Record a take: one bar of count-in, two notes, R to stop; the take undoes in one step.
+await page.evaluate(() => window.fhTest.replica.run("tempo", [{ type: "setSongProperties", props: { tempo: 250000 } }])); // 240 BPM: a bar lasts 1 s
+await page.mouse.click(X(8 * BAR + 10), bars.y + 10);
+await settle();
+const countBefore = notesOf(await song()).length;
+await page.keyboard.press("r");
+await page.waitForTimeout(400);
+check("count-in", await page.evaluate(() => window.fhTest.audio.player.countInBeatsLeft() > 0));
+await page.waitForTimeout(800);
+await page.keyboard.down("a");
+await page.waitForTimeout(250);
+await page.keyboard.up("a");
+await page.keyboard.down("d");
+await page.waitForTimeout(250);
+await page.keyboard.up("d");
+await page.waitForTimeout(100);
+await page.keyboard.press("r");
+await page.waitForTimeout(200);
+s1 = await song();
+const recorded = notesOf(s1).filter((n) => n.start >= 8 * BAR - 480 && (n.pitch === 60 || n.pitch === 64) && n.velocity === 90);
+check("take recorded", notesOf(s1).length === countBefore + 2 && recorded.length === 2, JSON.stringify(recorded));
+check("not quantized", recorded.some((n) => n.start % 240 !== 0 || n.duration % 240 !== 0), JSON.stringify(recorded.map((n) => [n.start, n.duration])));
+check("take label", /^grabaste 2 notas en Organo \(c\. 9/.test(await lastLabel()), await lastLabel());
+await page.keyboard.press("Control+z");
+await settle();
+check("take undoes in one step", notesOf(await song()).length === countBefore);
+await page.keyboard.press("Control+k");
 
 console.log(`${passed} passed, ${failures.length} failed`);
 for (const f of failures) console.log("FAIL", f);

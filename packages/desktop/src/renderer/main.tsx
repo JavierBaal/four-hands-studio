@@ -2,6 +2,7 @@
 import { createRoot } from "react-dom/client";
 import { langFrom, translator } from "../shared/i18n.js";
 import { App } from "./App.js";
+import { AudioLayer } from "./audio-layer.js";
 import { type Bridge, memoryBridge, windowBridge } from "./bridge.js";
 import { Ctx, activeTrack } from "./context.js";
 import { harnessSong } from "./harness.js";
@@ -14,7 +15,14 @@ async function start(): Promise<void> {
   const params = new URLSearchParams(location.search);
   let bridge: Bridge | null = windowBridge();
   const harness = !bridge;
-  if (!bridge) bridge = memoryBridge(await harnessSong(params), { locale: params.get("lang") ?? "es-ES" });
+  if (!bridge) {
+    // ?sf=<file>: the harness loads a SoundFont served next to it, to test the sound path.
+    const sf = params.get("sf");
+    bridge = memoryBridge(await harnessSong(params), {
+      locale: params.get("lang") ?? "es-ES",
+      soundFont: async () => (sf ? (await fetch(sf)).arrayBuffer() : null),
+    });
+  }
   const info = await bridge.info();
   const lang = langFrom(params.get("lang") ?? info.locale);
   document.documentElement.lang = lang;
@@ -32,12 +40,16 @@ async function start(): Promise<void> {
   await Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, 1500))]);
   const root = createRoot(document.getElementById("root")!);
   // The harness exposes the window's state to the interface tests (scripts/interaccion.mjs).
-  const onEditor = harness ? (editor: unknown) => Object.assign(window, { fhTest: { replica, view, editor } }) : undefined;
+  const t = translator(lang);
+  const audio = new AudioLayer(replica, bridge, t);
+  const onEditor = harness ? (editor: unknown) => Object.assign(window, { fhTest: { replica, view, editor, audio } }) : undefined;
   root.render(
-    <Ctx.Provider value={{ replica, view, bridge, t: translator(lang), lang }}>
-      {onEditor ? <App onEditor={onEditor} /> : <App />}
+    <Ctx.Provider value={{ replica, view, bridge, t, lang }}>
+      {onEditor ? <App audio={audio} onEditor={onEditor} /> : <App audio={audio} />}
     </Ctx.Provider>,
   );
+  // The SoundFont takes a few seconds: the window works meanwhile.
+  void audio.init();
   (window as unknown as { fhReady?: boolean }).fhReady = true;
 }
 

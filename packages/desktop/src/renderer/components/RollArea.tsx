@@ -10,11 +10,13 @@ import { drawGrid, drawKeyboard, drawNotes, drawVelocity, prepare } from "../rol
 import { T } from "../theme.js";
 import { type RollView, yToPitch } from "../roll/geometry.js";
 import { type Editor, modKey } from "../editor.js";
+import type { AudioLayer } from "../audio-layer.js";
 import { BarRuler, FormRuler, HarmonyRuler } from "./Rulers.js";
 
 export interface RollAreaProps {
   v: RollView;
   editor: Editor;
+  audio: AudioLayer;
   playhead: number | null;
   onResize(size: { width: number; height: number }): void;
   onWheel(e: WheelEvent): void;
@@ -30,7 +32,7 @@ function local(e: { clientX: number; clientY: number; currentTarget: Element }):
 
 const mods = (e: { shiftKey: boolean; altKey: boolean; ctrlKey: boolean; metaKey: boolean }) => ({ shift: e.shiftKey, alt: e.altKey, mod: modKey(e) });
 
-export function RollArea({ v, editor, playhead, onResize, onWheel, onKeyPress }: RollAreaProps) {
+export function RollArea({ v, editor, audio, playhead, onResize, onWheel, onKeyPress }: RollAreaProps) {
   const { t, replica } = useApp();
   const song = useSong();
   const view = useView();
@@ -39,6 +41,36 @@ export function RollArea({ v, editor, playhead, onResize, onWheel, onKeyPress }:
   const keysRef = useRef<HTMLCanvasElement>(null);
   const notesRef = useRef<HTMLCanvasElement>(null);
   const velRef = useRef<HTMLCanvasElement>(null);
+  const headRef = useRef<HTMLCanvasElement>(null);
+  const { view: viewStore } = useApp();
+  useSyncExternalStore(audio.subscribe, audio.getVersion);
+  const playing = audio.player.playing;
+
+  // Playhead on its own layer while playing, so the notes are not redrawn every frame.
+  // The view turns the page when the playhead leaves it.
+  useEffect(() => {
+    const canvas = headRef.current;
+    if (!canvas) return;
+    let frame = 0;
+    const draw = () => {
+      const s = prepare(canvas);
+      const pos = audio.player.position();
+      if (s && pos !== null) {
+        const vs = viewStore.state;
+        const span = s.width / vs.pxPerTick;
+        if (!audio.player.countingIn() && (pos < vs.startTick || pos > vs.startTick + span * 0.97)) {
+          viewStore.set({ startTick: Math.max(0, pos - span * 0.03) });
+        }
+        const x = (pos - viewStore.state.startTick) * vs.pxPerTick;
+        s.ctx.globalAlpha = 0.85;
+        s.ctx.fillStyle = T.playhead;
+        s.ctx.fillRect(Math.round(x) - 1, 0, 2, s.height);
+      }
+      if (audio.player.playing) frame = requestAnimationFrame(draw);
+    };
+    draw();
+    return () => cancelAnimationFrame(frame);
+  }, [playing]);
   const byTrack = useMemo(() => notesByTrack(song), [replica.version]);
   const colors = useMemo(() => trackColors(song), [replica.version]);
   useSyncExternalStore(editor.subscribe, editor.getVersion);
@@ -188,6 +220,7 @@ export function RollArea({ v, editor, playhead, onResize, onWheel, onKeyPress }:
             editor.contextMenu(p.x, p.y, e.clientX, e.clientY);
           }}
         />
+        <canvas ref={headRef} className="playhead-layer" />
       </div>
       <div className="vtab">
         <b>{t("velocity")}</b>

@@ -47,7 +47,8 @@ export class Engine {
   onStats: (s: WorkletStats) => void = () => {};
   onError: (m: string) => void = () => {};
 
-  async init(soundfont: ArrayBuffer, workletUrl: string): Promise<ReadyInfo> {
+  /** `presetInstruments`: the S0 test sets its own palette; the app sends each track's program. */
+  async init(soundfont: ArrayBuffer, workletUrl: string, presetInstruments = true): Promise<ReadyInfo> {
     this.ctx = new AudioContext({ latencyHint: "interactive" });
     await this.ctx.audioWorklet.addModule(workletUrl);
     this.node = new AudioWorkletNode(this.ctx, "fh-synth", { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2] });
@@ -69,7 +70,7 @@ export class Engine {
     });
     this.post({ t: "load", soundfont, predecode: true }, [soundfont]);
     const info = await ready;
-    for (const inst of INSTRUMENTS) this.now({ kind: "prog", ch: inst.ch, prog: inst.prog });
+    if (presetInstruments) for (const inst of INSTRUMENTS) this.now({ kind: "prog", ch: inst.ch, prog: inst.prog });
     if (this.ctx.state !== "running") await this.ctx.resume();
     return info;
   }

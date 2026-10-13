@@ -29,7 +29,10 @@ export function windowBridge(): Bridge | null {
 }
 
 /** Runs the core inside the page, the way the main process would. */
-export function memoryBridge(song: Song, options: { locale?: string; now?: () => number; name?: string } = {}): Bridge & { doc: SongDocument } {
+export function memoryBridge(
+  song: Song,
+  options: { locale?: string; now?: () => number; name?: string; soundFont?: () => Promise<ArrayBuffer | null> } = {},
+): Bridge & { doc: SongDocument } {
   const now = options.now ?? Date.now;
   const doc = new SongDocument(song, { now });
   const patchListeners = new Set<(m: PatchMessage) => void>();
@@ -75,7 +78,7 @@ export function memoryBridge(song: Song, options: { locale?: string; now?: () =>
     onFile: (l) => on(fileListeners, l),
     onReload: () => () => {},
     onMenu: () => () => {},
-    soundFont: async () => null,
+    soundFont: options.soundFont ?? (async () => null),
     log: (entry) => console.log("[fh]", JSON.stringify(entry)),
   };
 }

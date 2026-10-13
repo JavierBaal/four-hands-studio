@@ -13,29 +13,29 @@ import { TopBar } from "./components/TopBar.js";
 import { activeTrack, notesByTrack, useApp, useSize, useSong, useView } from "./context.js";
 import { Editor } from "./editor.js";
 import { type RollView, centerOnPitches, clampScrollY, zoomAt } from "./roll/geometry.js";
+import type { AudioLayer } from "./audio-layer.js";
 import { type Action, DEFAULT_SHORTCUTS, PIANO_MODE_ALLOWED, actionFor } from "./shortcuts.js";
 import { SIZE } from "./theme.js";
 import type { MenuAction } from "../shared/protocol.js";
 
-export interface AppExtras {
-  transport?: React.ComponentProps<typeof TopBar>;
-  /** Extra shortcut handlers from the audio layer (play, record, piano mode). */
-  onAction?: (action: Action) => boolean;
-  /** True while the computer keyboard plays notes: its letters are not shortcuts. */
-  pianoMode?: boolean;
+export interface AppProps {
+  audio: AudioLayer;
   onEditor?: (editor: Editor) => void;
-  /** Sounds a key of the side keyboard. */
-  onKeyPress?: (pitch: number) => void;
 }
 
 const MAC = /Mac|iPhone|iPad/.test(navigator.platform);
 
-const IDLE_TRANSPORT = { playing: false, recording: false, looping: false };
 
-export function App({ transport, onAction, pianoMode, onEditor, onKeyPress }: AppExtras) {
+export function App({ audio, onEditor }: AppProps) {
   const { replica, view, t, bridge } = useApp();
   const editor = useMemo(() => new Editor(replica, view, t), []);
-  useEffect(() => onEditor?.(editor), [editor]);
+  useSyncExternalStore(audio.subscribe, audio.getVersion);
+  const pianoMode = audio.pianoMode;
+  useEffect(() => {
+    editor.audition = (pitch, velocity) => audio.audition(pitch, velocity);
+    audio.onDraft = (notes) => editor.showDraft(notes);
+    onEditor?.(editor);
+  }, [editor]);
   const song = useSong();
   const v = useView();
   const [appRef, appSize] = useSize<HTMLDivElement>();
@@ -90,8 +90,16 @@ export function App({ transport, onAction, pianoMode, onEditor, onKeyPress }: Ap
   /** Runs a shortcut or menu action. Returns false if it does not apply. */
   const perform = useCallback(
     (action: Action): boolean => {
-      if (onAction?.(action)) return true;
       switch (action) {
+        case "playStop":
+          audio.playStop();
+          return true;
+        case "record":
+          audio.toggleRecord();
+          return true;
+        case "pianoMode":
+          audio.togglePiano();
+          return true;
         case "undo":
           void replica.undoLast();
           return true;
@@ -168,7 +176,7 @@ export function App({ transport, onAction, pianoMode, onEditor, onKeyPress }: Ap
           return false;
       }
     },
-    [zoom, onAction],
+    [zoom],
   );
 
   // Keyboard: one table (shortcuts.ts). Ctrl/Cmd held turns the arrow into a pencil.
@@ -177,6 +185,11 @@ export function App({ transport, onAction, pianoMode, onEditor, onKeyPress }: Ap
       const target = e.target as HTMLElement | null;
       if (target && (target.tagName === "INPUT" || target.tagName === "SELECT" || target.tagName === "TEXTAREA")) return;
       if (e.key === (MAC ? "Meta" : "Control")) view.set({ pencilHeld: true });
+      // The computer keyboard as a piano takes its keys first (ESPEC_PIANO_ROLL.md, 8.2).
+      if (audio.keyDown(e)) {
+        e.preventDefault();
+        return;
+      }
       const action = actionFor(e, DEFAULT_SHORTCUTS, MAC);
       if (!action) return;
       if (pianoMode && !PIANO_MODE_ALLOWED.has(action)) return;
@@ -184,8 +197,12 @@ export function App({ transport, onAction, pianoMode, onEditor, onKeyPress }: Ap
     };
     const up = (e: KeyboardEvent) => {
       if (e.key === (MAC ? "Meta" : "Control")) view.set({ pencilHeld: false });
+      audio.keyUp(e);
     };
-    const blur = () => view.set({ pencilHeld: false });
+    const blur = () => {
+      view.set({ pencilHeld: false });
+      audio.releaseAll();
+    };
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
     window.addEventListener("blur", blur);
@@ -227,20 +244,12 @@ export function App({ transport, onAction, pianoMode, onEditor, onKeyPress }: Ap
 
   useSyncExternalStore(editor.subscribe, editor.getVersion);
   const overlayMenus = editor.overlay;
-  const tp = transport ?? {
-    ...IDLE_TRANSPORT,
-    position: song.context.cursor,
-    onPlay: () => {},
-    onStop: () => {},
-    onLoop: () => {},
-    onRecord: () => {},
-  };
-  const playhead = tp.playing ? tp.position : song.context.cursor;
+  const playhead = audio.player.playing ? null : song.context.cursor;
   const visible = rollSize.width > 0 ? { start: v.startTick, end: v.startTick + rollSize.width / v.pxPerTick } : null;
 
   return (
     <div className={v.panelOpen ? "app" : "app pclosed"} ref={appRef}>
-      <TopBar {...tp} />
+      <TopBar audio={audio} />
       <div className="main">
         <div className="work">
           <Arrangement compact={compact} visible={visible} onSelectTrack={selectTrack} onJump={jump} onToggle={toggleTrack} />
@@ -251,7 +260,7 @@ export function App({ transport, onAction, pianoMode, onEditor, onKeyPress }: Ap
                 editor.gridMenu(r.left, r.bottom + 4);
               }}
             />
-            <RollArea v={rollView} editor={editor} playhead={playhead} onResize={setRollSize} onWheel={onWheel} onKeyPress={(p) => onKeyPress?.(p)} />
+            <RollArea v={rollView} editor={editor} audio={audio} playhead={playhead} onResize={setRollSize} onWheel={onWheel} onKeyPress={(p) => audio.audition(p, 90)} />
           </section>
         </div>
         <ActivityPanel />

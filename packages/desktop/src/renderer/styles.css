@@ -146,3 +146,6 @@ canvas { display: block; }
 .btn { height: 36px; padding: 0 16px; border-radius: 8px; cursor: pointer; border: 1px solid var(--line-strong); background: transparent; color: var(--text); }
 .btn.pri { background: var(--text); color: var(--text-on-light); border-color: var(--text); font-weight: 600; }
 .rrow.bars { cursor: pointer; }
+.chipbtn { cursor: pointer; color: var(--text-2); }
+.chipbtn.on { color: var(--text); background: var(--toggle-on); border-color: var(--line-on); }
+.playhead-layer { pointer-events: none; }

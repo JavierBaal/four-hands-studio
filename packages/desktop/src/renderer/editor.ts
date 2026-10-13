@@ -629,6 +629,12 @@ export class Editor {
     this.set({ menu: { x: clientX, y: clientY, items } });
   }
 
+  /** Notes being recorded, drawn while the take lasts. */
+  showDraft(notes: Note[]): void {
+    if (this.gesture) return;
+    this.set({ creating: notes });
+  }
+
   /** Length of one bar, for scrolling by bars. */
   barLength(): number {
     return barTicks(this.song.meter);
