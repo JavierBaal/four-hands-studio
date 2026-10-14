@@ -267,6 +267,14 @@ check("cursor kept", (await song()).context.cursor === cursor);
 // 17. Ctrl+K: the computer keyboard plays notes; its letters stop being shortcuts.
 await page.keyboard.press("Control+k");
 check("piano mode", await page.evaluate(() => window.fhTest.audio.pianoMode));
+check("key guide shown", (await page.locator(".kguide").count()) === 1);
+await page.keyboard.down("s");
+check("key guide lights the key", (await page.locator(".kguide .kw.on").innerText()).includes("S"));
+await page.keyboard.up("s");
+await page.locator(".kgclose").click();
+check("key guide hides", (await page.locator(".kguide").count()) === 0);
+await page.locator(".chipbtn", { hasText: "Guía" }).click();
+check("key guide shows again", (await page.locator(".kguide").count()) === 1);
 const z1 = await page.evaluate(() => window.fhTest.view.state.pxPerTick);
 await page.keyboard.press("h");
 check("letters are notes", (await page.evaluate(() => window.fhTest.view.state.pxPerTick)) === z1);

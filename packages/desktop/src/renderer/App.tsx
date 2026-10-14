@@ -12,6 +12,7 @@ import { RollToolbar } from "./components/RollToolbar.js";
 import { TopBar } from "./components/TopBar.js";
 import { ActionsCtx, activeTrack, notesByTrack, useApp, useSize, useSong, useView } from "./context.js";
 import { Mixer } from "./components/Mixer.js";
+import { KeyGuide } from "./components/KeyGuide.js";
 import { SongActions } from "./song-actions.js";
 import { Editor } from "./editor.js";
 import { type RollView, centerOnPitches, clampScrollY, zoomAt } from "./roll/geometry.js";
@@ -268,6 +269,7 @@ export function App({ audio, onEditor }: AppProps) {
               }}
             />
             <RollArea v={rollView} editor={editor} audio={audio} playhead={playhead} onResize={setRollSize} onWheel={onWheel} onKeyPress={(p) => audio.audition(p, 90)} />
+            <KeyGuide audio={audio} />
           </section>
         </div>
         <ActivityPanel />

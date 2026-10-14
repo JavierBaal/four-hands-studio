@@ -98,6 +98,16 @@ export function TopBar({ audio }: { audio: AudioLayer }) {
           <span className="mono">{t("pianoKeysOn", { note: noteName(audio.keyboard.base, view.state.noteNames), vel: audio.keyboard.velocity })}</span>
         </span>
       )}
+      {audio.pianoMode && (
+        <button
+          className={audio.keyGuide ? "chip chipbtn on" : "chip chipbtn"}
+          aria-pressed={audio.keyGuide}
+          title={audio.keyGuide ? t("keyGuideHide") : t("keyGuideShow")}
+          onClick={() => audio.toggleGuide()}
+        >
+          {t("keyGuide")}
+        </button>
+      )}
       {recording && (
         <>
           <RecordingChip audio={audio} track={track?.name ?? ""} />

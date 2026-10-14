@@ -33,10 +33,10 @@ const songsDir = [path.join(home, "Documents", "Four Hands"), path.join(home, "F
 const file = songsDir && path.join(songsDir, "Dilatacion.fourhands");
 check("first run imports Dilatación", !!file && fs.existsSync(file));
 const grid = await win.locator(".pgrid canvas:not(.playhead-layer)").boundingBox();
-await win.mouse.dblclick(grid.x + 300, grid.y + 150);
+await win.mouse.dblclick(grid.x + 300, grid.y + 10); // top rows: no notes or ghosts of Dilatación there
 await win.waitForTimeout(1600);
 let saved = JSON.parse(fs.readFileSync(file, "utf8"));
-check("autosaves within a second", Object.keys(saved.song.notes).length === 1025);
+check("autosaves within a second", Object.keys(saved.song.notes).length === 1025, Object.keys(saved.song.notes).length);
 await win.keyboard.press("Space");
 await win.waitForTimeout(2000);
 await win.keyboard.press("Space");

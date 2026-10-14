@@ -24,12 +24,22 @@ interface Take {
   from: number;
 }
 
+function loadGuide(): boolean {
+  try {
+    return localStorage.getItem("fh.keyGuide") !== "0";
+  } catch {
+    return true;
+  }
+}
+
 export class AudioLayer {
   readonly player: Player;
   status: SoundStatus = "loading";
   /** Worklet health while playing: notes that reached the audio thread late, and its worst load. */
   stats = { lateEvents: 0, maxLoad: 0, seconds: 0 };
   pianoMode = false;
+  /** The on-screen guide of the computer keyboard while it plays notes (ESPEC_PIANO_ROLL.md, 8.2). */
+  keyGuide = loadGuide();
   keyboard: KeyboardState = { ...INITIAL_KEYBOARD };
   countInBars = 1;
   take: Take | null = null;
@@ -237,6 +247,21 @@ export class AudioLayer {
   // -------------------------------------------------------------------------
   // Playing: the computer keyboard as a piano, MIDI input, auditioning
 
+  toggleGuide(): void {
+    this.keyGuide = !this.keyGuide;
+    try {
+      localStorage.setItem("fh.keyGuide", this.keyGuide ? "1" : "0");
+    } catch {
+      /* no storage: the choice lasts this session */
+    }
+    this.changed();
+  }
+
+  /** Physical keys held down right now (the guide lights them). */
+  heldKeys(): ReadonlySet<string> {
+    return new Set(this.held.keys());
+  }
+
   togglePiano(): void {
     this.pianoMode = !this.pianoMode;
     if (!this.pianoMode) this.releaseAll();
@@ -252,6 +277,7 @@ export class AudioLayer {
       if (action.note > 127 || this.held.has(e.code)) return true;
       this.held.set(e.code, action.note);
       this.player.liveOn(action.note, this.keyboard.velocity, this.channel(), e.timeStamp, "keyboard");
+      if (this.keyGuide) this.changed();
     } else {
       this.releaseAll();
       this.keyboard = action.state;
@@ -265,12 +291,15 @@ export class AudioLayer {
     if (note === undefined) return false;
     this.held.delete(e.code);
     this.player.liveOff(note);
+    if (this.keyGuide) this.changed();
     return true;
   }
 
   releaseAll(): void {
     for (const note of this.held.values()) this.player.liveOff(note);
+    const had = this.held.size > 0;
     this.held.clear();
+    if (had && this.keyGuide) this.changed();
   }
 
   private async attachMidi(): Promise<void> {
