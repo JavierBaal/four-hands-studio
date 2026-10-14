@@ -3,7 +3,7 @@
  * stand-in that runs the core directly, for the browser harness and the interface tests.
  */
 import { SongDocument, USER, runCommands, type Song } from "@fourhands/core";
-import type { FileState, MenuAction, PatchMessage, Reply, Request, Snapshot } from "../shared/protocol.js";
+import type { FileState, MenuAction, PatchMessage, Reply, Request, Snapshot, SoundBankInfo } from "../shared/protocol.js";
 
 export interface AppInfo {
   soundFont: string | null;
@@ -22,6 +22,14 @@ export interface Bridge {
   onMenu(listener: (action: MenuAction) => void): () => void;
   soundFont(): Promise<ArrayBuffer | null>;
   log(entry: Record<string, unknown>): void;
+  /** Sound banks the user installed (not the default one). */
+  sounds(): Promise<SoundBankInfo[]>;
+  soundBank(id: string): Promise<ArrayBuffer | null>;
+  onSoundsChanged(listener: () => void): () => void;
+  openSoundsFolder(): void;
+  /** Copies dropped files into the sounds folder; gives the names copied. */
+  importSounds(files: File[]): Promise<string[]>;
+  openLink(url: string): void;
 }
 
 export function windowBridge(): Bridge | null {
@@ -31,7 +39,14 @@ export function windowBridge(): Bridge | null {
 /** Runs the core inside the page, the way the main process would. */
 export function memoryBridge(
   song: Song,
-  options: { locale?: string; now?: () => number; name?: string; soundFont?: () => Promise<ArrayBuffer | null> } = {},
+  options: {
+    locale?: string;
+    now?: () => number;
+    name?: string;
+    soundFont?: () => Promise<ArrayBuffer | null>;
+    sounds?: SoundBankInfo[];
+    soundBank?: (id: string) => Promise<ArrayBuffer | null>;
+  } = {},
 ): Bridge & { doc: SongDocument } {
   const now = options.now ?? Date.now;
   const doc = new SongDocument(song, { now });
@@ -80,5 +95,11 @@ export function memoryBridge(
     onMenu: () => () => {},
     soundFont: options.soundFont ?? (async () => null),
     log: (entry) => console.log("[fh]", JSON.stringify(entry)),
+    sounds: async () => structuredClone(options.sounds ?? []),
+    soundBank: options.soundBank ?? (async () => null),
+    onSoundsChanged: () => () => {},
+    openSoundsFolder: () => console.log("[fh] open sounds folder"),
+    importSounds: async (files) => files.map((f) => f.name).filter((n) => /\.sf[23]$/i.test(n)),
+    openLink: (url) => console.log("[fh] open", url),
   };
 }

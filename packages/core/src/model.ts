@@ -81,6 +81,22 @@ export interface Track {
   pedal: PedalSpan[];
   /** Events of this track the model does not interpret (controllers, pitch bend, text…). */
   extraEvents: PassthroughEvent[];
+  /**
+   * The sound from a sound bank other than the default one, if the user chose one. Absent: the
+   * default bank plays `program`. `program` stays the General MIDI program for MIDI export.
+   */
+  sound?: TrackSound;
+}
+
+/** A preset of a sound bank installed by the user (a SoundFont file), by its file name. */
+export interface TrackSound {
+  /** File name of the bank, e.g. "YDP-GrandPiano-20160804.sf2". */
+  bank: string;
+  /** Preset inside the bank. */
+  program: number;
+  bankMSB: number;
+  /** Preset name, as the bank calls it ("1st Violins Sustain"). */
+  name: string;
 }
 
 export interface Section {

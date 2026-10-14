@@ -51,7 +51,7 @@ export function RollToolbar({ onGridMenu }: RollToolbarProps) {
           aria-haspopup="menu"
           onClick={(e) => {
             const r = e.currentTarget.getBoundingClientRect();
-            actions.paletteMenu(r.left, r.bottom + 4, (item) => actions.setInstrument(track.id, item), track);
+            actions.paletteMenu(r.left, r.bottom + 4, (choice) => actions.setInstrument(track.id, choice), track);
           }}
         >
           {actions.instrumentLabel(track)} ▾

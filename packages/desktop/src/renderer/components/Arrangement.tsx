@@ -182,7 +182,7 @@ export function Arrangement({ compact, visible, onSelectTrack, onPan, onToggle }
             aria-label={t("addTrack")}
             onClick={(e) => {
               const r = e.currentTarget.getBoundingClientRect();
-              actions.paletteMenu(r.left, r.bottom + 4, (item) => void actions.addTrack(item));
+              actions.paletteMenu(r.left, r.bottom + 4, (choice) => void actions.addTrack(choice));
             }}
           >
             {t("addTrack")}

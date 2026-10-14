@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addNotes, addTrack, setChord, updateNotes } from "./commands.js";
+import { addNotes, addTrack, setChord, updateNotes, updateTrack } from "./commands.js";
 import { SongDocument } from "./document.js";
 import { FILE_VERSION, FourHandsFileError, parseSongFile, serializeSong } from "./file.js";
 import { DILATACION } from "./test-support/dilatacion.js";
@@ -33,6 +33,15 @@ describe(".fourhands", () => {
     expect(opened.history).toEqual(doc.history);
     expect(opened.proposals).toEqual([]);
     expect(serializeSong(opened)).toBe(text);
+  });
+
+  it("keeps the sound a track takes from a bank the user installed", () => {
+    const doc = sampleDoc();
+    const sound = { bank: "YDP-GrandPiano-20160804.sf2", program: 0, bankMSB: 0, name: "Grand Piano" };
+    doc.transact({ actor: USER, label: "Sonido" }, (tx) => updateTrack(tx, "t1", { sound }));
+    const opened = parseSongFile(serializeSong({ song: doc.song, history: doc.history, proposals: [] }));
+    expect(opened.song.tracks.t1!.sound).toEqual(sound);
+    expect(opened.song.tracks.t1!.program).toBe(0);
   });
 
   it("is readable JSON with its format and version first, one note per line", () => {

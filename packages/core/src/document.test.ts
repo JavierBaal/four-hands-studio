@@ -282,3 +282,31 @@ describe("annotations", () => {
     expect(() => doc.transact({ actor: USER, label: "c" }, (tx) => runCommands(tx, [{ type: "updateAnnotation", id: id as string, changes: { end: -1 } }]))).toThrow();
   });
 });
+
+describe("sound banks", () => {
+  it("a track takes a preset of another bank, and goes back to the default bank, each in one undo step", () => {
+    const { doc, t } = docWithTrack();
+    const sound = { bank: "Sonatina_Symphonic_Orchestra.sf2", program: 2, bankMSB: 0, name: "1st Violins Sustain" };
+    doc.transact({ actor: USER, label: "Sonido" }, (tx) => updateTrack(tx, t, { sound }));
+    expect(doc.song.tracks[t]!.sound).toEqual(sound);
+    expect(doc.song.tracks[t]!.program).toBe(0); // the General MIDI program stays for MIDI export
+    doc.transact({ actor: USER, label: "Banco de serie" }, (tx) => updateTrack(tx, t, { sound: null }));
+    expect(doc.song.tracks[t]!.sound).toBeUndefined();
+    doc.undo(USER);
+    expect(doc.song.tracks[t]!.sound).toEqual(sound);
+    doc.undo(USER);
+    expect(doc.song.tracks[t]!.sound).toBeUndefined();
+  });
+  it("a new track can start with a sound of another bank", () => {
+    const doc = new SongDocument(emptySong("Prueba"), { now: () => 1000 });
+    const sound = { bank: "YDP-GrandPiano-20160804.sf2", program: 0, bankMSB: 0, name: "Grand Piano" };
+    const t = doc.transact({ actor: USER, label: "Pista" }, (tx) => addTrack(tx, { name: "Piano", program: 0, sound }));
+    expect(doc.song.tracks[t]!.sound).toEqual(sound);
+    doc.undo(USER);
+    expect(doc.song.tracks[t]).toBeUndefined();
+  });
+  it("rejects a preset out of range", () => {
+    const { doc, t } = docWithTrack();
+    expect(() => doc.transact({ actor: USER, label: "x" }, (tx) => updateTrack(tx, t, { sound: { bank: "a.sf2", program: 200, bankMSB: 0, name: "x" } }))).toThrow(CommandError);
+  });
+});

@@ -38,6 +38,11 @@ export interface ReadyInfo {
   presetCount: number;
 }
 
+/** Banks next to the main one take bank select 20, 30, 40… (room for their own variations). */
+export const BANK_OFFSET_FIRST = 20;
+export const BANK_OFFSET_STEP = 10;
+export const MAX_EXTRA_BANKS = 10;
+
 export class Engine {
   ctx!: AudioContext;
   private node!: AudioWorkletNode;
@@ -65,6 +70,11 @@ export class Engine {
           this.onApplied(m.id, m.frame);
         } else if (m.t === "stats") {
           this.onStats(m);
+        } else if (m.t === "bankReady" || m.t === "bankError") {
+          const wait = this.bankWaits.get(m.id);
+          this.bankWaits.delete(m.id);
+          if (m.t === "bankReady") wait?.resolve();
+          else wait?.reject(new Error(m.message));
         }
       };
     });
@@ -73,6 +83,41 @@ export class Engine {
     if (presetInstruments) for (const inst of INSTRUMENTS) this.now({ kind: "prog", ch: inst.ch, prog: inst.prog });
     if (this.ctx.state !== "running") await this.ctx.resume();
     return info;
+  }
+
+  private bankWaits = new Map<string, { resolve(): void; reject(e: Error): void }>();
+  private bankOffsets = new Map<string, number>();
+
+  /** Bank select of an added bank, or undefined if it is not loaded. */
+  bankOffset(id: string): number | undefined {
+    return this.bankOffsets.get(id);
+  }
+
+  private bankLoads = new Map<string, Promise<number>>();
+  private banksReserved = 0;
+
+  /**
+   * Loads a bank next to the main one (once; repeated calls wait for the same load) and gives its
+   * bank select offset. The offset is reserved at once, so two banks loading together never share it.
+   */
+  addBank(id: string, soundfont: () => Promise<ArrayBuffer | null>): Promise<number> {
+    const known = this.bankLoads.get(id);
+    if (known) return known;
+    if (this.banksReserved >= MAX_EXTRA_BANKS) return Promise.reject(new Error("Too many sound banks at once"));
+    const offset = BANK_OFFSET_FIRST + this.banksReserved++ * BANK_OFFSET_STEP;
+    const load = (async () => {
+      const buf = await soundfont();
+      if (!buf) throw new Error(`Sound bank not found: ${id}`);
+      const done = new Promise<void>((resolve, reject) => this.bankWaits.set(id, { resolve, reject }));
+      this.post({ t: "bank", id, soundfont: buf, offset }, [buf]);
+      await done;
+      this.bankOffsets.set(id, offset);
+      return offset;
+    })();
+    this.bankLoads.set(id, load);
+    // A failed load can be tried again later (the file may come back).
+    load.catch(() => this.bankLoads.delete(id));
+    return load;
   }
 
   private post(msg: ToWorklet, transfer: Transferable[] = []): void {

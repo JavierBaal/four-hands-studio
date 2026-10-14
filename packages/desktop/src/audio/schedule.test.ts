@@ -49,7 +49,11 @@ describe("schedule", () => {
   });
 
   it("prepares programs, volume and pan", () => {
-    expect(setupEvents(song().song)).toContainEqual({ kind: "prog", ch: 1, prog: 42 });
+    expect(setupEvents(song().song)).toContainEqual({ kind: "prog", ch: 1, prog: 42, bank: 0 });
+    // A track that plays a preset of an installed bank sends that bank's select and preset instead.
+    const custom = setupEvents(song().song, (t) => (t.channel === 1 ? { bank: 20, prog: 2 } : null));
+    expect(custom).toContainEqual({ kind: "prog", ch: 1, prog: 2, bank: 20 });
+    expect(custom).not.toContainEqual({ kind: "prog", ch: 1, prog: 42, bank: 0 });
   });
 
   it("wraps the window around the loop", () => {

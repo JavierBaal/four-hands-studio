@@ -2,7 +2,7 @@
  * The window's only door to the main process (contextIsolation + sandbox).
  * Shape: `Bridge` in src/renderer/bridge.ts. The S0 sound test uses `info`, `soundFont` and `log`.
  */
-import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
+import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from "electron";
 
 // Channel names repeated here on purpose: the sandboxed preload cannot import other modules.
 const CH = {
@@ -17,6 +17,12 @@ const CH = {
   menu: "fh:menu",
   sfList: "fh:sf-list",
   sfLoad: "fh:sf-load",
+  sounds: "fh:sounds",
+  soundBank: "fh:sound-bank",
+  soundsChanged: "fh:sounds-changed",
+  soundsFolder: "fh:sounds-folder",
+  soundsImport: "fh:sounds-import",
+  openLink: "fh:open-link",
 } as const;
 
 function listen(channel: string, listener: (value: unknown) => void): () => void {
@@ -37,4 +43,10 @@ contextBridge.exposeInMainWorld("fh", {
   log: (entry: Record<string, unknown>) => ipcRenderer.send(CH.log, entry),
   sfList: () => ipcRenderer.invoke(CH.sfList),
   sfLoad: (index: number) => ipcRenderer.invoke(CH.sfLoad, index),
+  sounds: () => ipcRenderer.invoke(CH.sounds),
+  soundBank: (id: string) => ipcRenderer.invoke(CH.soundBank, id),
+  onSoundsChanged: (l: () => void) => listen(CH.soundsChanged, () => l()),
+  openSoundsFolder: () => ipcRenderer.send(CH.soundsFolder),
+  importSounds: (files: File[]) => ipcRenderer.invoke(CH.soundsImport, files.map((f) => webUtils.getPathForFile(f))),
+  openLink: (url: string) => ipcRenderer.send(CH.openLink, url),
 });

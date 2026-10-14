@@ -3,7 +3,10 @@
  * sections, chords and annotations. Every action is one command list (one undo step) with its
  * sentence in the history. Also holds which field is being typed into (one at a time).
  */
-import { type CommandData, type Song, type Track, barAt, barStart, barTicks, beatTicks, orderedSections, orderedTracks } from "@fourhands/core";
+import { type CommandData, type Song, type Track, type TrackSound, barAt, barStart, barTicks, beatTicks, orderedSections, orderedTracks } from "@fourhands/core";
+import type { AudioLayer } from "./audio-layer.js";
+import type { SoundBankInfo } from "../shared/protocol.js";
+import type { BankPreset } from "../shared/soundbank-info.js";
 import type { Lang, Strings, Translate } from "../shared/i18n.js";
 import { activeTrack } from "./context.js";
 import type { Editor, MenuItem } from "./editor.js";
@@ -19,6 +22,9 @@ export type Typing =
   | { kind: "section"; id: string }
   | { kind: "chord"; tick: number }
   | { kind: "annotation"; id: string | null; tick: number };
+
+/** What the palette gives: an instrument of the default bank, or a preset of an installed bank. */
+export type SoundChoice = { kind: "default"; item: PaletteItem } | { kind: "bank"; bank: SoundBankInfo; preset: BankPreset };
 
 /** At most 15 tracks: channel 16 is the metronome's. */
 export const MAX_TRACKS = 15;
@@ -38,6 +44,29 @@ const METERS: [number, number][] = [
 export class SongActions {
   typing: Typing | null = null;
   mixer: { trackId: string; x: number; y: number } | null = null;
+  /** The "Get more sounds" card is open. */
+  soundsHelp = false;
+  /** A short message at the bottom of the window, gone after a few seconds. */
+  notice: string | null = null;
+  private noticeTimer: ReturnType<typeof setTimeout> | null = null;
+
+  say(text: string): void {
+    this.notice = text;
+    if (this.noticeTimer) clearTimeout(this.noticeTimer);
+    this.noticeTimer = setTimeout(() => {
+      this.notice = null;
+      this.changed();
+    }, 4000);
+    this.changed();
+  }
+
+  /** Sound banks dropped onto the window go to the sounds folder. */
+  async dropSounds(files: File[]): Promise<void> {
+    if (!this.audio) return;
+    const added = await this.audio.importSounds(files);
+    this.say(added.length ? this.t("soundsAdded", { names: added.join(", ") }) : this.t("soundsNotAdded"));
+    if (added.length) void this.audio.refreshBanks();
+  }
   version = 0;
   private listeners = new Set<() => void>();
 
@@ -46,7 +75,14 @@ export class SongActions {
     private readonly editor: Editor,
     private readonly t: Translate,
     private readonly lang: Lang,
+    private readonly audio: AudioLayer | null = null,
   ) {}
+
+  openSoundsHelp(open: boolean): void {
+    this.soundsHelp = open;
+    if (open) this.editor.closeMenus();
+    this.changed();
+  }
 
   subscribe = (l: () => void): (() => void) => {
     this.listeners.add(l);
@@ -100,10 +136,18 @@ export class SongActions {
     return this.song.trackOrder.length < MAX_TRACKS && this.freeChannel() !== null;
   }
 
-  async addTrack(item: PaletteItem): Promise<void> {
-    if (!this.canAddTrack() && item.program !== null) return;
-    const name = this.uniqueName(paletteName(item, this.lang));
-    const spec = item.program === null ? { name, percussion: true } : { name, program: item.program, channel: this.freeChannel()! };
+  async addTrack(choice: SoundChoice): Promise<void> {
+    const item = choice.kind === "default" ? choice.item : null;
+    if (!this.canAddTrack() && item?.program !== null) return;
+    let spec: { name: string; percussion?: boolean; program?: number; channel?: number; sound?: TrackSound };
+    let name: string;
+    if (choice.kind === "bank") {
+      name = this.uniqueName(choice.preset.name);
+      spec = { name, program: 0, channel: this.freeChannel()!, sound: soundOf(choice) };
+    } else {
+      name = this.uniqueName(paletteName(choice.item, this.lang));
+      spec = choice.item.program === null ? { name, percussion: true } : { name, program: choice.item.program, channel: this.freeChannel()! };
+    }
     const reply = await this.run(this.h("hTrackAdd", { name }), [{ type: "addTrack", spec }]);
     if (reply.ok) void this.replica.setContext({ activeTrackId: reply.results[0] as string, selection: [] });
   }
@@ -137,16 +181,30 @@ export class SongActions {
     void this.run(this.h("hTrackMove", { name: track.name }), [{ type: "moveTrack", id, index }]);
   }
 
-  setInstrument(id: string, item: PaletteItem): void {
+  setInstrument(id: string, choice: SoundChoice): void {
     const track = this.song.tracks[id];
     if (!track) return;
-    const inst = paletteName(item, this.lang);
-    const changes: { program: number | null; channel?: number } = { program: item.program };
-    if (item.program === null) changes.channel = 9;
-    else if (track.channel === 9) {
-      const ch = this.freeChannel(id);
-      if (ch === null) return;
-      changes.channel = ch;
+    const changes: { program?: number | null; channel?: number; sound: TrackSound | null } = { sound: null };
+    let inst: string;
+    if (choice.kind === "bank") {
+      inst = choice.preset.name;
+      changes.sound = soundOf(choice);
+      if (track.channel === 9) {
+        const ch = this.freeChannel(id);
+        if (ch === null) return;
+        changes.channel = ch;
+        changes.program = 0;
+      }
+    } else {
+      const item = choice.item;
+      inst = paletteName(item, this.lang);
+      changes.program = item.program;
+      if (item.program === null) changes.channel = 9;
+      else if (track.channel === 9) {
+        const ch = this.freeChannel(id);
+        if (ch === null) return;
+        changes.channel = ch;
+      }
     }
     void this.run(this.h("hInstrument", { name: track.name, inst }), [{ type: "updateTrack", id, changes }]);
   }
@@ -158,19 +216,61 @@ export class SongActions {
   }
 
   instrumentLabel(track: Track): string {
+    if (track.sound) {
+      const state = this.audio?.bankStatus(track.sound.bank);
+      if (state === "missing") return this.t("bankMissingLabel", { name: track.sound.name });
+      if (state === "loading") return this.t("bankLoadingLabel", { name: track.sound.name });
+      return track.sound.name;
+    }
     for (const g of PALETTE) for (const item of g.items) if (item.program === track.program && (item.program !== null || track.channel === 9)) return paletteName(item, this.lang);
     return instrumentName(track.program, track.channel, this.lang);
   }
 
-  /** The instrument palette as a menu; picking applies to the track, or adds a new one. */
-  paletteMenu(x: number, y: number, onPick: (item: PaletteItem) => void, current?: Track): void {
-    const items: MenuItem[] = [];
+  /**
+   * The instrument palette as a menu; picking applies to the track, or adds a new one.
+   * First the default bank's instruments, then "Your sounds": each installed bank opens its own
+   * list of presets (a bank with a single instrument is picked directly).
+   */
+  paletteMenu(x: number, y: number, onPick: (choice: SoundChoice) => void, current?: Track): void {
+    const t = this.t;
+    const pick = (choice: SoundChoice) => () => (this.editor.closeMenus(), onPick(choice));
+    const items: MenuItem[] = [{ label: t("soundsDefault"), header: true }];
     for (const g of PALETTE) {
       items.push({ label: this.lang === "es" ? g.es : g.en, header: true });
       for (const item of g.items) {
-        const active = current ? current.program === item.program && (item.program !== null || current.channel === 9) : false;
-        items.push({ label: paletteName(item, this.lang), active, run: () => (this.editor.closeMenus(), onPick(item)) });
+        const active = current && !current.sound ? current.program === item.program && (item.program !== null || current.channel === 9) : false;
+        items.push({ label: paletteName(item, this.lang), active, run: pick({ kind: "default", item }) });
       }
+    }
+    items.push({ separator: true }, { label: t("soundsYours"), header: true });
+    const banks = this.audio?.banks ?? [];
+    if (banks.length === 0) items.push({ label: t("soundsNone"), disabled: true });
+    for (const bank of banks) {
+      const usedHere = current?.sound?.bank === bank.id;
+      if (bank.presets.length === 1) {
+        items.push({ label: bank.name, active: usedHere, run: pick({ kind: "bank", bank, preset: bank.presets[0]! }) });
+      } else {
+        items.push({ label: bank.name, active: usedHere, shortcut: `${bank.presets.length} ›`, run: () => this.bankMenu(x, y, bank, onPick, current) });
+      }
+    }
+    items.push(
+      { separator: true },
+      { label: t("soundsFolder"), run: () => (this.editor.closeMenus(), this.audio?.openSoundsFolder()) },
+      { label: t("soundsMore"), run: () => this.openSoundsHelp(true) },
+    );
+    this.editor.openMenu(x, y, items);
+  }
+
+  /** The presets of one installed bank. */
+  private bankMenu(x: number, y: number, bank: SoundBankInfo, onPick: (choice: SoundChoice) => void, current?: Track): void {
+    const items: MenuItem[] = [
+      { label: this.t("soundsBack"), run: () => this.paletteMenu(x, y, onPick, current) },
+      { separator: true },
+      { label: bank.name, header: true },
+    ];
+    for (const preset of bank.presets) {
+      const active = current?.sound?.bank === bank.id && current.sound.program === preset.program && current.sound.bankMSB === preset.bankMSB;
+      items.push({ label: preset.name || `${preset.bankMSB}:${preset.program}`, active, run: () => (this.editor.closeMenus(), onPick({ kind: "bank", bank, preset })) });
     }
     this.editor.openMenu(x, y, items);
   }
@@ -388,4 +488,8 @@ export class SongActions {
   sections() {
     return orderedSections(this.song);
   }
+}
+
+function soundOf(choice: Extract<SoundChoice, { kind: "bank" }>): TrackSound {
+  return { bank: choice.bank.id, program: choice.preset.program, bankMSB: choice.preset.bankMSB, name: choice.preset.name };
 }

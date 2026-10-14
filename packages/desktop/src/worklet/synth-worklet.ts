@@ -76,10 +76,26 @@ class FhSynthProcessor extends AudioWorkletProcessor {
     }
   }
 
+  /** A bank the user installed, next to the main one. SF3 samples are decoded up front, as above. */
+  private addBank(id: string, buf: ArrayBuffer, offset: number): void {
+    try {
+      if (!this.synth) throw new Error("Synth not ready");
+      const bank = SoundBankLoader.fromArrayBuffer(buf);
+      for (const s of bank.samples) s.getAudioData();
+      this.synth.soundBankManager.addSoundBank(bank, id, offset);
+      this.send({ t: "bankReady", id });
+    } catch (err) {
+      this.send({ t: "bankError", id, message: String((err as Error)?.message ?? err) });
+    }
+  }
+
   private onMessage(msg: ToWorklet): void {
     switch (msg.t) {
       case "load":
         void this.load(msg.soundfont, msg.predecode);
+        break;
+      case "bank":
+        this.addBank(msg.id, msg.soundfont, msg.offset);
         break;
       case "now":
         this.immediate.push(msg.id === undefined ? { ev: msg.ev } : { ev: msg.ev, id: msg.id });
@@ -109,6 +125,7 @@ class FhSynthProcessor extends AudioWorkletProcessor {
         s.noteOff(ev.ch, ev.note);
         break;
       case "prog":
+        if (ev.bank !== undefined) s.controllerChange(ev.ch, 0 as never, ev.bank);
         s.programChange(ev.ch, ev.prog);
         break;
       case "cc":

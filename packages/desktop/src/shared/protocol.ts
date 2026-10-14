@@ -4,6 +4,18 @@
  * sends every change as a list of commands (one gesture = one transaction = one undo step).
  */
 import type { CommandData, CommandResult, HistoryEntry, Patch, SharedContext, Song } from "@fourhands/core";
+import type { BankPreset } from "./soundbank-info.js";
+
+/** A sound bank the user installed (sound-library.ts). */
+export interface SoundBankInfo {
+  /** File name: what a track stores to find it again. */
+  id: string;
+  name: string;
+  presets: BankPreset[];
+  bytes: number;
+  /** In Documentos\Four Hands\Sonidos (not in the project's folder). */
+  inUserFolder: boolean;
+}
 
 export interface FileState {
   /** File name without extension, for the title bar. */
@@ -57,6 +69,12 @@ export const CH = {
   menu: "fh:menu",
   sfList: "fh:sf-list",
   sfLoad: "fh:sf-load",
+  sounds: "fh:sounds",
+  soundBank: "fh:sound-bank",
+  soundsChanged: "fh:sounds-changed",
+  soundsFolder: "fh:sounds-folder",
+  soundsImport: "fh:sounds-import",
+  openLink: "fh:open-link",
 } as const;
 
 /** Menu commands handled by the window (edit and view actions live there). */

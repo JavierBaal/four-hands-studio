@@ -473,6 +473,31 @@ await menuItem("Quitar acorde").click();
 await settle();
 check("chord removed", (await song()).harmony[String(BAR + 1920)] === undefined);
 
+// 26. Sound banks: the palette lists the installed banks; a bank opens its presets; the track takes
+// one (its General MIDI program stays); going back to the default bank clears it.
+await page.keyboard.press("Escape");
+await page.locator(".rsubb").click();
+const sonatinaItem = page.locator(".menu [role=menuitem]", { hasText: "Sonatina Symphonic Orchestra" }); // with its "5 ›"
+check("palette lists installed banks", (await menuItem("YDP Grand Piano").count()) === 1 && (await sonatinaItem.count()) === 1);
+await sonatinaItem.click();
+await menuItem("1st Violins Sustain").click();
+await settle();
+const active = (await song()).context.activeTrackId;
+let tr = (await song()).tracks[active];
+check("track takes a bank preset", tr.sound && tr.sound.bank === "Sonatina_Symphonic_Orchestra.sf2" && tr.sound.program === 2, JSON.stringify(tr.sound));
+check("instrument label shows the preset", (await page.locator(".rsubb").innerText()).includes("1st Violins Sustain"), await page.locator(".rsubb").innerText());
+check("bank label in history", (await lastLabel()).endsWith("a 1st Violins Sustain"), await lastLabel());
+await page.locator(".rsubb").click();
+await menuItem("Violines").click();
+await settle();
+tr = (await song()).tracks[active];
+check("default bank clears the sound", !tr.sound && tr.program === 40, JSON.stringify(tr));
+await page.locator(".rsubb").click();
+await menuItem("Conseguir más sonidos…").click();
+check("help card", (await page.locator(".soundshelp a").count()) === 3);
+await page.keyboard.press("Escape");
+check("help card closes", (await page.locator(".soundshelp").count()) === 0);
+
 // 25. Back to the start (Home), and the tools are icons with their name for screen readers.
 await page.evaluate(() => window.fhTest.replica.setContext({ cursor: 3840 * 5 }));
 await settle();

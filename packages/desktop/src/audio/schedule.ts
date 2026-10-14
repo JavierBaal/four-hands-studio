@@ -3,7 +3,7 @@
  * the next ~200 ms to the synth worklet. Reading the replica at every window means notes the AI
  * writes ahead of the playhead simply play when it gets there.
  */
-import { type Song, PPQ, beatTicks, barTicks } from "@fourhands/core";
+import { type Song, PPQ, beatTicks, barTicks, type Track } from "@fourhands/core";
 import type { SynthEvent } from "../shared/messages.js";
 
 /** The metronome uses its own channel and a woodblock, so it never clashes with a track. */
@@ -63,13 +63,18 @@ export function clickEvents(song: Song, from: number, to: number): TickEvent[] {
   return out;
 }
 
-/** Programs, volume and pan of every track, to send before playing. */
-export function setupEvents(song: Song): SynthEvent[] {
-  const out: SynthEvent[] = [{ kind: "prog", ch: METRONOME_CHANNEL, prog: METRONOME_PROGRAM }];
+/** Bank select and preset a track plays with, when it is not the default bank's General MIDI program. */
+export type SoundResolver = (track: Track) => { bank: number; prog: number } | null;
+
+/** Programs (with their bank), volume and pan of every track, to send before playing. */
+export function setupEvents(song: Song, soundFor: SoundResolver = () => null): SynthEvent[] {
+  const out: SynthEvent[] = [{ kind: "prog", ch: METRONOME_CHANNEL, prog: METRONOME_PROGRAM, bank: 0 }];
   for (const id of song.trackOrder) {
     const t = song.tracks[id];
     if (!t) continue;
-    if (t.program !== null && t.channel !== 9) out.push({ kind: "prog", ch: t.channel, prog: t.program });
+    const custom = t.channel !== 9 ? soundFor(t) : null;
+    if (custom) out.push({ kind: "prog", ch: t.channel, prog: custom.prog, bank: custom.bank });
+    else if (t.program !== null && t.channel !== 9) out.push({ kind: "prog", ch: t.channel, prog: t.program, bank: 0 });
     out.push({ kind: "cc", ch: t.channel, cc: 7, value: Math.round(t.volume * 127) });
     out.push({ kind: "cc", ch: t.channel, cc: 10, value: Math.round(64 + t.pan * 63) });
   }

@@ -17,6 +17,7 @@ import {
   type PedalSpan,
   type Section,
   type Track,
+  type TrackSound,
   sameAuthorship,
 } from "./model.js";
 
@@ -95,6 +96,8 @@ export interface TrackSpec {
   /** Free channel by default (never 9 unless `percussion`). */
   channel?: number;
   percussion?: boolean;
+  /** A preset of another sound bank (see Track.sound). */
+  sound?: TrackSound;
 }
 
 function freeChannel(tx: Transaction): number {
@@ -125,10 +128,14 @@ export function addTrack(tx: Transaction, spec: TrackSpec): string {
   };
   tx.set(["tracks", id], track);
   tx.set(["trackOrder"], [...tx.song.trackOrder, id]);
+  if (spec.sound) updateTrack(tx, id, { sound: spec.sound });
   return id;
 }
 
-export type TrackChanges = Partial<Pick<Track, "name" | "program" | "channel" | "volume" | "pan" | "mute" | "solo" | "color">>;
+export type TrackChanges = Partial<Pick<Track, "name" | "program" | "channel" | "volume" | "pan" | "mute" | "solo" | "color">> & {
+  /** A preset of another sound bank, or null to go back to the default bank. */
+  sound?: TrackSound | null;
+};
 
 export function updateTrack(tx: Transaction, id: string, changes: TrackChanges): void {
   const track = getTrack(tx, id);
@@ -139,7 +146,14 @@ export function updateTrack(tx: Transaction, id: string, changes: TrackChanges):
   if (changes.volume !== undefined) check(changes.volume >= 0 && changes.volume <= 1, "Volume must be between 0 and 1");
   if (changes.pan !== undefined) check(changes.pan >= -1 && changes.pan <= 1, "Pan must be between -1 and 1");
   if (changes.name !== undefined) check(changes.name.trim().length > 0, "A track needs a name");
-  for (const [field, value] of Object.entries(changes)) {
+  const { sound, ...rest } = changes;
+  if (sound) {
+    check(sound.bank.trim().length > 0, "A sound needs its bank");
+    check(isInt(sound.program) && sound.program >= 0 && sound.program <= 127, `Invalid preset: ${sound.program}`);
+    check(isInt(sound.bankMSB) && sound.bankMSB >= 0 && sound.bankMSB <= 127, `Invalid bank: ${sound.bankMSB}`);
+    if (JSON.stringify(track.sound) !== JSON.stringify(sound)) tx.set(["tracks", id, "sound"], { ...sound });
+  } else if (sound === null && track.sound) tx.remove(["tracks", id, "sound"]);
+  for (const [field, value] of Object.entries(rest)) {
     if (value !== undefined && track[field as keyof Track] !== value) tx.set(["tracks", id, field], value);
   }
 }

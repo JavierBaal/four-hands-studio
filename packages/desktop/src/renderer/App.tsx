@@ -13,6 +13,7 @@ import { TopBar } from "./components/TopBar.js";
 import { ActionsCtx, activeTrack, notesByTrack, useApp, useSize, useSong, useView } from "./context.js";
 import { Mixer } from "./components/Mixer.js";
 import { KeyGuide } from "./components/KeyGuide.js";
+import { Notice, SoundsHelp } from "./components/SoundsHelp.js";
 import { SongActions } from "./song-actions.js";
 import { Editor } from "./editor.js";
 import { type RollView, centerOnPitches, clampScrollY, zoomAt } from "./roll/geometry.js";
@@ -33,7 +34,7 @@ const MAC = /Mac|iPhone|iPad/.test(navigator.platform);
 export function App({ audio, onEditor }: AppProps) {
   const { replica, view, t, bridge, lang } = useApp();
   const editor = useMemo(() => new Editor(replica, view, t), []);
-  const actions = useMemo(() => new SongActions(replica, editor, t, lang), []);
+  const actions = useMemo(() => new SongActions(replica, editor, t, lang, audio), []);
   useSyncExternalStore(audio.subscribe, audio.getVersion);
   const pianoMode = audio.pianoMode;
   useEffect(() => {
@@ -260,7 +261,19 @@ export function App({ audio, onEditor }: AppProps) {
 
   return (
     <ActionsCtx.Provider value={actions}>
-    <div className={v.panelOpen ? "app" : "app pclosed"} ref={appRef}>
+    <div
+      className={v.panelOpen ? "app" : "app pclosed"}
+      ref={appRef}
+      onDragOver={(e) => {
+        if (e.dataTransfer.types.includes("Files")) e.preventDefault();
+      }}
+      onDrop={(e) => {
+        const files = [...e.dataTransfer.files];
+        if (!files.length) return;
+        e.preventDefault();
+        void actions.dropSounds(files);
+      }}
+    >
       <TopBar audio={audio} />
       <div className="main">
         <div className="work">
@@ -282,6 +295,8 @@ export function App({ audio, onEditor }: AppProps) {
       {overlayMenus.menu && <ContextMenu {...overlayMenus.menu} onClose={() => editor.closeMenus()} />}
       {overlayMenus.quantizeDialog && <QuantizeDialog editor={editor} {...overlayMenus.quantizeDialog} />}
       <Mixer />
+      <SoundsHelp audio={audio} />
+      <Notice />
     </div>
     </ActionsCtx.Provider>
   );

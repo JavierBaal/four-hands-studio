@@ -9,7 +9,7 @@
 import { type Song, barTicks, beatTicks, songEnd } from "@fourhands/core";
 import type { SynthEvent } from "../shared/messages.js";
 import type { Engine } from "./engine.js";
-import { type LoopRange, METRONOME_CHANNEL, clickEvents, noteEvents, secondsPerTick, setupEvents, windowPieces } from "./schedule.js";
+import { type LoopRange, METRONOME_CHANNEL, type SoundResolver, clickEvents, noteEvents, secondsPerTick, setupEvents, windowPieces } from "./schedule.js";
 
 const LOOKAHEAD = 0.2;
 const TICK_MS = 25;
@@ -56,6 +56,8 @@ export class Player {
   private listeners = new Set<() => void>();
   private held = new Map<number, { ch: number; pitch: number }>();
   private setupDone = false;
+  /** Which bank and preset each track plays with (set by the audio layer). */
+  soundFor: SoundResolver = () => null;
 
   constructor(
     private readonly song: () => Song,
@@ -89,7 +91,7 @@ export class Player {
   /** Sends programs, volume and pan. Called before playing and whenever tracks change. */
   setup(): void {
     if (!this.engine) return;
-    for (const ev of setupEvents(this.song())) this.engine.now(ev);
+    for (const ev of setupEvents(this.song(), this.soundFor)) this.engine.now(ev);
     this.setupDone = true;
   }
 

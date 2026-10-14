@@ -21,6 +21,17 @@ async function start(): Promise<void> {
     bridge = memoryBridge(await harnessSong(params), {
       locale: params.get("lang") ?? "es-ES",
       soundFont: async () => (sf ? (await fetch(sf)).arrayBuffer() : null),
+      // Two installed banks, by their headers only (their sound does not load in the harness).
+      sounds: [
+        { id: "YDP-GrandPiano-20160804.sf2", name: "YDP Grand Piano", presets: [{ name: "Grand Piano", program: 0, bankMSB: 0 }], bytes: 118398836, inUserFolder: true },
+        {
+          id: "Sonatina_Symphonic_Orchestra.sf2",
+          name: "Sonatina Symphonic Orchestra",
+          presets: ["Steinway Concert Gra", "Concert Harp", "1st Violins Sustain", "1st Violins Pizz.", "Cello Section Sustai"].map((name, program) => ({ name, program, bankMSB: 0 })),
+          bytes: 494723490,
+          inUserFolder: false,
+        },
+      ],
     });
   }
   const info = await bridge.info();

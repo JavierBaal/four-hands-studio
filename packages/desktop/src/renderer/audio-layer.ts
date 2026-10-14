@@ -9,11 +9,15 @@ import { Engine } from "../audio/engine.js";
 import { INITIAL_KEYBOARD, type KeyboardState, keyAction } from "../audio/keyboard.js";
 import { Player } from "../audio/player.js";
 import type { Bridge } from "./bridge.js";
+import type { SoundBankInfo } from "../shared/protocol.js";
 import { activeTrack } from "./context.js";
 import { barRange } from "./music.js";
 import type { Replica } from "./replica.js";
 
 export type SoundStatus = "loading" | "ready" | "none" | "error";
+
+/** A bank a track uses: being loaded, playing, not installed on this computer, or failed. */
+export type BankStatus = "loading" | "ready" | "missing" | "error";
 
 interface Take {
   trackId: string;
@@ -50,6 +54,10 @@ export class AudioLayer {
   private held = new Map<string, number>();
   private draftTimer: ReturnType<typeof setInterval> | null = null;
   private trackSignature = "";
+  private engine: Engine | null = null;
+  /** Sound banks the user installed (refreshed when the sounds folder changes). */
+  banks: SoundBankInfo[] = [];
+  private bankStates = new Map<string, BankStatus>();
 
   constructor(
     private readonly replica: Replica,
@@ -68,13 +76,23 @@ export class AudioLayer {
     this.replica.subscribe(() => {
       const sig = this.replica.song.trackOrder.map((id) => {
         const tr = this.replica.song.tracks[id];
-        return tr ? `${tr.channel}:${tr.program}:${tr.volume}:${tr.pan}` : "";
+        return tr ? `${tr.channel}:${tr.program}:${tr.volume}:${tr.pan}:${tr.sound ? `${tr.sound.bank}/${tr.sound.bankMSB}/${tr.sound.program}` : ""}` : "";
       }).join("|");
       if (sig !== this.trackSignature) {
         this.trackSignature = sig;
         this.player.setup();
+        this.ensureBanks();
       }
     });
+    // A track with a sound from another bank plays it once the bank is loaded; until then, and if
+    // the bank is not on this computer, it plays its General MIDI program from the default bank.
+    this.player.soundFor = (track) => {
+      if (!track.sound || !this.engine) return null;
+      const offset = this.engine.bankOffset(track.sound.bank);
+      return offset === undefined ? null : { bank: offset + track.sound.bankMSB, prog: track.sound.program };
+    };
+    void this.refreshBanks();
+    this.bridge.onSoundsChanged(() => void this.refreshBanks());
   }
 
   subscribe = (l: () => void): (() => void) => {
@@ -102,7 +120,9 @@ export class AudioLayer {
         this.stats.seconds++;
       };
       const info = await engine.init(sf, "worklet.js", false);
+      this.engine = engine;
       this.player.setEngine(engine);
+      this.ensureBanks();
       this.status = "ready";
       this.bridge.log({ type: "sound_ready", ...info, baseLatencyMs: engine.baseLatencyMs, outputLatencyMs: engine.outputLatencyMs });
     } catch (error) {
@@ -111,6 +131,74 @@ export class AudioLayer {
     }
     this.changed();
     void this.attachMidi();
+  }
+
+  // -------------------------------------------------------------------------
+  // Sound banks the user installed
+
+  async refreshBanks(): Promise<void> {
+    try {
+      this.banks = await this.bridge.sounds();
+    } catch {
+      this.banks = [];
+    }
+    for (const [id, state] of this.bankStates) if (state === "missing" || state === "error") this.bankStates.delete(id);
+    this.changed();
+    this.ensureBanks();
+  }
+
+  openSoundsFolder(): void {
+    this.bridge.openSoundsFolder();
+  }
+
+  importSounds(files: File[]): Promise<string[]> {
+    return this.bridge.importSounds(files);
+  }
+
+  openLink(url: string): void {
+    this.bridge.openLink(url);
+  }
+
+  bankStatus(id: string): BankStatus | null {
+    return this.bankStates.get(id) ?? null;
+  }
+
+  bank(id: string): SoundBankInfo | undefined {
+    return this.banks.find((b) => b.id === id);
+  }
+
+  /** Loads the banks the song's tracks use and are not loaded yet. */
+  private ensureBanks(): void {
+    const engine = this.engine;
+    if (!engine) return;
+    const wanted = new Set<string>();
+    for (const id of this.replica.song.trackOrder) {
+      const s = this.replica.song.tracks[id]?.sound;
+      if (s) wanted.add(s.bank);
+    }
+    for (const id of wanted) {
+      if (this.bankStates.has(id)) continue;
+      if (!this.bank(id)) {
+        this.bankStates.set(id, "missing");
+        this.changed();
+        continue;
+      }
+      this.bankStates.set(id, "loading");
+      this.changed();
+      const t0 = performance.now();
+      engine
+        .addBank(id, () => this.bridge.soundBank(id))
+        .then(() => {
+          this.bankStates.set(id, "ready");
+          this.bridge.log({ type: "bank_loaded", bank: id, ms: Math.round(performance.now() - t0) });
+          this.player.setup();
+        })
+        .catch((error: unknown) => {
+          this.bankStates.set(id, "error");
+          this.bridge.log({ type: "bank_failed", bank: id, error: String(error) });
+        })
+        .finally(() => this.changed());
+    }
   }
 
   private channel(): number {

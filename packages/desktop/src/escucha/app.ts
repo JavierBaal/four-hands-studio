@@ -8,11 +8,13 @@ import { Engine, LookaheadPlayer } from "../audio/engine.js";
 import { langFrom, translator } from "../shared/i18n.js";
 import { installTheme } from "../renderer/theme.js";
 import dilatacion from "../../../core/test-data/Dilatacion.mid";
-import { FRAGMENTS, type Fragment, fragmentEvents, shuffle } from "./fragments.js";
+import { FRAGMENTS, type Fragment, fragmentEvents, presetsFor, shuffle } from "./fragments.js";
+import type { BankPreset } from "../shared/soundbank-info.js";
 
 interface Candidate {
   index: number;
   name: string;
+  presets: BankPreset[];
 }
 
 interface Api {
@@ -74,9 +76,13 @@ async function start(): Promise<void> {
     const f: Fragment = FRAGMENTS[k]!;
     const name = f.id === "piano" ? t("blindPiano") : t("blindStrings");
     box.append(el("p", { className: "ah" }, t("blindFragment", { n: k + 1, total: FRAGMENTS.length, name })));
-    const order = shuffle(candidates);
-    const passage = fragmentEvents(song, f);
+    // Each bank plays the passage with its own instruments, found by name; a bank without them
+    // (a piano-only bank in the strings) sits this passage out.
+    const order = shuffle(candidates.filter((c) => presetsFor(c.presets, f)));
+    const left = candidates.length - order.length;
+    if (left > 0) box.append(el("p", { className: "hint" }, t("blindSkipped", { n: left })));
     order.forEach((c, i) => {
+      const passage = fragmentEvents(song, f, presetsFor(c.presets, f)!);
       const letter = String.fromCharCode(65 + i);
       const play = el("button", { className: "btn" }, t("blindPlay"));
       play.onclick = async () => {
@@ -104,7 +110,7 @@ async function start(): Promise<void> {
     const last = k === FRAGMENTS.length - 1;
     const next = el("button", { className: "btn pri" }, last ? t("blindFinish") : t("blindNext"));
     next.onclick = () => {
-      if (candidates.some((c) => !ratings.has(`${f.id}:${c.index}`))) {
+      if (order.some((c) => !ratings.has(`${f.id}:${c.index}`))) {
         status.textContent = t("blindRateAll");
         return;
       }
@@ -120,13 +126,23 @@ async function start(): Promise<void> {
     box.replaceChildren(el("p", { className: "ah" }, t("blindResults")));
     const results = candidates
       .map((c) => {
-        const scores = FRAGMENTS.map((f) => ratings.get(`${f.id}:${c.index}`) ?? 0);
-        return { name: c.name, scores, average: scores.reduce((a, b) => a + b, 0) / scores.length };
+        const scores = FRAGMENTS.map((f) => ratings.get(`${f.id}:${c.index}`) ?? null);
+        const given = scores.filter((x): x is number => x !== null);
+        const used = FRAGMENTS.map((f) => presetsFor(c.presets, f)?.map((p) => p.name).join(" + ") ?? null);
+        return { name: c.name, scores, used, average: given.length ? given.reduce((a, b) => a + b, 0) / given.length : 0 };
       })
       .sort((a, b) => b.average - a.average);
     const table = el("table");
     table.append(el("tr", {}, el("th", {}, ""), ...FRAGMENTS.map((f) => el("th", {}, f.id === "piano" ? t("blindPiano") : t("blindStrings")))));
-    for (const r of results) table.append(el("tr", {}, el("td", {}, r.name), ...r.scores.map((s) => el("td", { className: "mono" }, String(s)))));
+    for (const r of results)
+      table.append(
+        el(
+          "tr",
+          {},
+          el("td", {}, r.name),
+          ...r.scores.map((s, i) => el("td", { className: "mono", title: r.used[i] ?? "" }, s === null ? "—" : String(s))),
+        ),
+      );
     box.append(table, el("p", { className: "hint" }, t("blindSaved")));
     fh.log({ type: "blind_listening", results });
   };

@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import { type Lang, langFrom, translator } from "../shared/i18n.js";
 import { CH, type MenuAction, type Request } from "../shared/protocol.js";
 import { type SessionOptions, SongSession } from "./session.js";
+import { SoundLibrary } from "./sound-library.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url)); // packages/desktop/dist
 const packageDir = path.resolve(here, "..");
@@ -28,6 +29,7 @@ app.setName("Four Hands Studio");
 let win: BrowserWindow | null = null;
 let songs: SongSession | null = null;
 let soundFontPath: string | null = null;
+let library: SoundLibrary | null = null;
 
 // ---------------------------------------------------------------------------
 // Places on disk
@@ -67,20 +69,20 @@ function findSoundFont(): string | null {
   return candidates.find((p) => fs.existsSync(p)) ?? null;
 }
 
-/** Candidate SoundFonts for the blind listening: every .sf2 / .sf3 next to the default one. */
+/** Where the user puts more sound banks. */
+const soundsDir = () => path.join(songsDir(), "Sonidos");
+
+function makeLibrary(): SoundLibrary {
+  const extra = [projectRoot && path.join(projectRoot, "recursos", "soundfonts"), path.join(repoRoot, "recursos", "soundfonts"), soundFontPath && path.dirname(soundFontPath)].filter(
+    (d): d is string => !!d,
+  );
+  return new SoundLibrary(soundsDir(), [...new Set(extra)], soundFontPath);
+}
+
+/** Candidates for the blind listening: the default bank and every installed one. */
 function soundFontCandidates(): string[] {
-  const dirs = new Set<string>();
-  if (projectRoot) dirs.add(path.join(projectRoot, "recursos", "soundfonts"));
-  dirs.add(path.join(repoRoot, "recursos", "soundfonts"));
-  if (soundFontPath) dirs.add(path.dirname(soundFontPath));
-  const files = new Set<string>();
-  for (const dir of dirs) {
-    for (const sub of [dir, path.join(dir, "candidatos")]) {
-      if (!fs.existsSync(sub)) continue;
-      for (const f of fs.readdirSync(sub)) if (/\.sf[23]$/i.test(f)) files.add(path.join(sub, f));
-    }
-  }
-  return [...files].sort();
+  const files = [...library!.files().values()];
+  return soundFontPath ? [soundFontPath, ...files] : files;
 }
 
 function logFile(): string {
@@ -326,7 +328,21 @@ function registerIpc(): void {
     return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
   });
   ipcMain.on(CH.log, (_e, entry: Record<string, unknown>) => appendLog(entry));
-  ipcMain.handle(CH.sfList, () => soundFontCandidates().map((file, index) => ({ index, name: path.basename(file) })));
+  ipcMain.handle(CH.sfList, () =>
+    soundFontCandidates().map((file, index) => ({ index, name: path.basename(file), presets: library!.header(file)?.presets ?? [] })),
+  );
+  ipcMain.handle(CH.sounds, () => library!.list());
+  ipcMain.handle(CH.soundBank, (_e, id: string) => library!.load(id));
+  ipcMain.on(CH.soundsFolder, () => void shell.openPath(library!.userDir));
+  ipcMain.handle(CH.soundsImport, async (_e, files: string[]) => {
+    const done = await library!.import(files);
+    if (done.length) appendLog({ type: "sounds_imported", files: done });
+    return done;
+  });
+  // Only the help links of the app: web pages, never files or other schemes.
+  ipcMain.on(CH.openLink, (_e, url: string) => {
+    if (/^https:\/\/[^\s]+$/.test(url)) void shell.openExternal(url);
+  });
   ipcMain.handle(CH.sfLoad, async (_e, index: number) => {
     const file = soundFontCandidates()[index];
     if (!file) return null;
@@ -341,6 +357,8 @@ app.whenReady().then(async () => {
   session.defaultSession.setPermissionCheckHandler((_wc, permission) => allowed.has(permission));
 
   soundFontPath = findSoundFont();
+  library = makeLibrary();
+  library.watch(() => win?.webContents.send(CH.soundsChanged));
   registerIpc();
   // `--s0`: only the sound and latency test (Abrir prueba de sonido.bat).
   if (process.argv.includes("--s0")) {
