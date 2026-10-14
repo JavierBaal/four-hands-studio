@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import type { Note } from "@fourhands/core";
 import { ActivityPanel, Rail } from "./components/ActivityPanel.js";
+import { AiWritingBar } from "./components/AiPresence.js";
 import { Arrangement } from "./components/Arrangement.js";
 import { ContextMenu, QuantizeDialog } from "./components/Menus.js";
 import { RollArea } from "./components/RollArea.js";
@@ -259,6 +260,20 @@ export function App({ audio, onEditor }: AppProps) {
   const playhead = audio.player.playing ? null : song.context.cursor;
   const visible = rollSize.width > 0 ? { start: v.startTick, end: v.startTick + rollSize.width / v.pxPerTick } : null;
 
+  // What the user sees, for the AI's get_user_context (note names, colours, visible bars).
+  const visibleStart = visible ? Math.round(visible.start) : null;
+  const visibleEnd = visible ? Math.round(visible.end) : null;
+  useEffect(() => {
+    const id = setTimeout(() => {
+      bridge.viewInfo({
+        noteNames: v.noteNames,
+        authorship: v.authorship,
+        visible: visibleStart !== null && visibleEnd !== null ? { start: visibleStart, end: visibleEnd } : null,
+      });
+    }, 300);
+    return () => clearTimeout(id);
+  }, [v.noteNames, v.authorship, visibleStart, visibleEnd]);
+
   return (
     <ActionsCtx.Provider value={actions}>
     <div
@@ -292,6 +307,7 @@ export function App({ audio, onEditor }: AppProps) {
         <ActivityPanel />
         <Rail />
       </div>
+      <AiWritingBar />
       {overlayMenus.menu && <ContextMenu {...overlayMenus.menu} onClose={() => editor.closeMenus()} />}
       {overlayMenus.quantizeDialog && <QuantizeDialog editor={editor} {...overlayMenus.quantizeDialog} />}
       <Mixer />

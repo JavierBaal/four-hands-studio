@@ -2,6 +2,7 @@
 import { type RefObject, createContext, useContext, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { type Note, type Song, type Track, orderedTracks } from "@fourhands/core";
 import type { Lang, Translate } from "../shared/i18n.js";
+import type { AiStore } from "./ai.js";
 import type { Bridge } from "./bridge.js";
 import type { Replica } from "./replica.js";
 import { trackColor } from "./theme.js";
@@ -14,6 +15,7 @@ export interface AppCtx {
   bridge: Bridge;
   t: Translate;
   lang: Lang;
+  ai: AiStore;
 }
 
 export const Ctx = createContext<AppCtx | null>(null);
@@ -39,6 +41,13 @@ export function useSong(): Song {
   const { replica } = useApp();
   useSyncExternalStore(replica.subscribe, replica.getVersion);
   return replica.song;
+}
+
+/** Re-renders on every change of the AI's state. */
+export function useAi() {
+  const { ai } = useApp();
+  useSyncExternalStore(ai.subscribe, ai.getVersion);
+  return ai.state;
 }
 
 /** Re-renders on every change of the view. */

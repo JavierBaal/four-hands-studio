@@ -5,6 +5,7 @@
  * - otherwise: Dilatacion.mid imported, as the app opens it the first time.
  */
 import { PPQ, type Song, USER, ai, emptySong, importMidi, starterSong } from "@fourhands/core";
+import type { AiState } from "../shared/protocol.js";
 
 interface Sketch {
   title: string;
@@ -79,4 +80,33 @@ export async function harnessSong(params: URLSearchParams): Promise<Song> {
   if (params.get("song") === "empty") return starterSong(params.get("lang") === "en" ? "Untitled" : "Sin título");
   const bytes = new Uint8Array(await (await fetch("Dilatacion.mid")).arrayBuffer());
   return importMidi(bytes).song;
+}
+
+/**
+ * `?ai=…`: the AI's side for the harness, to compare with capture 07 without a real AI.
+ * conectada · leyendo · escribiendo (with a mark) · fuera (writing out of view: the edge tab).
+ */
+export function harnessAi(name: string | null, song: Song): AiState | null {
+  if (!name) return null;
+  const claude = { client: "claude-ai", name: "Claude" };
+  const bar = (n: number) => (n - 1) * 4 * PPQ;
+  const cello = song.trackOrder.find((id) => /chelo|cello/i.test(song.tracks[id]!.name)) ?? song.trackOrder[0] ?? "t1";
+  const writing = (from: number, to: number) => ({ id: "i3", name: "Claude", description: "Reharmonizo el coro", notes: 14, trackIds: [cello], start: bar(from), end: bar(to + 1) });
+  switch (name) {
+    case "conectada":
+      return { clients: [claude], reading: null, writing: [], mark: null };
+    case "leyendo":
+      return { clients: [claude], reading: "Claude", writing: [], mark: null };
+    case "escribiendo":
+      return {
+        clients: [claude],
+        reading: null,
+        writing: [writing(17, 20)],
+        mark: { id: "m1", name: "Claude", start: bar(23), end: bar(24), trackIds: [cello], noteIds: [], reason: "aquí el chelo cruza a la viola", at: 0 },
+      };
+    case "fuera":
+      return { clients: [claude], reading: null, writing: [writing(45, 48)], mark: null };
+    default:
+      return null;
+  }
 }

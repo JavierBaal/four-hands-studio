@@ -451,3 +451,4 @@ export const PROMPTS: readonly PromptDefinition[] = [
       "right after it, in the same style, inside one intervention. Keep my notes as they are.",
   },
 ];
+export * from "./config.js";

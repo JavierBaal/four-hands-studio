@@ -6,6 +6,7 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import type { AudioLayer } from "../audio-layer.js";
 import { activeTrack, useActions, useApp, useClock, useSong } from "../context.js";
+import { AiChip } from "./AiPresence.js";
 import { InlineEdit } from "./InlineEdit.js";
 import { modLabel } from "../editor.js";
 import { keyName, noteName, transportPosition } from "../music.js";
@@ -183,10 +184,7 @@ export function TopBar({ audio }: { audio: AudioLayer }) {
       <span className={file.error || audio.status === "error" ? "saved err" : "saved"} title={file.error ?? file.path}>
         {saved}
       </span>
-      <span className="chip">
-        <span className="dot off" />
-        {t("aiOff")}
-      </span>
+      <AiChip />
     </header>
   );
 }

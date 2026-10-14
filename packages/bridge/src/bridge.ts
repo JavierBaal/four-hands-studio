@@ -13,7 +13,7 @@ import WebSocket from "ws";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { PROMPTS, SERVER_INSTRUCTIONS, TOOLS, TOOLS_VERSION } from "@fourhands/mcp-tools";
+import { BRIDGE_CONFIG_FILE, PROMPTS, SERVER_INSTRUCTIONS, TOOLS, TOOLS_VERSION, bridgeConfigDir } from "@fourhands/mcp-tools";
 
 declare const __BRIDGE_VERSION__: string;
 const BRIDGE_VERSION = typeof __BRIDGE_VERSION__ === "string" ? __BRIDGE_VERSION__ : "dev";
@@ -21,12 +21,7 @@ const BRIDGE_VERSION = typeof __BRIDGE_VERSION__ === "string" ? __BRIDGE_VERSION
 // stderr goes to Claude Desktop's MCP log; stdout is reserved for the protocol.
 const log = (...a: unknown[]) => console.error("[fourhands-bridge]", ...a);
 
-export function configDir(platform = process.platform, env = process.env, home = os.homedir()): string {
-  if (platform === "win32") return path.join(env.APPDATA ?? path.join(home, "AppData", "Roaming"), "FourHandsStudio");
-  if (platform === "darwin") return path.join(home, "Library", "Application Support", "FourHandsStudio");
-  return path.join(env.XDG_CONFIG_HOME ?? path.join(home, ".config"), "FourHandsStudio");
-}
-const CONFIG_FILE = path.join(configDir(), "bridge.json");
+const CONFIG_FILE = path.join(bridgeConfigDir(process.platform, process.env, os.homedir()), BRIDGE_CONFIG_FILE);
 
 const APP_CLOSED =
   "Four Hands no está abierto. Ábrelo y vuelve a intentarlo. (Four Hands is not open. Ask the user to open it and try again.)";

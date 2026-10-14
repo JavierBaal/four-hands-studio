@@ -11,6 +11,7 @@ import { T } from "../theme.js";
 import { type RollView, yToPitch } from "../roll/geometry.js";
 import { type Editor, modKey } from "../editor.js";
 import type { AudioLayer } from "../audio-layer.js";
+import { AiOverlay } from "./AiPresence.js";
 import { BarRuler, FormRuler, HarmonyRuler } from "./Rulers.js";
 import { CURSORS } from "../cursors.js";
 
@@ -226,6 +227,7 @@ export function RollArea({ v, editor, audio, playhead, onResize, onWheel, onKeyP
           }}
         />
         <canvas ref={headRef} className="playhead-layer" />
+        <AiOverlay v={v} />
       </div>
       <div className="vtab" role="tablist">
         <button role="tab" className={view.lane === "velocity" ? "vtabb on" : "vtabb"} aria-selected={view.lane === "velocity"} onClick={() => viewStore.set({ lane: "velocity" })}>

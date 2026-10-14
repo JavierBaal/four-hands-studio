@@ -3,7 +3,7 @@
  * stand-in that runs the core directly, for the browser harness and the interface tests.
  */
 import { SongDocument, USER, runCommands, type Song } from "@fourhands/core";
-import type { FileState, MenuAction, PatchMessage, Reply, Request, Snapshot, SoundBankInfo } from "../shared/protocol.js";
+import { type AiState, type FileState, type MenuAction, NO_AI, type PatchMessage, type Reply, type Request, type Snapshot, type SoundBankInfo, type ViewInfo } from "../shared/protocol.js";
 
 export interface AppInfo {
   soundFont: string | null;
@@ -30,6 +30,17 @@ export interface Bridge {
   /** Copies dropped files into the sounds folder; gives the names copied. */
   importSounds(files: File[]): Promise<string[]>;
   openLink(url: string): void;
+  /** The AI (H3): who is connected, reading, writing or pointing. */
+  ai(): Promise<AiState>;
+  onAiState(listener: (state: AiState) => void): () => void;
+  /** "Cerrar intervención". */
+  closeIntervention(id: string): void;
+  /** The user went to (or dismissed) the AI's mark. */
+  markSeen(id: string): void;
+  /** What the user sees, for the AI's get_user_context. */
+  viewInfo(info: ViewInfo): void;
+  /** "Cómo conectarla": hands the extension to Claude Desktop. */
+  connectClaude(): void;
 }
 
 export function windowBridge(): Bridge | null {
@@ -47,7 +58,7 @@ export function memoryBridge(
     sounds?: SoundBankInfo[];
     soundBank?: (id: string) => Promise<ArrayBuffer | null>;
   } = {},
-): Bridge & { doc: SongDocument } {
+): Bridge & { doc: SongDocument; setAi(state: AiState): void; closed: string[] } {
   const now = options.now ?? Date.now;
   const doc = new SongDocument(song, { now });
   const patchListeners = new Set<(m: PatchMessage) => void>();
@@ -62,6 +73,9 @@ export function memoryBridge(
     // Like IPC: delivered asynchronously.
     queueMicrotask(() => patchListeners.forEach((l) => l(structuredClone(message))));
   });
+  let aiState: AiState = NO_AI;
+  const aiListeners = new Set<(s: AiState) => void>();
+  const closed: string[] = [];
   const on = <T>(set: Set<T>, l: T) => {
     set.add(l);
     return () => void set.delete(l);
@@ -101,5 +115,24 @@ export function memoryBridge(
     openSoundsFolder: () => console.log("[fh] open sounds folder"),
     importSounds: async (files) => files.map((f) => f.name).filter((n) => /\.sf[23]$/i.test(n)),
     openLink: (url) => console.log("[fh] open", url),
+    ai: async () => structuredClone(aiState),
+    onAiState: (l) => on(aiListeners, l),
+    closeIntervention: (id) => {
+      closed.push(id);
+      aiState = { ...aiState, writing: aiState.writing.filter((w) => w.id !== id) };
+      aiListeners.forEach((l) => l(structuredClone(aiState)));
+    },
+    markSeen: (id) => {
+      if (aiState.mark?.id === id) aiState = { ...aiState, mark: null };
+      aiListeners.forEach((l) => l(structuredClone(aiState)));
+    },
+    viewInfo: () => {},
+    connectClaude: () => console.log("[fh] connect claude"),
+    /** The harness plays the AI's side (scripts/capturas.mjs, scripts/interaccion.mjs). */
+    setAi: (state) => {
+      aiState = structuredClone(state);
+      aiListeners.forEach((l) => l(structuredClone(aiState)));
+    },
+    closed,
   };
 }

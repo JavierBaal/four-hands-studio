@@ -23,6 +23,12 @@ const CH = {
   soundsFolder: "fh:sounds-folder",
   soundsImport: "fh:sounds-import",
   openLink: "fh:open-link",
+  ai: "fh:ai",
+  aiState: "fh:ai-state",
+  aiClose: "fh:ai-close",
+  aiMarkSeen: "fh:ai-mark-seen",
+  viewInfo: "fh:view-info",
+  connectClaude: "fh:connect-claude",
 } as const;
 
 function listen(channel: string, listener: (value: unknown) => void): () => void {
@@ -49,4 +55,10 @@ contextBridge.exposeInMainWorld("fh", {
   openSoundsFolder: () => ipcRenderer.send(CH.soundsFolder),
   importSounds: (files: File[]) => ipcRenderer.invoke(CH.soundsImport, files.map((f) => webUtils.getPathForFile(f))),
   openLink: (url: string) => ipcRenderer.send(CH.openLink, url),
+  ai: () => ipcRenderer.invoke(CH.ai),
+  onAiState: (l: (v: unknown) => void) => listen(CH.aiState, l),
+  closeIntervention: (id: string) => ipcRenderer.send(CH.aiClose, id),
+  markSeen: (id: string) => ipcRenderer.send(CH.aiMarkSeen, id),
+  viewInfo: (info: unknown) => ipcRenderer.send(CH.viewInfo, info),
+  connectClaude: () => ipcRenderer.send(CH.connectClaude),
 });

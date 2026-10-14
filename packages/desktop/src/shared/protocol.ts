@@ -134,6 +134,7 @@ export const CH = {
   aiClose: "fh:ai-close",
   aiMarkSeen: "fh:ai-mark-seen",
   viewInfo: "fh:view-info",
+  connectClaude: "fh:connect-claude",
 } as const;
 
 /** Menu commands handled by the window (edit and view actions live there). */

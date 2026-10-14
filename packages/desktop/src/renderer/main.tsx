@@ -2,10 +2,11 @@
 import { createRoot } from "react-dom/client";
 import { langFrom, translator } from "../shared/i18n.js";
 import { App } from "./App.js";
+import { AiStore } from "./ai.js";
 import { AudioLayer } from "./audio-layer.js";
 import { type Bridge, memoryBridge, windowBridge } from "./bridge.js";
 import { Ctx, activeTrack } from "./context.js";
-import { harnessSong } from "./harness.js";
+import { harnessAi, harnessSong } from "./harness.js";
 import { Replica } from "./replica.js";
 import { installTheme } from "./theme.js";
 import { ViewStore, initialView, type ViewState } from "./view.js";
@@ -18,7 +19,9 @@ async function start(): Promise<void> {
   if (!bridge) {
     // ?sf=<file>: the harness loads a SoundFont served next to it, to test the sound path.
     const sf = params.get("sf");
-    bridge = memoryBridge(await harnessSong(params), {
+    const song = await harnessSong(params);
+    const fakeAi = harnessAi(params.get("ai"), song);
+    const memory = memoryBridge(song, {
       locale: params.get("lang") ?? "es-ES",
       soundFont: async () => (sf ? (await fetch(sf)).arrayBuffer() : null),
       // Two installed banks, by their headers only (their sound does not load in the harness).
@@ -33,12 +36,16 @@ async function start(): Promise<void> {
         },
       ],
     });
+    if (fakeAi) memory.setAi(fakeAi);
+    bridge = memory;
   }
   const info = await bridge.info();
   const lang = langFrom(params.get("lang") ?? info.locale);
   document.documentElement.lang = lang;
   const replica = new Replica(bridge);
   await replica.init();
+  const ai = new AiStore(bridge);
+  await ai.init();
   const view = new ViewStore(initialView(lang));
   // The harness can open the view the sketch shows: ?view={"startTick":…}
   const preset = params.get("view");
@@ -53,9 +60,9 @@ async function start(): Promise<void> {
   // The harness exposes the window's state to the interface tests (scripts/interaccion.mjs).
   const t = translator(lang);
   const audio = new AudioLayer(replica, bridge, t);
-  const onEditor = harness ? (editor: unknown) => Object.assign(window, { fhTest: { replica, view, editor, audio } }) : undefined;
+  const onEditor = harness ? (editor: unknown) => Object.assign(window, { fhTest: { replica, view, editor, audio, ai: bridge } }) : undefined;
   root.render(
-    <Ctx.Provider value={{ replica, view, bridge, t, lang }}>
+    <Ctx.Provider value={{ replica, view, bridge, t, lang, ai }}>
       {onEditor ? <App audio={audio} onEditor={onEditor} /> : <App audio={audio} />}
     </Ctx.Provider>,
   );

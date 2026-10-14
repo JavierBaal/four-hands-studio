@@ -6,10 +6,15 @@
  */
 import { BrowserWindow, Menu, app, dialog, ipcMain, session, shell, type MenuItemConstructorOptions } from "electron";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { BRIDGE_CONFIG_FILE, TOOLS_VERSION, bridgeConfigDir } from "@fourhands/mcp-tools";
 import { type Lang, langFrom, translator } from "../shared/i18n.js";
-import { CH, type MenuAction, type Request } from "../shared/protocol.js";
+import { CH, NO_AI, type MenuAction, type Request, type ViewInfo } from "../shared/protocol.js";
+import { AiDesk } from "./ai/desk.js";
+import { AiServer } from "./ai/server.js";
+import { connectClaude, findMcpb } from "./ai/connect.js";
 import { type SessionOptions, SongSession } from "./session.js";
 import { SoundLibrary } from "./sound-library.js";
 
@@ -30,6 +35,8 @@ let win: BrowserWindow | null = null;
 let songs: SongSession | null = null;
 let soundFontPath: string | null = null;
 let library: SoundLibrary | null = null;
+let desk: AiDesk | null = null;
+let aiServer: AiServer | null = null;
 
 // ---------------------------------------------------------------------------
 // Places on disk
@@ -115,6 +122,7 @@ function sessionOptions(): SessionOptions {
       win?.webContents.send(CH.reload);
       updateTitle();
       if (songs) writeSettings({ lastFile: songs.path });
+      desk?.songChanged();
     },
   };
 }
@@ -245,6 +253,8 @@ function buildMenu(): void {
         { label: t("menuSongsFolder"), click: () => void shell.openPath(songsDir()) },
         { label: t("menuBackups"), click: () => void shell.openPath(path.join(dataDir(), "copias")) },
         { type: "separator" },
+        { label: t("menuConnectClaude"), click: () => void connectWithClaude() },
+        { type: "separator" },
         { label: t("menuSoundTest"), click: () => void openSoundTest() },
         { label: t("menuBlind"), click: () => void openBlindListening() },
         { label: t("menuDevTools"), accelerator: "F12", click: () => win?.webContents.toggleDevTools() },
@@ -252,6 +262,44 @@ function buildMenu(): void {
     },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
+// ---------------------------------------------------------------------------
+// The AI (H3): the desk answers the tools, the server carries them from the bridges.
+
+async function startAi(): Promise<void> {
+  desk = new AiDesk({
+    session: () => songs!,
+    banks: () => library?.list() ?? [],
+    onState: (state) => win?.webContents.send(CH.aiState, state),
+    log: appendLog,
+  });
+  aiServer = new AiServer({
+    desk,
+    configFile: path.join(bridgeConfigDir(process.platform, process.env, os.homedir()), BRIDGE_CONFIG_FILE),
+    toolsVersion: TOOLS_VERSION,
+    log: appendLog,
+  });
+  try {
+    await aiServer.start();
+  } catch (error) {
+    appendLog({ type: "ai_server_failed", error: (error as Error).message });
+  }
+}
+
+/** Help > Connect with Claude: opens the extension in Claude Desktop (PRUEBA_MCPB.md). */
+async function connectWithClaude(): Promise<void> {
+  const mcpb = findMcpb([path.join(repoRoot, "packages", "bridge", "dist"), projectRoot ?? "", path.join(here, "..")]);
+  if (!mcpb) {
+    dialog.showErrorBox(t("connectFailed"), t("connectNoFile"));
+    appendLog({ type: "connect_button", ok: false, reason: "no mcpb" });
+    return;
+  }
+  const result = await connectClaude(mcpb);
+  appendLog({ type: "connect_button", mcpb, ...result });
+  if (result.method === "explorer" && win) {
+    void dialog.showMessageBox(win, { type: "info", message: t("connectManualTitle"), detail: t("connectManual", { path: mcpb }) });
+  }
 }
 
 async function openBlindListening(): Promise<void> {
@@ -343,6 +391,13 @@ function registerIpc(): void {
   ipcMain.on(CH.openLink, (_e, url: string) => {
     if (/^https:\/\/[^\s]+$/.test(url)) void shell.openExternal(url);
   });
+  ipcMain.handle(CH.ai, () => desk?.state() ?? NO_AI);
+  ipcMain.on(CH.connectClaude, () => void connectWithClaude());
+  ipcMain.on(CH.aiClose, (_e, id: string) => desk?.closeByUser(String(id)));
+  ipcMain.on(CH.aiMarkSeen, (_e, id: string) => desk?.markSeen(String(id)));
+  ipcMain.on(CH.viewInfo, (_e, info: ViewInfo) => {
+    if (info && (info.noteNames === "solfege" || info.noteNames === "letters")) desk?.setWindow(info);
+  });
   ipcMain.handle(CH.sfLoad, async (_e, index: number) => {
     const file = soundFontCandidates()[index];
     if (!file) return null;
@@ -378,6 +433,7 @@ app.whenReady().then(async () => {
     songs = await SongSession.createNew(sessionOptions());
   }
   writeSettings({ lastFile: songs.path });
+  await startAi();
   appendLog({ type: "app_started", song: songs.path, soundFont: soundFontPath, electron: process.versions.electron, platform: process.platform });
   await createWindow();
 });
@@ -389,7 +445,8 @@ app.on("before-quit", (event) => {
   if (quitting || !songs) return;
   event.preventDefault();
   quitting = true;
-  void songs.flush().finally(() => {
+  desk?.dispose();
+  void Promise.all([songs.flush(), aiServer?.stop()]).finally(() => {
     appendLog({ type: "app_closed" });
     app.quit();
   });
