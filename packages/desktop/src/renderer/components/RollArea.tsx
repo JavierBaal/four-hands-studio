@@ -12,6 +12,7 @@ import { type RollView, yToPitch } from "../roll/geometry.js";
 import { type Editor, modKey } from "../editor.js";
 import type { AudioLayer } from "../audio-layer.js";
 import { BarRuler, FormRuler, HarmonyRuler } from "./Rulers.js";
+import { CURSORS } from "../cursors.js";
 
 export interface RollAreaProps {
   v: RollView;
@@ -237,17 +238,18 @@ export function RollArea({ v, editor, audio, playhead, onResize, onWheel, onKeyP
       <div className="vlane">
         <canvas
           ref={velRef}
-          style={{ cursor: view.lane === "pedal" ? overlay.cursor : "crosshair" }}
+          style={{ cursor: view.lane === "pedal" ? overlay.cursor : view.tool === "eraser" ? CURSORS.eraser : CURSORS.pencil }}
           onPointerDown={(e) => {
+            if (e.button !== 0) return;
             e.currentTarget.setPointerCapture(e.pointerId);
             const p = local(e);
-            if (view.lane === "pedal") editor.pedalDown(p.x);
+            if (view.lane === "pedal") editor.pedalDown(p.x, mods(e));
             else editor.velocityDown(p.x, p.y, e.currentTarget.clientHeight, mods(e));
           }}
           onPointerMove={(e) => {
             const p = local(e);
             if (view.lane === "pedal") {
-              editor.pedalMove(p.x);
+              editor.pedalMove(p.x, mods(e));
               return;
             }
             if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
@@ -258,6 +260,10 @@ export function RollArea({ v, editor, audio, playhead, onResize, onWheel, onKeyP
             editor.pointerUp(p.x, p.y);
           }}
           onDoubleClick={(e) => view.lane === "pedal" && editor.pedalDoubleClick(local(e).x)}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            editor.laneMenu(view.lane, local(e).x, e.clientX, e.clientY);
+          }}
         />
       </div>
     </div>

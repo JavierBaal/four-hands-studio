@@ -234,6 +234,24 @@ export function addPedalSpan(spans: readonly { start: number; end: number }[], a
   return out;
 }
 
+/** Removes a stretch of time from the pedal: what was pressed there is lifted, splitting spans. */
+export function cutPedal(spans: readonly { start: number; end: number }[], from: number, to: number): { start: number; end: number }[] {
+  const a = Math.min(from, to);
+  const b = Math.max(from, to);
+  const out: { start: number; end: number }[] = [];
+  for (const p of spans) {
+    if (p.end <= a || p.start >= b) out.push({ ...p });
+    else {
+      if (p.start < a) out.push({ start: p.start, end: a });
+      if (p.end > b) out.push({ start: b, end: p.end });
+    }
+  }
+  return out;
+}
+
+/** Velocity the eraser gives back to the notes it passes over (MIDI mezzoforte, the pencil's default). */
+export const DEFAULT_VELOCITY = 80;
+
 /** Commands that turn `before` into `after` for the same notes (only the fields that changed). */
 export function changeCommands(before: readonly Note[], after: readonly Note[]): CommandData[] {
   const changes = after

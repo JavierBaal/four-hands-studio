@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { RollView } from "./geometry.js";
 import {
   addPedalSpan,
+  cutPedal,
   strokeColumns,
   applyMove,
   changeCommands,
@@ -165,5 +166,15 @@ describe("freehand stroke and pedal", () => {
       { start: 0, end: 100 },
       { start: 200, end: 300 },
     ]);
+  });
+});
+
+describe("erasing the pedal", () => {
+  it("lifts the pedal over the erased stretch, splitting a span in two", () => {
+    const spans = [{ start: 0, end: 1000 }, { start: 2000, end: 3000 }];
+    expect(cutPedal(spans, 400, 600)).toEqual([{ start: 0, end: 400 }, { start: 600, end: 1000 }, { start: 2000, end: 3000 }]);
+    expect(cutPedal(spans, 2500, 900)).toEqual([{ start: 0, end: 900 }, { start: 2500, end: 3000 }]);
+    expect(cutPedal(spans, -10, 5000)).toEqual([]);
+    expect(cutPedal(spans, 1200, 1800)).toEqual(spans);
   });
 });

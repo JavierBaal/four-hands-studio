@@ -129,6 +129,19 @@ export class AudioLayer {
     this.player.stop();
   }
 
+  /** Back to the start of the song; if it was playing, it goes on playing from there. */
+  toStart(): void {
+    if (this.take) return; // a take keeps its place
+    const playing = this.player.playing;
+    if (playing) this.player.stop();
+    void this.replica.setContext({ cursor: 0 });
+    if (playing) this.player.play(0);
+    this.onToStart();
+  }
+
+  /** The window brings the start into view (set by App). */
+  onToStart: () => void = () => {};
+
   /**
    * The loop button: on while there is a loop region. Off removes the region. On without a region
    * creates one: the selection's bars, or the section under the cursor, or four bars from the cursor.

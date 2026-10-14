@@ -39,6 +39,7 @@ export function App({ audio, onEditor }: AppProps) {
   useEffect(() => {
     editor.audition = (pitch, velocity) => audio.audition(pitch, velocity);
     audio.onDraft = (notes) => editor.showDraft(notes);
+    audio.onToStart = () => view.animate({ startTick: 0 }, 260);
     onEditor?.(editor);
   }, [editor]);
   const song = useSong();
@@ -96,6 +97,9 @@ export function App({ audio, onEditor }: AppProps) {
       switch (action) {
         case "playStop":
           audio.playStop();
+          return true;
+        case "toStart":
+          audio.toStart();
           return true;
         case "record":
           audio.toggleRecord();

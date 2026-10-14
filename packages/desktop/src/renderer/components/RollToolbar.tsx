@@ -2,6 +2,7 @@
 import { barAt } from "@fourhands/core";
 import { activeTrack, useActions, useApp, useSong, useView } from "../context.js";
 import { barRange } from "../music.js";
+import { ArrowToolIcon, EraserIcon, PencilIcon } from "./Icons.js";
 import type { Tool } from "../view.js";
 
 export interface RollToolbarProps {
@@ -34,9 +35,10 @@ export function RollToolbar({ onGridMenu }: RollToolbarProps) {
   const v = useView();
   const track = activeTrack(song);
   const tool: Tool = v.pencilHeld && v.tool === "arrow" ? "pencil" : v.tool;
-  const toolButton = (id: Tool, label: string, key: string) => (
-    <button className={tool === id ? "tool on" : "tool"} aria-pressed={tool === id} onClick={() => view.set({ tool: id })}>
-      {label} <span className="kbd">{key}</span>
+  // Tools as icons (Fran, 14/10/2026); the name and key are in the tooltip and for screen readers.
+  const toolButton = (id: Tool, label: string, key: string, icon: React.ReactNode) => (
+    <button className={tool === id ? "tool icon on" : "tool icon"} aria-pressed={tool === id} aria-label={label} title={`${label} (${key})`} onClick={() => view.set({ tool: id })}>
+      {icon} <span className="kbd">{key}</span>
     </button>
   );
   return (
@@ -56,9 +58,9 @@ export function RollToolbar({ onGridMenu }: RollToolbarProps) {
         </button>
       )}
       <span className="sep" />
-      {toolButton("arrow", t("arrow"), "1")}
-      {toolButton("pencil", t("pencil"), "2")}
-      {toolButton("eraser", t("eraser"), "3")}
+      {toolButton("arrow", t("arrow"), "1", <ArrowToolIcon />)}
+      {toolButton("pencil", t("pencil"), "2", <PencilIcon />)}
+      {toolButton("eraser", t("eraser"), "3", <EraserIcon />)}
       <span className="sep" />
       <button className={v.gridOn ? "tool" : "tgl"} onClick={(e) => onGridMenu(e.currentTarget)} aria-haspopup="menu">
         {v.gridOn ? `${t("grid")} ${v.grid}` : t("gridOff")} <span className="kbd">N</span>

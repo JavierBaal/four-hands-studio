@@ -1,5 +1,6 @@
 /** Line icons from the sketches: 16 × 16, 1.4–1.5 px stroke, round caps (DIRECCION_ARTISTICA.md, 8). */
 import { T } from "../theme.js";
+import { ERASER_PATH, PENCIL_PATH } from "../cursors.js";
 
 const svg = { width: 16, height: 16, viewBox: "0 0 16 16", "aria-hidden": true } as const;
 
@@ -54,5 +55,27 @@ export const KeyboardIcon = () => (
   <svg {...svg}>
     <rect x="1.5" y="3.5" width="13" height="9" rx="1.5" fill="none" stroke={T.text} strokeWidth="1.4" />
     <path d="M4.5 3.5v5M8 3.5v5M11.5 3.5v5M3.5 10.5h9" fill="none" stroke={T.text} strokeWidth="1.4" strokeLinecap="round" />
+  </svg>
+);
+/** Tools of the piano roll bar (Fran, 14/10/2026: icons instead of words). */
+export const ArrowToolIcon = () => (
+  <svg {...svg}>
+    <path d="M4 2.5v10.5l2.8-2.6 1.9 4.1 1.7-.8-1.9-4.1 3.8-.2z" fill="none" stroke={T.text} strokeWidth="1.4" strokeLinejoin="round" />
+  </svg>
+);
+export const PencilIcon = () => (
+  <svg {...svg}>
+    <path d={PENCIL_PATH} fill="none" stroke={T.text} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+export const EraserIcon = () => (
+  <svg {...svg}>
+    <path d={ERASER_PATH} fill="none" stroke={T.text} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+/** Back to the start: a bar and a triangle pointing left. */
+export const ToStartIcon = () => (
+  <svg {...svg}>
+    <path d="M3.5 3v10M13 3L6 8l7 5z" fill="none" stroke={T.text} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );

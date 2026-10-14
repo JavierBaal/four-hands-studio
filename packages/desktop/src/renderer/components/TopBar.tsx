@@ -9,7 +9,7 @@ import { activeTrack, useActions, useApp, useClock, useSong } from "../context.j
 import { InlineEdit } from "./InlineEdit.js";
 import { modLabel } from "../editor.js";
 import { keyName, noteName, transportPosition } from "../music.js";
-import { KeyboardIcon, LoopIcon, PlayIcon, RecordIcon, StopIcon } from "./Icons.js";
+import { KeyboardIcon, LoopIcon, PlayIcon, RecordIcon, StopIcon, ToStartIcon } from "./Icons.js";
 
 function savedText(t: ReturnType<typeof useApp>["t"], savedAt: number | null, now: number): string {
   if (savedAt === null) return t("saving");
@@ -70,6 +70,9 @@ export function TopBar({ audio }: { audio: AudioLayer }) {
   return (
     <header className="topbar">
       <div className="tgroup">
+        <button className="ibtn" aria-label={t("toStart")} title={`${t("toStart")} (${t("homeKey")})`} onClick={() => audio.toStart()}>
+          <ToStartIcon />
+        </button>
         <button className={p.playing && !recording ? "ibtn on" : "ibtn"} aria-label={t("play")} title={t("play")} aria-pressed={p.playing} onClick={() => audio.playStop()}>
           <PlayIcon />
         </button>

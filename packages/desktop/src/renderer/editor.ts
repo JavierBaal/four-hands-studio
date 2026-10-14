@@ -32,11 +32,14 @@ import {
   velocityAt,
   EDGE_PX,
   addPedalSpan,
+  cutPedal,
+  DEFAULT_VELOCITY,
   strokeColumns,
 } from "./roll/edit.js";
 import { type GridValue, ROW, type RollView, gridTicks, snapFloor, snapNearest, tickToX, xToTick, yToPitch } from "./roll/geometry.js";
 import type { Replica } from "./replica.js";
 import type { Tool, ViewStore } from "./view.js";
+import { CURSORS } from "./cursors.js";
 
 export interface MenuItem {
   label?: string;
@@ -82,8 +85,8 @@ type Gesture =
   | { kind: "marquee"; x0: number; y0: number; x1: number; y1: number; add: boolean; base: string[] }
   | { kind: "pencil"; note: Note }
   | { kind: "erase"; ids: Set<string> }
-  | { kind: "velocity"; x0: number; y0: number; originals: Note[]; bar: Note | null; height: number; path: { x: number; y: number }[]; columns: Map<number, number> }
-  | { kind: "pedal"; mode: "draw" | "start" | "end" | "move"; x0: number; tick0: number; original: PedalSpan[]; index: number }
+  | { kind: "velocity"; x0: number; y0: number; originals: Note[]; bar: Note | null; height: number; path: { x: number; y: number }[]; columns: Map<number, number>; erase: boolean }
+  | { kind: "pedal"; mode: "draw" | "start" | "end" | "move" | "erase"; x0: number; tick0: number; original: PedalSpan[]; index: number }
   | { kind: "loop"; tick0: number; tick1: number };
 
 /** How long notes take to slide into their snapped place on release. */
@@ -486,8 +489,8 @@ export class Editor {
   private updateCursor(x: number, y: number, mods: Mods): void {
     const tool = this.tool(mods);
     let cursor = "default";
-    if (tool === "pencil") cursor = "crosshair";
-    else if (tool === "eraser") cursor = "not-allowed";
+    if (tool === "pencil") cursor = CURSORS.pencil;
+    else if (tool === "eraser") cursor = CURSORS.eraser;
     const hit = hitTest(this.ownNotes(), this.v, x, y);
     if (hit && tool !== "eraser") cursor = hit.zone === "body" ? "move" : "ew-resize";
     if (cursor !== this.overlay.cursor) this.set({ cursor });
@@ -500,12 +503,18 @@ export class Editor {
     const own = this.ownNotes();
     const sel = this.selected();
     const pool = sel.length > 0 ? sel : own;
+    // The eraser gives the notes it passes over their default velocity back.
+    if (this.tool(mods) === "eraser") {
+      this.gesture = { kind: "velocity", x0: x, y0: y, originals: pool, bar: null, height, path: [{ x, y }], columns: new Map(), erase: true };
+      this.velocityMove(x, y, mods);
+      return;
+    }
     // A bar is grabbed by its head (the top 8 px); anywhere else starts a freehand stroke, so dense
     // passages can still be drawn over.
     const head = (n: Note) => height - (n.velocity / 127) * 56;
     const bar = pool.find((n) => Math.abs(tickToX(this.v, n.start) - x) <= 4 && Math.abs(y - head(n)) <= 8) ?? null;
     const originals = bar && sel.some((n) => n.id === bar.id) ? sel : bar ? [bar] : pool;
-    this.gesture = { kind: "velocity", x0: x, y0: y, originals, bar, height, path: [{ x, y }], columns: new Map() };
+    this.gesture = { kind: "velocity", x0: x, y0: y, originals, bar, height, path: [{ x, y }], columns: new Map(), erase: false };
     this.velocityMove(x, y, mods);
   }
 
@@ -537,8 +546,12 @@ export class Editor {
       columns = g.columns;
     }
     out = g.originals.map((n) => {
-      const value = columns.get(Math.round(tickToX(this.v, n.start)));
-      return value === undefined ? n : { ...n, velocity: velocityAt(value, g.height) };
+      // A bar is touched when the stroke passes over it (bars are a few pixels wide; this also
+      // reaches the ones at the lane's left edge).
+      const cx = Math.round(tickToX(this.v, n.start));
+      const value = columns.get(cx) ?? columns.get(cx + 1) ?? columns.get(cx - 1) ?? columns.get(cx + 2) ?? columns.get(cx - 2);
+      if (value === undefined) return n;
+      return { ...n, velocity: g.erase ? DEFAULT_VELOCITY : velocityAt(value, g.height) };
     });
     this.set({ preview: new Map(out.map((n) => [n.id, n])), stroke: [...path] });
   }
@@ -566,19 +579,22 @@ export class Editor {
     return null;
   }
 
-  pedalDown(x: number): void {
+  pedalDown(x: number, mods: Mods): void {
     const original = this.pedalSpans();
     const hit = this.pedalHit(x);
     const tick = Math.max(0, xToTick(this.v, x));
-    this.gesture = { kind: "pedal", mode: hit ? hit.part : "draw", x0: x, tick0: tick, original, index: hit?.index ?? -1 };
-    this.pedalMove(x);
+    // With the eraser, dragging lifts the pedal over the stretch it passes.
+    const mode = this.tool(mods) === "eraser" ? "erase" : hit ? hit.part : "draw";
+    this.gesture = { kind: "pedal", mode, x0: x, tick0: tick, original, index: hit?.index ?? -1 };
+    this.pedalMove(x, mods);
   }
 
-  pedalMove(x: number): void {
+  pedalMove(x: number, mods: Mods): void {
     const g = this.gesture;
     if (!g || g.kind !== "pedal") {
       const hit = this.pedalHit(x);
-      const cursor = hit ? (hit.part === "move" ? "move" : "ew-resize") : "crosshair";
+      const eraser = this.tool(mods) === "eraser";
+      const cursor = eraser ? CURSORS.eraser : hit ? (hit.part === "move" ? "move" : "ew-resize") : CURSORS.pencil;
       if (cursor !== this.overlay.cursor) this.set({ cursor });
       return;
     }
@@ -586,6 +602,14 @@ export class Editor {
     const snap = (t: number) => Math.max(0, grid.on ? snapNearest(t, grid.step) : Math.round(t));
     const tick = xToTick(this.v, x);
     const spans = g.original.map((p) => ({ ...p }));
+    if (g.mode === "erase") {
+      const a = Math.min(g.tick0, tick);
+      const b = Math.max(g.tick0, tick);
+      // A click without dragging lifts the whole stretch under it.
+      const hit = Math.abs(x - g.x0) <= DRAG_THRESHOLD_PX ? g.original.find((p) => p.start <= g.tick0 && p.end >= g.tick0) : undefined;
+      this.set({ pedalPreview: hit ? cutPedal(spans, hit.start, hit.end) : cutPedal(spans, a, b) });
+      return;
+    }
     if (g.mode === "draw") {
       const a = snap(Math.min(g.tick0, tick));
       const b = snap(Math.max(g.tick0, tick));
@@ -603,6 +627,35 @@ export class Editor {
       span.end = span.start + (g.original[g.index]!.end - g.original[g.index]!.start);
     }
     this.set({ pedalPreview: others.reduce((acc, p) => addPedalSpan(acc, p), [span]) });
+  }
+
+  /** Right click in the lanes: erase what was drawn there (also possible with the eraser, 3). */
+  laneMenu(lane: "velocity" | "pedal", x: number, clientX: number, clientY: number): void {
+    const trackId = this.trackId();
+    if (!trackId) return;
+    const name = this.song.tracks[trackId]?.name ?? "";
+    const close = (fn: () => void) => () => (this.closeMenus(), fn());
+    const items: MenuItem[] = [];
+    if (lane === "pedal") {
+      const spans = this.pedalSpans();
+      const hit = this.pedalHit(x);
+      const setPedal = (next: PedalSpan[]) => void this.run(this.t("hPedal", { name }), [{ type: "setPedal", trackId, spans: next }]);
+      items.push({ label: this.t("pedalDeleteSpan"), disabled: !hit, run: close(() => hit && setPedal(spans.filter((_, i) => i !== hit.index))) });
+      const loop = this.song.context.loop;
+      items.push({ label: this.t("pedalDeleteLoop"), disabled: !loop || !spans.some((p) => p.end > loop.start && p.start < loop.end), run: close(() => loop && setPedal(cutPedal(spans, loop.start, loop.end))) });
+      items.push({ separator: true });
+      items.push({ label: this.t("pedalDeleteAll"), disabled: spans.length === 0, run: close(() => setPedal([])) });
+    } else {
+      const sel = this.selected();
+      const reset = (notes: Note[]) => {
+        const after = notes.map((n) => ({ ...n, velocity: DEFAULT_VELOCITY }));
+        const commands = changeCommands(notes, after);
+        if (commands.length) void this.run(this.label("Velocity", after), commands);
+      };
+      items.push({ label: this.t("velocityReset", { v: DEFAULT_VELOCITY }), disabled: sel.length === 0, run: close(() => reset(sel)) });
+      items.push({ label: this.t("velocityHint"), disabled: true });
+    }
+    this.openMenu(clientX, clientY, items);
   }
 
   pedalDoubleClick(x: number): void {

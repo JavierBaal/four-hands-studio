@@ -195,7 +195,34 @@ check("pedal drawn on the grid", JSON.stringify((await song()).tracks.t1.pedal) 
 await page.mouse.dblclick(vel.x + (2 * BAR + 1900 - view.startTick) * view.pxPerTick, vel.y + 30);
 await settle();
 check("pedal removed with a double click", (await song()).tracks.t1.pedal.length === 0);
+// The eraser lifts the pedal where it passes, and the lane menu clears it all.
+const PX = (tick) => vel.x + (tick - view.startTick) * view.pxPerTick;
+await page.mouse.move(PX(2 * BAR + 100), vel.y + 30);
+await page.mouse.down();
+await page.mouse.move(PX(4 * BAR - 100), vel.y + 30, { steps: 5 });
+await page.mouse.up();
+await settle();
+await page.keyboard.press("3");
+await page.mouse.move(PX(2 * BAR + 960), vel.y + 30);
+await page.mouse.down();
+await page.mouse.move(PX(3 * BAR), vel.y + 30, { steps: 5 });
+await page.mouse.up();
+await settle();
+check("eraser lifts the pedal", JSON.stringify((await song()).tracks.t1.pedal.map((p) => [p.start, p.end])) === JSON.stringify([[2 * BAR, 2 * BAR + 960], [3 * BAR, 4 * BAR]]), JSON.stringify((await song()).tracks.t1.pedal));
+await page.mouse.click(PX(3 * BAR + 500), vel.y + 30, { button: "right" });
+await page.locator(".menu [role=menuitem]", { hasText: "Borrar todo el pedal de la pista" }).click();
+await settle();
+check("lane menu clears the pedal", (await song()).tracks.t1.pedal.length === 0);
 await page.getByRole("tab", { name: "Velocidad" }).click();
+// The eraser in the velocity lane gives the notes it passes their default velocity back.
+await page.mouse.move(PX(xs[0]) + 1, vel.y + 30); // the first bars sit at the lane's left edge
+await page.mouse.down();
+await page.mouse.move(PX(BAR) + 3, vel.y + 30, { steps: 6 });
+await page.mouse.up();
+await settle();
+const erased = notesOf(await song()).filter((n) => n.start >= xs[0] && n.start <= BAR);
+check("velocity eraser resets to 80", erased.length > 0 && erased.every((n) => n.velocity === 80), JSON.stringify(erased.map((n) => [n.start, n.velocity])));
+await page.keyboard.press("1");
 
 // 12. Pencil (2) creates with a click and grows with a drag; eraser (3) deletes with a click.
 await page.keyboard.press("2");
@@ -275,6 +302,14 @@ await page.locator(".kgclose").click();
 check("key guide hides", (await page.locator(".kguide").count()) === 0);
 await page.locator(".chipbtn", { hasText: "Guía" }).click();
 check("key guide shows again", (await page.locator(".kguide").count()) === 1);
+await page.waitForTimeout(250); // the guide has finished appearing
+const kg = await page.locator(".kghead").boundingBox();
+await page.mouse.move(kg.x + 60, kg.y + 8);
+await page.mouse.down();
+await page.mouse.move(kg.x - 40, kg.y - 92, { steps: 6 });
+await page.mouse.up();
+const kg2 = await page.locator(".kghead").boundingBox();
+check("key guide moves with its header", Math.abs(kg2.x - (kg.x - 100)) < 2 && Math.abs(kg2.y - (kg.y - 100)) < 2, JSON.stringify([kg, kg2]));
 const z1 = await page.evaluate(() => window.fhTest.view.state.pxPerTick);
 await page.keyboard.press("h");
 check("letters are notes", (await page.evaluate(() => window.fhTest.view.state.pxPerTick)) === z1);
@@ -437,6 +472,14 @@ await page.locator(".chord", { hasText: "E7" }).click({ button: "right" });
 await menuItem("Quitar acorde").click();
 await settle();
 check("chord removed", (await song()).harmony[String(BAR + 1920)] === undefined);
+
+// 25. Back to the start (Home), and the tools are icons with their name for screen readers.
+await page.evaluate(() => window.fhTest.replica.setContext({ cursor: 3840 * 5 }));
+await settle();
+await page.keyboard.press("Home");
+await settle();
+check("Home goes back to the start", (await song()).context.cursor === 0);
+check("tools are icon buttons", (await page.locator(".tool.icon svg").count()) === 3 && (await page.getByRole("button", { name: "Goma" }).count()) === 1);
 
 // 24. Fluid movement: a dragged note follows the mouse (drift) with its snapped place as target, and
 // lands there after release; the wheel glides to where its steps add up.

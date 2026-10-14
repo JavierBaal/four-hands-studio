@@ -23,6 +23,7 @@ export type Action =
   | "nudgeRight"
   | "escape"
   | "playStop"
+  | "toStart"
   | "toggleGrid"
   | "zoomOut"
   | "zoomIn"
@@ -62,6 +63,7 @@ export const DEFAULT_SHORTCUTS: Record<Action, Combo[]> = {
   nudgeRight: [{ code: "ArrowRight", alt: true }],
   escape: [{ code: "Escape" }],
   playStop: [{ code: "Space" }],
+  toStart: [{ code: "Home" }],
   toggleGrid: [{ key: "n" }],
   zoomOut: [{ key: "g" }],
   zoomIn: [{ key: "h" }],
@@ -75,6 +77,7 @@ export const DEFAULT_SHORTCUTS: Record<Action, Combo[]> = {
 /** Actions that keep working while the computer keyboard plays notes (ESPEC_PIANO_ROLL.md, 8.2). */
 export const PIANO_MODE_ALLOWED: ReadonlySet<Action> = new Set<Action>([
   "playStop",
+  "toStart",
   "record",
   "quantize",
   "transposeUp",
