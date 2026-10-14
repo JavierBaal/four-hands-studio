@@ -23,7 +23,8 @@
     "interaccion": "npm run build -w @fourhands/desktop -- --harness && node packages/desktop/scripts/interaccion.mjs",
     "arranque": "npm run build -w @fourhands/desktop && node packages/desktop/scripts/arranque.mjs",
     "bancos": "npm run build -w @fourhands/desktop && node packages/desktop/scripts/bancos.mjs",
-    "escucha": "npm run start -w @fourhands/desktop -- --escucha"
+    "escucha": "npm run start -w @fourhands/desktop -- --escucha",
+    "puente": "npm run build:bridge && npm run build -w @fourhands/desktop && xvfb-run -a node packages/desktop/scripts/puente.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.18.0",
