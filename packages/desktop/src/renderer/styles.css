@@ -152,3 +152,42 @@ canvas { display: block; }
 .chipbtn { cursor: pointer; color: var(--text-2); }
 .chipbtn.on { color: var(--text); background: var(--toggle-on); border-color: var(--line-on); }
 .playhead-layer { pointer-events: none; }
+
+/* Typing in place (track names, title, tempo, sections, chords, annotations) */
+.inline { box-sizing: border-box; font: inherit; color: var(--text); background: var(--bg-control); border: 1px solid var(--line-on); border-radius: 4px; padding: 0 6px; outline: none; min-width: 0; }
+.inline:focus { border-color: var(--proposal-line); }
+.inline.ruler { position: absolute; top: 2px; bottom: 2px; z-index: 3; font-size: 12px; width: 120px; }
+.inline.track { height: 20px; flex: 1; }
+.inline.field { height: 22px; font-size: 14px; width: 64px; font-family: 'IBM Plex Mono', monospace; }
+.inline.title { height: 26px; font-size: 15px; font-weight: 600; text-align: center; width: min(320px, 100%); }
+.fbtn { all: unset; cursor: pointer; border-radius: 4px; }
+.fbtn:hover .fval { text-decoration: underline dotted var(--text-2); text-underline-offset: 3px; }
+.fbtn:focus-visible { outline: 2px solid var(--proposal-line); outline-offset: 2px; }
+.rsubb { all: unset; cursor: pointer; color: var(--text-2); }
+.rsubb:hover { color: var(--text); }
+.addtrack { display: flex; align-items: center; padding: 3px 8px 3px 10px; }
+.addtrack button { height: 20px; padding: 0 10px; border-radius: 6px; border: 1px dashed var(--line-on); background: transparent; color: var(--text-2); font-size: 12px; cursor: pointer; }
+.addtrack button:hover:not(:disabled) { color: var(--text); }
+.addtrack button:disabled { opacity: .5; cursor: default; }
+.thdr.dragging { position: relative; z-index: 2; background: var(--bg-card); box-shadow: 0 6px 16px rgba(0, 0, 0, .35); }
+.dropline { height: 2px; background: var(--text-2); margin: -1px 0; position: relative; z-index: 3; }
+.rrow.form, .rrow.harmony { cursor: text; }
+.sec, .chord, .flag { cursor: pointer; }
+.rfill { position: absolute; inset: 0; }
+.rrow.form .rfill { cursor: crosshair; }
+.rfill.resizing, .rfill.resizing * { cursor: ew-resize; }
+.sedge { position: absolute; top: 0; bottom: 0; width: 5px; cursor: ew-resize; }
+.sedge.start { left: 0; }
+.sedge.end { right: 0; }
+.sec:hover .sedge { background: var(--line-on); opacity: .6; }
+.sec.ghost { border-style: dashed; background: transparent; pointer-events: none; }
+.sec.resizing { border-color: var(--line-on); }
+.sec, .sec.ghost { transition: left .09s ease-out, width .09s ease-out; }
+.rfill:not(.resizing) .sec:not(.ghost) { transition: none; }
+@media (prefers-reduced-motion: reduce) { .sec, .sec.ghost { transition: none; } }
+.menu { max-height: calc(100vh - 16px); overflow-y: auto; }
+@container app (max-width: 1000px) {
+  .addtrack button { font-size: 0; width: 24px; padding: 0; }
+  .addtrack button::before { content: "+"; font-size: 13px; }
+  .addtrack { padding: 3px 0; justify-content: center; }
+}

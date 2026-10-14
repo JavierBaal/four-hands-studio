@@ -1,11 +1,18 @@
 /**
  * The rulers above the piano roll, at its zoom (DIRECCION_ARTISTICA.md, 6.1 item 4): form with
  * annotation flags, harmony, bar numbers with the loop band. Empty states as in capture 08.
- * DOM rather than canvas: a few dozen elements, crisp text, and chords will be typed in place.
+ * DOM rather than canvas: a few dozen elements, crisp text, and chords are typed in place.
+ *
+ * Form: drag across empty space to create a section (whole bars); drag a section's edge to resize
+ * it; double click renames; right click opens its menu (or, on empty space, "Add annotation").
+ * Harmony: double click types the chord of the beat under the mouse; Enter or Tab goes on to the next bar.
  */
+import { useState } from "react";
 import { type Song, barAt, barStart, barTicks, orderedSections } from "@fourhands/core";
 import type { Translate } from "../../shared/i18n.js";
-import { type RollView, endTick, tickToX } from "../roll/geometry.js";
+import { useActions, useApp } from "../context.js";
+import { type RollView, endTick, tickToX, xToTick } from "../roll/geometry.js";
+import { InlineEdit } from "./InlineEdit.js";
 
 interface RulerProps {
   song: Song;
@@ -13,67 +20,266 @@ interface RulerProps {
   t: Translate;
 }
 
+/** Edge grab width in pixels. */
+const EDGE = 5;
+
+function localX(e: { clientX: number; currentTarget: Element }): number {
+  return e.clientX - e.currentTarget.getBoundingClientRect().left;
+}
+
+/** Nearest bar line (as a 0-based boundary index) to a tick. */
+function boundaryAt(song: Song, tick: number): number {
+  return Math.max(0, Math.round(tick / barTicks(song.meter)));
+}
+
+type FormDrag =
+  | { kind: "create"; x0: number; x: number; min: number; max: number }
+  | { kind: "resize"; id: string; side: "start" | "end"; startBar: number; endBar: number; min: number; max: number };
+
 export function FormRuler({ song, v, t }: RulerProps) {
+  const actions = useActions();
+  const [drag, setDrag] = useState<FormDrag | null>(null);
   const sections = orderedSections(song);
-  if (sections.length === 0) {
-    return (
-      <div className="empty">
-        {t("noSections")} <button disabled title={t("addSection")}>{t("addSection")}</button>
-      </div>
+  const typing = actions.typing;
+  const end = endTick(v);
+  const meter = song.meter;
+
+  /** Bars free around a tick (between the neighbouring sections), as boundary indices. */
+  const gapAround = (tick: number, except?: string) => {
+    let min = 0;
+    let max = Infinity;
+    for (const s of sections) {
+      if (s.id === except) continue;
+      const a = s.startBar - 1;
+      const b = s.endBar;
+      if (b * barTicks(meter) <= tick) min = Math.max(min, b);
+      else if (a * barTicks(meter) >= tick) max = Math.min(max, a);
+    }
+    return { min, max };
+  };
+
+  const rowDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    const target = e.target as HTMLElement;
+    if (target.closest("button, input, .flag")) return;
+    const x = localX(e);
+    const edge = target.closest<HTMLElement>(".sedge");
+    if (edge) {
+      const s = song.sections[edge.dataset.id!];
+      if (!s) return;
+      e.currentTarget.setPointerCapture(e.pointerId);
+      const gap = gapAround(barStart(meter, s.startBar) + 1, s.id);
+      setDrag({ kind: "resize", id: s.id, side: edge.dataset.side as "start" | "end", startBar: s.startBar, endBar: s.endBar, min: gap.min, max: gap.max });
+      return;
+    }
+    if (target.closest(".sec")) return;
+    const gap = gapAround(xToTick(v, x));
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setDrag({ kind: "create", x0: x, x, min: gap.min, max: gap.max });
+  };
+
+  const rowMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!drag || !e.currentTarget.hasPointerCapture(e.pointerId)) return;
+    const x = localX(e);
+    if (drag.kind === "create") return setDrag({ ...drag, x });
+    const b = Math.max(drag.min, Math.min(drag.max, boundaryAt(song, xToTick(v, x))));
+    if (drag.side === "start") setDrag({ ...drag, startBar: Math.min(b + 1, drag.endBar) });
+    else setDrag({ ...drag, endBar: Math.max(b, drag.startBar) });
+  };
+
+  const createRange = (d: Extract<FormDrag, { kind: "create" }>) => {
+    const bar = barTicks(meter);
+    const a = Math.min(d.x0, d.x);
+    const b = Math.max(d.x0, d.x);
+    const from = Math.max(d.min, Math.floor(xToTick(v, a) / bar));
+    const to = Math.min(d.max, Math.max(from + 1, Math.ceil(xToTick(v, b) / bar)));
+    return { start: from * bar, end: to * bar };
+  };
+
+  const rowUp = () => {
+    const d = drag;
+    setDrag(null);
+    if (!d) return;
+    if (d.kind === "resize") actions.resizeSection(d.id, d.startBar, d.endBar);
+    else if (Math.abs(d.x - d.x0) > 4) {
+      const r = createRange(d);
+      if (r.end > r.start) void actions.addSection(r.start, r.end);
+    }
+  };
+
+  const rowMenu = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const target = e.target as HTMLElement;
+    const sec = target.closest<HTMLElement>(".sec");
+    const flag = target.closest<HTMLElement>(".flag");
+    if (flag) actions.annotationMenu(flag.dataset.id!, e.clientX, e.clientY);
+    else if (sec) actions.sectionMenu(sec.dataset.id!, e.clientX, e.clientY);
+    else actions.formMenu(xToTick(v, localX(e)), e.clientX, e.clientY);
+  };
+
+  const rowDouble = (e: React.MouseEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    const flag = target.closest<HTMLElement>(".flag");
+    const sec = target.closest<HTMLElement>(".sec");
+    if (flag) {
+      const a = song.annotations[flag.dataset.id!];
+      if (a) actions.type({ kind: "annotation", id: a.id, tick: a.start });
+    } else if (sec && !target.closest(".sedge")) actions.type({ kind: "section", id: sec.dataset.id! });
+  };
+
+  const span = (a: number, b: number) => {
+    const left = Math.max(0, tickToX(v, a));
+    return { left, width: Math.min(v.width, tickToX(v, b)) - left };
+  };
+
+  const items: React.ReactNode[] = [];
+  for (const s of sections) {
+    const resizing = drag?.kind === "resize" && drag.id === s.id ? drag : null;
+    const a = barStart(meter, resizing?.startBar ?? s.startBar);
+    const b = barStart(meter, (resizing?.endBar ?? s.endBar) + 1);
+    if (b <= v.startTick || a >= end) continue;
+    const box = span(a, b);
+    if (typing?.kind === "section" && typing.id === s.id) {
+      items.push(
+        <InlineEdit
+          key={`edit-${s.id}`}
+          className="ruler"
+          style={{ left: box.left, width: Math.max(120, box.width) }}
+          value={s.name}
+          title={t("sectionRename")}
+          onCommit={(text) => (actions.renameSection(s.id, text), actions.type(null))}
+          onCancel={() => actions.type(null)}
+        />,
+      );
+      continue;
+    }
+    items.push(
+      <span key={s.id} data-id={s.id} className={resizing ? "sec resizing" : "sec"} style={box} title={s.name}>
+        {s.name}
+        <span className="sedge start" data-id={s.id} data-side="start" />
+        <span className="sedge end" data-id={s.id} data-side="end" />
+      </span>,
     );
   }
-  const end = endTick(v);
+  if (drag?.kind === "create" && Math.abs(drag.x - drag.x0) > 4) {
+    const r = createRange(drag);
+    items.push(<span key="new" className="sec ghost" style={span(r.start, r.end)} />);
+  }
+  for (const a of Object.values(song.annotations)) {
+    if (a.start < v.startTick || a.start >= end) continue;
+    if (typing?.kind === "annotation" && typing.id === a.id) continue;
+    items.push(
+      <span key={a.id} data-id={a.id} className="flag" style={{ left: tickToX(v, a.start) }} title={a.text}>
+        {a.text}
+      </span>,
+    );
+  }
+  if (typing?.kind === "annotation") {
+    const a = typing.id ? song.annotations[typing.id] : undefined;
+    items.push(
+      <InlineEdit
+        key={`note-${typing.id ?? typing.tick}`}
+        className="ruler"
+        style={{ left: Math.max(0, tickToX(v, typing.tick)), width: 200 }}
+        value={a?.text ?? ""}
+        placeholder={t("addAnnotation")}
+        title={t("addAnnotation")}
+        maxLength={120}
+        onCommit={(text) => (actions.saveAnnotation(typing.id, typing.tick, text), actions.type(null))}
+        onCancel={() => actions.type(null)}
+      />,
+    );
+  }
+
   return (
-    <>
-      {sections.map((s) => {
-        const a = barStart(song.meter, s.startBar);
-        const b = barStart(song.meter, s.endBar + 1);
-        if (b <= v.startTick || a >= end) return null;
-        const left = Math.max(0, tickToX(v, a));
-        const right = Math.min(v.width, tickToX(v, b));
-        return (
-          <span key={s.id} className="sec" style={{ left, width: right - left }}>
-            {s.name}
-          </span>
-        );
-      })}
-      {Object.values(song.annotations).map((a) =>
-        a.start >= v.startTick && a.start < end ? (
-          <span key={a.id} className="flag" style={{ left: tickToX(v, a.start) }}>
-            {a.text}
-          </span>
-        ) : null,
+    <div className={drag?.kind === "resize" ? "rfill resizing" : "rfill"} onPointerDown={rowDown} onPointerMove={rowMove} onPointerUp={rowUp} onContextMenu={rowMenu} onDoubleClick={rowDouble}>
+      {sections.length === 0 && !(drag?.kind === "create" && Math.abs(drag.x - drag.x0) > 4) && (
+        <div className="empty">
+          {t("noSections")}{" "}
+          <button title={t("addSection")} onClick={() => actions.addSectionHere()}>
+            {t("addSection")}
+          </button>
+        </div>
       )}
-    </>
+      {items}
+    </div>
   );
 }
 
 export function HarmonyRuler({ song, v, t }: RulerProps) {
+  const actions = useActions();
+  const { view } = useApp();
+  const typing = actions.typing?.kind === "chord" ? actions.typing : null;
   const chords = Object.entries(song.harmony)
     .map(([tick, symbol]) => ({ tick: Number(tick), symbol }))
     .sort((a, b) => a.tick - b.tick);
-  if (chords.length === 0) {
-    return (
-      <div className="empty">
-        {t("noHarmony")} <button disabled title={t("writeChords")}>{t("writeChords")}</button>
-      </div>
-    );
-  }
   const end = endTick(v);
   const bar = barTicks(song.meter);
+
+  /** Types the next chord at a tick, scrolling it into view if needed. */
+  const typeAt = (tick: number) => {
+    const barPx = bar * v.pxPerTick;
+    if (tickToX(v, tick) + Math.max(120, barPx) > v.width || tick < v.startTick) {
+      view.animate({ startTick: Math.max(0, tick - Math.floor(v.width / 4 / v.pxPerTick)) });
+    }
+    actions.type({ kind: "chord", tick });
+  };
+
+  const rowDouble = (e: React.MouseEvent<HTMLDivElement>) => {
+    if ((e.target as HTMLElement).closest("button, input")) return;
+    // The beat under the mouse: the chord there is edited, or a new one starts (a bar can change on beat 3).
+    typeAt(actions.beatAt(xToTick(v, localX(e))));
+  };
+
+  const rowMenu = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const chord = (e.target as HTMLElement).closest<HTMLElement>(".chord");
+    if (chord) actions.chordMenu(Number(chord.dataset.tick), e.clientX, e.clientY);
+  };
+
+  const items: React.ReactNode[] = [];
+  chords.forEach((c, i) => {
+    if (typing && typing.tick === c.tick) return;
+    const next = chords[i + 1]?.tick ?? (Math.floor(c.tick / bar) + 1) * bar;
+    if (next <= v.startTick || c.tick >= end) return;
+    const left = tickToX(v, c.tick);
+    items.push(
+      <span key={c.tick} data-tick={c.tick} className="chord" style={{ left, width: tickToX(v, next) - left }} title={`${c.symbol} · ${t("bar")} ${barAt(song.meter, c.tick)}`}>
+        {c.symbol}
+      </span>,
+    );
+  });
+  if (typing) {
+    items.push(
+      <InlineEdit
+        key={`chord-${typing.tick}`}
+        className="ruler"
+        style={{ left: Math.max(0, tickToX(v, typing.tick)), width: Math.max(120, Math.min(220, bar * v.pxPerTick)) }}
+        value={song.harmony[String(typing.tick)] ?? ""}
+        placeholder={t("chordHint")}
+        title={t("chordHint")}
+        maxLength={16}
+        onCommit={(text) => (actions.setChord(typing.tick, text), actions.type(null))}
+        onNext={(text) => {
+          actions.setChord(typing.tick, text);
+          typeAt(actions.nextChordBar(typing.tick));
+        }}
+        onCancel={() => actions.type(null)}
+      />,
+    );
+  }
   return (
-    <>
-      {chords.map((c, i) => {
-        const next = chords[i + 1]?.tick ?? (Math.floor(c.tick / bar) + 1) * bar;
-        if (next <= v.startTick || c.tick >= end) return null;
-        const left = tickToX(v, c.tick);
-        return (
-          <span key={c.tick} className="chord" style={{ left, width: tickToX(v, next) - left }}>
-            {c.symbol}
-          </span>
-        );
-      })}
-    </>
+    <div className="rfill" onDoubleClick={rowDouble} onContextMenu={rowMenu}>
+      {chords.length === 0 && !typing && (
+        <div className="empty">
+          {t("noHarmony")}{" "}
+          <button title={t("writeChords")} onClick={() => actions.writeChordsHere()}>
+            {t("writeChords")}
+          </button>
+        </div>
+      )}
+      {items}
+    </div>
   );
 }
 

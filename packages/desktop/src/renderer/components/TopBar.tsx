@@ -5,7 +5,8 @@
  */
 import { useEffect, useState, useSyncExternalStore } from "react";
 import type { AudioLayer } from "../audio-layer.js";
-import { activeTrack, useApp, useClock, useSong } from "../context.js";
+import { activeTrack, useActions, useApp, useClock, useSong } from "../context.js";
+import { InlineEdit } from "./InlineEdit.js";
 import { modLabel } from "../editor.js";
 import { keyName, noteName, transportPosition } from "../music.js";
 import { KeyboardIcon, LoopIcon, PlayIcon, RecordIcon, StopIcon } from "./Icons.js";
@@ -54,6 +55,7 @@ function RecordingChip({ audio, track }: { audio: AudioLayer; track: string }) {
 
 export function TopBar({ audio }: { audio: AudioLayer }) {
   const { t, lang, replica, view } = useApp();
+  const actions = useActions();
   const song = useSong();
   const now = useClock(1000);
   useSyncExternalStore(audio.subscribe, audio.getVersion);
@@ -110,19 +112,61 @@ export function TopBar({ audio }: { audio: AudioLayer }) {
       </div>
       <div className="field">
         <span className="flabel">{t("tempo")}</span>
-        <span className="fval mono">{bpm}</span>
+        {actions.typing?.kind === "tempo" ? (
+          <InlineEdit
+            className="field"
+            value={String(bpm)}
+            inputMode="numeric"
+            maxLength={3}
+            title={t("tempo")}
+            onCommit={(v) => (actions.setTempo(Number(v.replace(",", "."))), actions.type(null))}
+            onCancel={() => actions.type(null)}
+          />
+        ) : (
+          <button className="fbtn" title={t("tempo")} onClick={() => actions.type({ kind: "tempo" })}>
+            <span className="fval mono">{bpm}</span>
+          </button>
+        )}
       </div>
       <div className="field">
         <span className="flabel">{t("meter")}</span>
-        <span className="fval mono">
-          {song.meter.numerator}/{song.meter.denominator}
-        </span>
+        <button
+          className="fbtn"
+          title={t("meter")}
+          aria-haspopup="menu"
+          onClick={(e) => {
+            const r = e.currentTarget.getBoundingClientRect();
+            actions.meterMenu(r.left, r.bottom + 4);
+          }}
+        >
+          <span className="fval mono">
+            {song.meter.numerator}/{song.meter.denominator}
+          </span>
+        </button>
       </div>
       <div className="field fhide">
         <span className="flabel">{t("key")}</span>
-        <span className="fval">{keyName(song.key, lang)}</span>
+        <button
+          className="fbtn"
+          title={t("key")}
+          aria-haspopup="menu"
+          onClick={(e) => {
+            const r = e.currentTarget.getBoundingClientRect();
+            actions.keyMenu(r.left, r.bottom + 4);
+          }}
+        >
+          <span className="fval">{keyName(song.key, lang)}</span>
+        </button>
       </div>
-      <div className="ttl">{song.title}</div>
+      {actions.typing?.kind === "title" ? (
+        <div className="ttl">
+          <InlineEdit className="title" value={song.title} onCommit={(v) => (actions.setTitle(v), actions.type(null))} onCancel={() => actions.type(null)} />
+        </div>
+      ) : (
+        <div className="ttl" onDoubleClick={() => actions.type({ kind: "title" })}>
+          {song.title}
+        </div>
+      )}
       <span className={file.error || audio.status === "error" ? "saved err" : "saved"} title={file.error ?? file.path}>
         {saved}
       </span>

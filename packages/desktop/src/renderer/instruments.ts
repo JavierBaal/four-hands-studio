@@ -61,3 +61,67 @@ export function instrumentName(program: number | null, channel: number, lang: La
   if (channel === 9 || program === null) return lang === "es" ? "Percusión" : "Drums";
   return (NAMED[program] ?? FAMILIES[Math.floor(program / 8)] ?? FAMILIES[0]!)[i];
 }
+
+export interface PaletteItem {
+  /** General MIDI program, or null for percussion (channel 10). */
+  program: number | null;
+  es: string;
+  en: string;
+}
+
+/**
+ * The instrument palette (PRD_MVP.md, 4.2): piano, strings by section, organ, pad, timpani, plus a
+ * few colours a neoclassical writer reaches for. Names are plural for sections, as on a score.
+ */
+export const PALETTE: { es: string; en: string; items: PaletteItem[] }[] = [
+  {
+    es: "Teclados",
+    en: "Keyboards",
+    items: [
+      { program: 0, es: "Piano", en: "Piano" },
+      { program: 4, es: "Piano eléctrico", en: "Electric piano" },
+      { program: 6, es: "Clave", en: "Harpsichord" },
+      { program: 8, es: "Celesta", en: "Celesta" },
+      { program: 19, es: "Órgano", en: "Organ" },
+    ],
+  },
+  {
+    es: "Cuerdas",
+    en: "Strings",
+    items: [
+      { program: 48, es: "Cuerdas", en: "Strings" },
+      { program: 49, es: "Cuerdas lentas", en: "Slow strings" },
+      { program: 40, es: "Violines", en: "Violins" },
+      { program: 41, es: "Violas", en: "Violas" },
+      { program: 42, es: "Chelos", en: "Cellos" },
+      { program: 43, es: "Contrabajos", en: "Double basses" },
+      { program: 45, es: "Pizzicato", en: "Pizzicato" },
+      { program: 46, es: "Arpa", en: "Harp" },
+    ],
+  },
+  {
+    es: "Viento y voces",
+    en: "Winds and voices",
+    items: [
+      { program: 73, es: "Flauta", en: "Flute" },
+      { program: 68, es: "Oboe", en: "Oboe" },
+      { program: 71, es: "Clarinete", en: "Clarinet" },
+      { program: 70, es: "Fagot", en: "Bassoon" },
+      { program: 60, es: "Trompa", en: "French horn" },
+      { program: 52, es: "Coro", en: "Choir" },
+    ],
+  },
+  {
+    es: "Otros",
+    en: "Others",
+    items: [
+      { program: 89, es: "Pad cálido", en: "Warm pad" },
+      { program: 47, es: "Timbales", en: "Timpani" },
+      { program: null, es: "Percusión", en: "Drums" },
+    ],
+  },
+];
+
+export function paletteName(item: PaletteItem, lang: Lang): string {
+  return lang === "es" ? item.es : item.en;
+}

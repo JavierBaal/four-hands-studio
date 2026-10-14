@@ -230,7 +230,9 @@ check("grid toggle", (await page.evaluate(() => window.fhTest.view.state.gridOn)
 await page.keyboard.press("n");
 const z0 = await page.evaluate(() => window.fhTest.view.state.pxPerTick);
 await page.keyboard.press("h");
-check("zoom in", (await page.evaluate(() => window.fhTest.view.state.pxPerTick)) > z0);
+check("zoom glides", (await page.evaluate(() => window.fhTest.view.moving)) === true);
+await page.waitForTimeout(400);
+check("zoom in", Math.abs((await page.evaluate(() => window.fhTest.view.state.pxPerTick)) / z0 - 1.25) < 0.001);
 await page.evaluate((v) => window.fhTest.view.set(v), view);
 await page.keyboard.down("Control");
 check("ctrl pencil", await page.evaluate(() => window.fhTest.view.state.pencilHeld));
@@ -299,6 +301,165 @@ await page.keyboard.press("Control+z");
 await settle();
 check("take undoes in one step", notesOf(await song()).length === countBefore);
 await page.keyboard.press("Control+k");
+
+// 19. Tracks: add from the palette (it becomes the active one), change its instrument, rename, reorder.
+await page.keyboard.press("Escape");
+const menuItem = (label) => page.locator(".menu [role=menuitem]", { hasText: new RegExp(`^${label}$`) }).first();
+let tracksBefore = (await song()).trackOrder.length;
+await page.locator(".addtrack button").click();
+await menuItem("Chelos").click();
+await settle();
+s1 = await song();
+const added = s1.tracks[s1.trackOrder.at(-1)];
+check("track added", s1.trackOrder.length === tracksBefore + 1 && added.program === 42 && added.name === "Chelos", JSON.stringify(added));
+check("new track active", s1.context.activeTrackId === added.id);
+check("add label", (await lastLabel()) === "añadiste la pista Chelos", await lastLabel());
+await page.locator(".rsubb").click();
+await menuItem("Violas").click();
+await settle();
+check("instrument changed", (await song()).tracks[added.id].program === 41);
+check("instrument label", (await lastLabel()) === "cambiaste el instrumento de Chelos a Violas", await lastLabel());
+const lastHeader = page.locator(".thdr").last();
+await lastHeader.locator(".tname").dblclick();
+await page.locator("input.inline.track").fill("Contracanto");
+await page.keyboard.press("Enter");
+await settle();
+check("track renamed", (await song()).tracks[added.id].name === "Contracanto");
+const hb = await lastHeader.boundingBox();
+await page.mouse.move(hb.x + 30, hb.y + hb.height / 2);
+await page.mouse.down();
+await page.mouse.move(hb.x + 30, hb.y + hb.height / 2 - 26 - 4, { steps: 6 });
+await page.mouse.up();
+await settle();
+s1 = await song();
+check("track reordered", s1.trackOrder.indexOf(added.id) === s1.trackOrder.length - 2, JSON.stringify(s1.trackOrder));
+await page.locator(".thdr").first().click({ button: "right" });
+await menuItem("Volumen y panorama…").click();
+check("mixer opens", (await page.locator(".qdialog[role=dialog]").count()) === 1);
+await page.keyboard.press("Escape");
+check("mixer closes with Esc", (await page.locator(".qdialog[role=dialog]").count()) === 0);
+
+// 20. Tempo typed in place; meter and key from their menus.
+await page.locator(".fbtn[title=Tempo]").click();
+await page.locator("input.inline.field").fill("90");
+await page.keyboard.press("Enter");
+await settle();
+check("tempo", (await song()).tempo === Math.round(60_000_000 / 90), (await song()).tempo);
+await page.locator("[title=Compás]").click();
+await menuItem("3/4").click();
+await settle();
+check("meter", JSON.stringify((await song()).meter) === JSON.stringify({ numerator: 3, denominator: 4 }));
+await page.keyboard.press("Control+z");
+await settle();
+check("meter undo", (await song()).meter.numerator === 4);
+await page.locator("[title=Tonalidad]").click();
+await page.locator(".menu [role=menuitem]").filter({ hasText: /^Re menor$|^D minor$/ }).first().click();
+await settle();
+check("key", JSON.stringify((await song()).key) === JSON.stringify({ fifths: -1, mode: "minor" }), JSON.stringify((await song()).key));
+await page.evaluate((v) => window.fhTest.view.set(v), view);
+
+// 21. Sections: drag across the form ruler creates one over whole bars and asks its name; edges resize it.
+await page.evaluate(() => {
+  const s = window.fhTest.replica.song;
+  const cmds = [
+    ...Object.keys(s.sections).map((id) => ({ type: "removeSection", id })),
+    ...Object.keys(s.annotations).map((id) => ({ type: "removeAnnotation", id })),
+    ...Object.keys(s.harmony).map((tick) => ({ type: "setChord", tick: Number(tick), symbol: null })),
+  ];
+  return window.fhTest.replica.run("clear", cmds);
+});
+await settle();
+let form = await page.locator(".rrow.form").boundingBox();
+await page.mouse.move(X(4 * BAR - 300), form.y + form.height / 2); // right to left, clear of the empty state's button
+await page.mouse.down();
+await page.mouse.move(X(BAR + 300), form.y + form.height / 2, { steps: 6 });
+check("section ghost", (await page.locator(".sec.ghost").count()) === 1);
+await page.mouse.up();
+await settle();
+s1 = await song();
+let sec = Object.values(s1.sections)[0];
+check("section created", sec && sec.startBar === 2 && sec.endBar === 4, JSON.stringify(sec));
+check("section name asked", (await page.locator(".rrow.form input.inline").count()) === 1);
+await page.keyboard.type("Tema");
+await page.keyboard.press("Enter");
+await settle();
+check("section named", (await song()).sections[sec.id].name === "Tema");
+form = await page.locator(".rrow.form").boundingBox();
+await page.mouse.move(X(4 * BAR) - 2, form.y + form.height / 2);
+await page.mouse.down();
+await page.mouse.move(X(5 * BAR) + 10, form.y + form.height / 2, { steps: 6 });
+await page.mouse.up();
+await settle();
+check("section resized", (await song()).sections[sec.id].endBar === 5, JSON.stringify((await song()).sections[sec.id]));
+check("resize label", (await lastLabel()) === "cambiaste la sección Tema (c. 2–5)", await lastLabel());
+await page.locator(".sec", { hasText: "Tema" }).dblclick({ position: { x: 40, y: 8 } });
+await page.locator(".rrow.form input.inline").fill("Puente");
+await page.keyboard.press("Enter");
+await settle();
+check("section renamed", (await song()).sections[sec.id].name === "Puente");
+
+// 22. Annotation from the form ruler's menu.
+await page.mouse.click(X(7 * BAR + 500), form.y + form.height / 2, { button: "right" });
+await menuItem("Añadir anotación aquí").click();
+await page.keyboard.type("más aire");
+await page.keyboard.press("Enter");
+await settle();
+const note = Object.values((await song()).annotations)[0];
+check("annotation", note && note.text === "más aire" && note.start === 7 * BAR, JSON.stringify(note));
+
+// 23. Chords: the empty state's button types at the cursor's bar; Tab goes on to the next bar.
+const barsNow = await page.locator(".rrow.bars").boundingBox(); // the empty rulers are taller
+await page.mouse.click(X(BAR + 100), barsNow.y + 10); // cursor at bar 2
+await settle();
+await page.locator(".rrow.harmony .empty button").click();
+await page.keyboard.type("Am");
+await page.keyboard.press("Tab");
+await page.keyboard.type("F/A");
+await page.keyboard.press("Enter");
+await settle();
+s1 = await song();
+check("chords typed", s1.harmony[String(BAR)] === "Am" && s1.harmony[String(2 * BAR)] === "F/A", JSON.stringify(s1.harmony));
+const harm = await page.locator(".rrow.harmony").boundingBox();
+await page.mouse.dblclick(X(BAR + 960 * 2 + 100), harm.y + harm.height / 2); // beat 3 of bar 2
+await page.keyboard.type("E7");
+await page.keyboard.press("Enter");
+await settle();
+check("chord on a beat", (await song()).harmony[String(BAR + 1920)] === "E7", JSON.stringify((await song()).harmony));
+await page.locator(".chord", { hasText: "E7" }).click({ button: "right" });
+await menuItem("Quitar acorde").click();
+await settle();
+check("chord removed", (await song()).harmony[String(BAR + 1920)] === undefined);
+
+// 24. Fluid movement: a dragged note follows the mouse (drift) with its snapped place as target, and
+// lands there after release; the wheel glides to where its steps add up.
+await page.evaluate(() => window.fhTest.replica.setContext({ activeTrackId: "t1", selection: [] }));
+await settle();
+await page.evaluate((v) => window.fhTest.view.set(v), view); // after the track change, which recentres
+await settle();
+// The piano roll moved down when a track was added: measure it again.
+const grid2 = await page.locator(".pgrid canvas:not(.playhead-layer)").boundingBox();
+const X2 = (tick) => grid2.x + (tick - view.startTick) * view.pxPerTick;
+const Y2 = (pitch) => grid2.y + (127 - pitch) * 15 - view.scrollY + 7;
+await page.mouse.dblclick(X2(11 * BAR + 100), Y2(76));
+await settle();
+const fluid = at(await song(), 76, 11 * BAR);
+await page.mouse.move(X2(11 * BAR + 200), Y2(76));
+await page.mouse.down();
+await page.mouse.move(X2(11 * BAR + 200 + 700), Y2(76) - 5, { steps: 6 });
+const drift = await page.evaluate((id) => { const d = window.fhTest.editor.overlay.drift?.get(id); return d ? [d.left, d.dy] : null; }, fluid.id);
+check("note follows the mouse", drift && Math.abs(drift[0] - (700 - 480) * view.pxPerTick) < 1 && Math.abs(drift[1] + 5) < 0.6, JSON.stringify(drift));
+await page.mouse.up();
+await page.waitForTimeout(250);
+check("note lands on the grid", (await page.evaluate(() => window.fhTest.editor.overlay.drift)) === null && (await song()).notes[fluid.id].start === 11 * BAR + 480);
+const sy0 = await page.evaluate(() => window.fhTest.view.state.scrollY);
+await page.mouse.move(X2(11 * BAR), Y2(76));
+await page.mouse.wheel(0, 100);
+await page.mouse.wheel(0, 100);
+await page.waitForTimeout(30);
+const mid = await page.evaluate(() => window.fhTest.view.state.scrollY);
+await page.waitForTimeout(400);
+const end = await page.evaluate(() => window.fhTest.view.state.scrollY);
+check("wheel glides", mid > sy0 && mid < sy0 + 200 && Math.abs(end - (sy0 + 200)) < 0.5, JSON.stringify([sy0, mid, end]));
 
 console.log(`${passed} passed, ${failures.length} failed`);
 for (const f of failures) console.log("FAIL", f);

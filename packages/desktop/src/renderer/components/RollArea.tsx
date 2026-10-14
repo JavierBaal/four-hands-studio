@@ -58,8 +58,9 @@ export function RollArea({ v, editor, audio, playhead, onResize, onWheel, onKeyP
       if (s && pos !== null) {
         const vs = viewStore.state;
         const span = s.width / vs.pxPerTick;
-        if (!audio.player.countingIn() && (pos < vs.startTick || pos > vs.startTick + span * 0.97)) {
-          viewStore.set({ startTick: Math.max(0, pos - span * 0.03) });
+        // Turning the page slides (a short glide), so the eye can follow the music.
+        if (!audio.player.countingIn() && !viewStore.moving && (pos < vs.startTick || pos > vs.startTick + span * 0.97)) {
+          viewStore.animate({ startTick: Math.max(0, pos - span * 0.03) }, 220);
         }
         const x = (pos - viewStore.state.startTick) * vs.pxPerTick;
         s.ctx.globalAlpha = 0.85;
@@ -134,6 +135,7 @@ export function RollArea({ v, editor, audio, playhead, onResize, onWheel, onKeyP
           band: null,
           playhead,
           fresh,
+          drift: overlay.drift,
         });
         if (overlay.marquee) {
           // Rubber band: dashed, neutral (no token of its own; uses the selected-note ring colour).
@@ -173,13 +175,13 @@ export function RollArea({ v, editor, audio, playhead, onResize, onWheel, onKeyP
       <div className="rlab" style={{ height: "auto" }}>
         {t("form")}
       </div>
-      <div className="rrow" style={{ height: "auto" }}>
+      <div className="rrow form" style={{ height: "auto" }}>
         <FormRuler song={song} v={v} t={t} />
       </div>
       <div className="rlab" style={{ height: "auto" }}>
         {t("harmony")}
       </div>
-      <div className="rrow" style={{ height: "auto" }}>
+      <div className="rrow harmony" style={{ height: "auto" }}>
         <HarmonyRuler song={song} v={v} t={t} />
       </div>
       <div className="rlab">{t("bar")}</div>

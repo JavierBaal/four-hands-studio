@@ -1,7 +1,6 @@
 /** Piano roll bar (DIRECCION_ARTISTICA.md, 6.1 item 3): track, tools, grid, layers, legend, what the AI sees. */
 import { barAt } from "@fourhands/core";
-import { activeTrack, useApp, useSong, useView } from "../context.js";
-import { instrumentName } from "../instruments.js";
+import { activeTrack, useActions, useApp, useSong, useView } from "../context.js";
 import { barRange } from "../music.js";
 import type { Tool } from "../view.js";
 
@@ -29,7 +28,8 @@ export function aiSeesText(song: ReturnType<typeof useSong>, t: ReturnType<typeo
 }
 
 export function RollToolbar({ onGridMenu }: RollToolbarProps) {
-  const { t, lang, view } = useApp();
+  const { t, view } = useApp();
+  const actions = useActions();
   const song = useSong();
   const v = useView();
   const track = activeTrack(song);
@@ -42,7 +42,19 @@ export function RollToolbar({ onGridMenu }: RollToolbarProps) {
   return (
     <div className="rtools">
       <span className="rtitle">{track?.name ?? ""}</span>
-      {track && <span className="rsub">{instrumentName(track.program, track.channel, lang)}</span>}
+      {track && (
+        <button
+          className="rsubb"
+          title={t("instrument")}
+          aria-haspopup="menu"
+          onClick={(e) => {
+            const r = e.currentTarget.getBoundingClientRect();
+            actions.paletteMenu(r.left, r.bottom + 4, (item) => actions.setInstrument(track.id, item), track);
+          }}
+        >
+          {actions.instrumentLabel(track)} ▾
+        </button>
+      )}
       <span className="sep" />
       {toolButton("arrow", t("arrow"), "1")}
       {toolButton("pencil", t("pencil"), "2")}

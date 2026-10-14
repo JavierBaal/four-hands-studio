@@ -6,6 +6,7 @@ import { type Meter, type Note, type Song, type Track, barTicks, beatTicks, song
 import { type NoteNames, isBlack, noteName } from "../music.js";
 import { FONT, SIZE, T, velocityOpacity } from "../theme.js";
 import { ROW, type RollView, endTick, pitchToY, tickToX } from "./geometry.js";
+import type { NoteDrift } from "./edit.js";
 
 export interface Surface {
   ctx: CanvasRenderingContext2D;
@@ -88,6 +89,8 @@ export interface NotesLayer {
   fresh?: ReadonlyMap<string, number>;
   /** Proposal notes (dashed outline), not part of the song. */
   proposal?: readonly Note[];
+  /** Notes following the mouse away from their snapped place (which shows as a target outline). */
+  drift?: ReadonlyMap<string, NoteDrift> | null;
 }
 
 export function drawGrid(s: Surface, v: RollView, meter: Meter, scale: ReadonlySet<number> | null): void {
@@ -158,12 +161,30 @@ export function drawNotes(s: Surface, v: RollView, layer: NotesLayer): void {
 
   ctx.font = `10px ${FONT.sans}`;
   ctx.textBaseline = "middle";
+  // Targets first: where notes following the mouse will land.
+  if (layer.drift) {
+    ctx.lineWidth = 1;
+    for (const note of layer.notes) {
+      const d = layer.drift.get(note.id);
+      if (!d || (Math.abs(d.left) < 1 && Math.abs(d.right) < 1 && Math.abs(d.dy) < 1)) continue;
+      const y = pitchToY(v, note.pitch);
+      const x = tickToX(v, note.start);
+      const w = Math.max(3, note.duration * v.pxPerTick);
+      ctx.globalAlpha = 0.55;
+      ctx.strokeStyle = noteFill(note, layer.authorship);
+      roundRect(ctx, x + 0.5, y + 1.5, w - 1, SIZE.note - 1, 3);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+
   for (const note of layer.notes) {
-    if (note.start + note.duration < start || note.start > end) continue;
-    const y = pitchToY(v, note.pitch);
+    const d = layer.drift?.get(note.id);
+    if (note.start + note.duration < start - (d ? Math.abs(d.left) / v.pxPerTick : 0) || note.start > end + (d ? Math.abs(d.right) / v.pxPerTick : 0)) continue;
+    const y = pitchToY(v, note.pitch) + (d?.dy ?? 0);
     if (y < -ROW || y > height) continue;
-    const x = tickToX(v, note.start);
-    const w = Math.max(3, note.duration * v.pxPerTick);
+    const x = tickToX(v, note.start) + (d?.left ?? 0);
+    const w = Math.max(3, note.duration * v.pxPerTick + (d ? d.right - d.left : 0));
     const fade = layer.fresh?.get(note.id);
     ctx.globalAlpha = velocityOpacity(note.velocity) * (fade === undefined ? 1 : fade);
     ctx.fillStyle = noteFill(note, layer.authorship);

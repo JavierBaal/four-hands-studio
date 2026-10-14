@@ -269,3 +269,16 @@ describe("commands as data", () => {
     expect(doc.song.trackOrder).toEqual([]);
   });
 });
+
+describe("annotations", () => {
+  it("can be edited and the edit undone", async () => {
+    const { runCommands } = await import("./command-data.js");
+    const doc = new SongDocument(emptySong());
+    const [id] = doc.transact({ actor: USER, label: "a" }, (tx) => runCommands(tx, [{ type: "addAnnotation", spec: { start: 0, end: 3840, trackIds: [], text: "que respire" } }]));
+    doc.transact({ actor: USER, label: "b" }, (tx) => runCommands(tx, [{ type: "updateAnnotation", id: id as string, changes: { text: "más aire", end: 7680 } }]));
+    expect(doc.song.annotations[id as string]).toMatchObject({ text: "más aire", end: 7680 });
+    doc.undo(USER);
+    expect(doc.song.annotations[id as string]).toMatchObject({ text: "que respire", end: 3840 });
+    expect(() => doc.transact({ actor: USER, label: "c" }, (tx) => runCommands(tx, [{ type: "updateAnnotation", id: id as string, changes: { end: -1 } }]))).toThrow();
+  });
+});

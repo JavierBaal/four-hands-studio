@@ -5,6 +5,7 @@ import type { Lang, Translate } from "../shared/i18n.js";
 import type { Bridge } from "./bridge.js";
 import type { Replica } from "./replica.js";
 import { trackColor } from "./theme.js";
+import type { SongActions } from "./song-actions.js";
 import type { ViewStore } from "./view.js";
 
 export interface AppCtx {
@@ -16,6 +17,16 @@ export interface AppCtx {
 }
 
 export const Ctx = createContext<AppCtx | null>(null);
+
+/** Song-level actions (tracks, tempo, sections, chords…), provided by App. */
+export const ActionsCtx = createContext<SongActions | null>(null);
+
+export function useActions(): SongActions {
+  const actions = useContext(ActionsCtx);
+  if (!actions) throw new Error("Actions context missing");
+  useSyncExternalStore(actions.subscribe, actions.getVersion);
+  return actions;
+}
 
 export function useApp(): AppCtx {
   const ctx = useContext(Ctx);

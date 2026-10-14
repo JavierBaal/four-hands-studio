@@ -3,17 +3,20 @@
  * The layout follows the approved sketches; below 1000 px of width the compact layout applies.
  */
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { type Note, barTicks } from "@fourhands/core";
+import type { Note } from "@fourhands/core";
 import { ActivityPanel, Rail } from "./components/ActivityPanel.js";
 import { Arrangement } from "./components/Arrangement.js";
 import { ContextMenu, QuantizeDialog } from "./components/Menus.js";
 import { RollArea } from "./components/RollArea.js";
 import { RollToolbar } from "./components/RollToolbar.js";
 import { TopBar } from "./components/TopBar.js";
-import { activeTrack, notesByTrack, useApp, useSize, useSong, useView } from "./context.js";
+import { ActionsCtx, activeTrack, notesByTrack, useApp, useSize, useSong, useView } from "./context.js";
+import { Mixer } from "./components/Mixer.js";
+import { SongActions } from "./song-actions.js";
 import { Editor } from "./editor.js";
 import { type RollView, centerOnPitches, clampScrollY, zoomAt } from "./roll/geometry.js";
 import type { AudioLayer } from "./audio-layer.js";
+import type { Position } from "./view.js";
 import { type Action, DEFAULT_SHORTCUTS, PIANO_MODE_ALLOWED, actionFor } from "./shortcuts.js";
 import { SIZE } from "./theme.js";
 import type { MenuAction } from "../shared/protocol.js";
@@ -27,8 +30,9 @@ const MAC = /Mac|iPhone|iPad/.test(navigator.platform);
 
 
 export function App({ audio, onEditor }: AppProps) {
-  const { replica, view, t, bridge } = useApp();
+  const { replica, view, t, bridge, lang } = useApp();
   const editor = useMemo(() => new Editor(replica, view, t), []);
+  const actions = useMemo(() => new SongActions(replica, editor, t, lang), []);
   useSyncExternalStore(audio.subscribe, audio.getVersion);
   const pianoMode = audio.pianoMode;
   useEffect(() => {
@@ -62,14 +66,13 @@ export function App({ audio, onEditor }: AppProps) {
     void replica.setContext({ activeTrackId: id, selection: [] });
   }, []);
 
-  const jump = useCallback(
-    (tick: number) => {
-      const span = rollSize.width / view.state.pxPerTick;
-      const bar = barTicks(song.meter);
-      view.set({ startTick: Math.max(0, Math.floor((tick - span / 2) / bar) * bar) });
-    },
-    [rollSize.width, song.meter],
-  );
+  const pan = useCallback((startTick: number, animate: boolean) => {
+    if (animate) view.animate({ startTick });
+    else {
+      view.stopAnimation();
+      view.set({ startTick });
+    }
+  }, []);
 
   const toggleTrack = useCallback((id: string, field: "mute" | "solo") => {
     const tr = replica.song.tracks[id];
@@ -81,8 +84,7 @@ export function App({ audio, onEditor }: AppProps) {
 
   const zoom = useCallback(
     (factor: number) => {
-      const s = view.state;
-      view.set(zoomAt({ ...rollView, startTick: s.startTick, pxPerTick: s.pxPerTick }, factor, rollSize.width / 2));
+      view.glide((g) => zoomAt({ ...rollView, startTick: g.startTick, pxPerTick: g.pxPerTick }, factor, rollSize.width / 2));
     },
     [rollSize.width],
   );
@@ -227,16 +229,20 @@ export function App({ audio, onEditor }: AppProps) {
   const onWheel = useCallback(
     (e: WheelEvent) => {
       e.preventDefault();
-      const s = view.state;
-      const current: RollView = { ...rollView, startTick: s.startTick, pxPerTick: s.pxPerTick, scrollY: s.scrollY };
+      // Lines (Firefox) and pages become pixels; every step glides instead of jumping.
+      const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? rollSize.height : 1;
+      const deltaX = e.deltaX * unit;
+      const deltaY = e.deltaY * unit;
+      const at = (g: Position): RollView => ({ ...rollView, ...g });
       if (e.ctrlKey || e.metaKey) {
         const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-        view.set(zoomAt(current, Math.exp(-e.deltaY * 0.0015), e.clientX - rect.left));
-      } else if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
-        const dx = e.shiftKey ? e.deltaY || e.deltaX : e.deltaX;
-        view.set({ startTick: Math.max(0, s.startTick + dx / s.pxPerTick) });
+        const anchor = e.clientX - rect.left;
+        view.glide((g) => zoomAt(at(g), Math.exp(-deltaY * 0.0015), anchor));
+      } else if (e.shiftKey || Math.abs(deltaX) > Math.abs(deltaY)) {
+        const dx = e.shiftKey ? deltaY || deltaX : deltaX;
+        view.glide((g) => ({ startTick: Math.max(0, g.startTick + dx / g.pxPerTick) }));
       } else {
-        view.set({ scrollY: clampScrollY(current, s.scrollY + e.deltaY) });
+        view.glide((g) => ({ scrollY: clampScrollY(at(g), g.scrollY + deltaY) }));
       }
     },
     [rollSize.width, rollSize.height],
@@ -248,11 +254,12 @@ export function App({ audio, onEditor }: AppProps) {
   const visible = rollSize.width > 0 ? { start: v.startTick, end: v.startTick + rollSize.width / v.pxPerTick } : null;
 
   return (
+    <ActionsCtx.Provider value={actions}>
     <div className={v.panelOpen ? "app" : "app pclosed"} ref={appRef}>
       <TopBar audio={audio} />
       <div className="main">
         <div className="work">
-          <Arrangement compact={compact} visible={visible} onSelectTrack={selectTrack} onJump={jump} onToggle={toggleTrack} />
+          <Arrangement compact={compact} visible={visible} onSelectTrack={selectTrack} onPan={pan} onToggle={toggleTrack} />
           <section className="roll" aria-label={t("pianoRoll")}>
             <RollToolbar
               onGridMenu={(anchor) => {
@@ -268,6 +275,8 @@ export function App({ audio, onEditor }: AppProps) {
       </div>
       {overlayMenus.menu && <ContextMenu {...overlayMenus.menu} onClose={() => editor.closeMenus()} />}
       {overlayMenus.quantizeDialog && <QuantizeDialog editor={editor} {...overlayMenus.quantizeDialog} />}
+      <Mixer />
     </div>
+    </ActionsCtx.Provider>
   );
 }

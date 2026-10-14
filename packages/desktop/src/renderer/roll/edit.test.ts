@@ -11,6 +11,7 @@ import {
   hitTest,
   inRect,
   moveDelta,
+  moveDrift,
   neighbour,
   newNoteAt,
   pasteAt,
@@ -71,6 +72,18 @@ describe("moving", () => {
     const ns = [note("a", 125, 200, 100), note("b", 3, 500, 100)];
     expect(clampMove(ns, { ticks: -900, semitones: 5 })).toEqual({ ticks: -200, semitones: 2 });
     expect(clampMove(ns, { ticks: 0, semitones: -9 })).toEqual({ ticks: 0, semitones: -3 });
+  });
+  it("the notes follow the mouse: the drift is what separates it from the snapped move", () => {
+    const ns = [note("a", 60, 960, 400)];
+    const d = moveDelta(1100, 0.3, grid8, null);
+    expect(moveDrift(ns, 1100, 0.3, d, null)).toEqual({ ticks: 140, semitones: 0.3 });
+    // Along a Shift-constrained axis the notes do not drift either.
+    const t = moveDelta(1100, 2.4, grid8, "time");
+    expect(moveDrift(ns, 1100, 2.4, t, "time")).toEqual({ ticks: 140, semitones: 0 });
+    // Nor past the limits: before the start the drift stops where the move stops.
+    const back = moveDelta(-2000, 0, grid8, null);
+    const clamped = clampMove(ns, back);
+    expect(moveDrift(ns, -2000, 0, clamped, null)).toEqual({ ticks: 0, semitones: 0 });
   });
 });
 

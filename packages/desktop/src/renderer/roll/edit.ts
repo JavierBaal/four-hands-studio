@@ -75,6 +75,29 @@ export function clampMove(notes: readonly Note[], d: { ticks: number; semitones:
   };
 }
 
+/**
+ * How far the mouse is from where a move snaps, in ticks and semitones (fractional). The notes are
+ * drawn that far from their snapped place, so they follow the mouse; the snapped place shows as a
+ * target. Kept inside the same limits as the move, and zero along a constrained axis.
+ */
+export function moveDrift(
+  notes: readonly Note[],
+  rawTicks: number,
+  rawSemitones: number,
+  snapped: { ticks: number; semitones: number },
+  constrain: "time" | "pitch" | null,
+): { ticks: number; semitones: number } {
+  const raw = clampMove(notes, { ticks: constrain === "pitch" ? 0 : rawTicks, semitones: constrain === "time" ? 0 : rawSemitones });
+  return { ticks: raw.ticks - snapped.ticks, semitones: raw.semitones - snapped.semitones };
+}
+
+/** A note drawn away from its place while it follows the mouse, in pixels (edges and vertical). */
+export interface NoteDrift {
+  left: number;
+  right: number;
+  dy: number;
+}
+
 export function applyMove(notes: readonly Note[], d: { ticks: number; semitones: number }): Note[] {
   return notes.map((n) => ({ ...n, start: n.start + d.ticks, pitch: n.pitch + d.semitones }));
 }

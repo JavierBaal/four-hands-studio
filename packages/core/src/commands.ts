@@ -324,6 +324,17 @@ export function addAnnotation(tx: Transaction, spec: Omit<Annotation, "id" | "au
   return id;
 }
 
+export function updateAnnotation(tx: Transaction, id: string, changes: Partial<Pick<Annotation, "start" | "end" | "text" | "trackIds">>): void {
+  const a = tx.song.annotations[id];
+  if (!a) throw new CommandError(`Unknown annotation: ${id}`);
+  const next = { ...a, ...changes };
+  checkStart(next.start);
+  check(isInt(next.end) && next.end >= next.start, "Invalid annotation range");
+  for (const t of next.trackIds) getTrack(tx, t);
+  for (const field of ["start", "end", "text"] as const) if (next[field] !== a[field]) tx.set(["annotations", id, field], next[field]);
+  if (next.trackIds.join() !== a.trackIds.join()) tx.set(["annotations", id, "trackIds"], [...next.trackIds]);
+}
+
 export function removeAnnotation(tx: Transaction, id: string): void {
   if (!tx.song.annotations[id]) throw new CommandError(`Unknown annotation: ${id}`);
   tx.remove(["annotations", id]);

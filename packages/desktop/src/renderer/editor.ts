@@ -18,6 +18,8 @@ import {
   hitTest,
   inRect,
   moveDelta,
+  moveDrift,
+  type NoteDrift,
   neighbour,
   newNoteAt,
   pasteAt,
@@ -58,6 +60,11 @@ export interface Overlay {
   stroke: { x: number; y: number }[] | null;
   /** Pedal spans as the current gesture would leave them. */
   pedalPreview: PedalSpan[] | null;
+  /**
+   * Notes drawn away from their snapped place: they follow the mouse while the snapped place
+   * shows as a target, and slide into it on release (H2.9, all movement fluid).
+   */
+  drift: Map<string, NoteDrift> | null;
 }
 
 export interface QuantizeSettings {
@@ -79,6 +86,9 @@ type Gesture =
   | { kind: "pedal"; mode: "draw" | "start" | "end" | "move"; x0: number; tick0: number; original: PedalSpan[]; index: number }
   | { kind: "loop"; tick0: number; tick1: number };
 
+/** How long notes take to slide into their snapped place on release. */
+const SETTLE_MS = 110;
+
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 export const modKey = (e: { ctrlKey: boolean; metaKey: boolean }) => (isMac ? e.metaKey : e.ctrlKey);
 export const modLabel = isMac ? "Cmd" : "Ctrl";
@@ -94,7 +104,7 @@ function loadQuantize(): QuantizeSettings {
 }
 
 export class Editor {
-  overlay: Overlay = { preview: null, hidden: null, creating: [], marquee: null, menu: null, quantizeDialog: null, cursor: "default", stroke: null, pedalPreview: null };
+  overlay: Overlay = { preview: null, hidden: null, creating: [], marquee: null, menu: null, quantizeDialog: null, cursor: "default", stroke: null, pedalPreview: null, drift: null };
   version = 0;
   v: RollView = { startTick: 0, pxPerTick: 0.02, scrollY: 0, width: 0, height: 0 };
   quantizeSettings: QuantizeSettings = loadQuantize();
@@ -241,15 +251,20 @@ export class Editor {
         const dy = y - g.y0;
         if (mods.shift && g.constrain === null) g.constrain = Math.abs(dx) >= Math.abs(dy) ? "time" : "pitch";
         if (!mods.shift) g.constrain = null;
-        const d = clampMove(g.originals, moveDelta(dx / this.v.pxPerTick, -dy / ROW, this.grid(), g.constrain));
+        const rawTicks = dx / this.v.pxPerTick;
+        const d = clampMove(g.originals, moveDelta(rawTicks, -dy / ROW, this.grid(), g.constrain));
         const moved = applyMove(g.originals, d);
+        const off = moveDrift(g.originals, rawTicks, -dy / ROW, d, g.constrain);
+        const px = { left: off.ticks * this.v.pxPerTick, right: off.ticks * this.v.pxPerTick, dy: -off.semitones * ROW };
         const anchorPitch = g.anchor.pitch + d.semitones;
         if (anchorPitch !== g.lastPitch) {
           g.lastPitch = anchorPitch;
           this.audition(anchorPitch, g.anchor.velocity);
         }
-        if (g.copy) this.set({ creating: moved.map((n, i) => ({ ...n, id: `copy${i}` })) });
-        else this.set({ preview: new Map(moved.map((n) => [n.id, n])) });
+        if (g.copy) {
+          const copies = moved.map((n, i) => ({ ...n, id: `copy${i}` }));
+          this.set({ creating: copies, drift: new Map(copies.map((n) => [n.id, px])) });
+        } else this.set({ preview: new Map(moved.map((n) => [n.id, n])), drift: new Map(moved.map((n) => [n.id, px])) });
         return;
       }
       case "resize": {
@@ -258,7 +273,16 @@ export class Editor {
         const out = g.originals.map((n) =>
           g.side === "right" ? resizeRight(n, n.start + n.duration + dTicks, grid) : resizeLeft(n, n.start + dTicks, grid),
         );
-        this.set({ preview: new Map(out.map((n) => [n.id, n])) });
+        // The dragged edge follows the mouse; where it snaps shows as the target.
+        const px = this.v.pxPerTick;
+        const drift = new Map<string, NoteDrift>(
+          out.map((n, i) => {
+            const o = g.originals[i]!;
+            if (g.side === "right") return [n.id, { left: 0, right: (Math.max(o.start, o.start + o.duration + dTicks) - (n.start + n.duration)) * px, dy: 0 }];
+            return [n.id, { left: (Math.min(o.start + o.duration, Math.max(0, o.start + dTicks)) - n.start) * px, right: 0, dy: 0 }];
+          }),
+        );
+        this.set({ preview: new Map(out.map((n) => [n.id, n])), drift });
         return;
       }
       case "marquee": {
@@ -271,7 +295,8 @@ export class Editor {
         const end = xToTick(this.v, x);
         const note = { ...g.note, duration: pencilLength(g.note.start, end, this.grid()) };
         g.note = note;
-        this.set({ creating: [note] });
+        const right = (Math.max(note.start, end) - (note.start + note.duration)) * this.v.pxPerTick;
+        this.set({ creating: [note], drift: new Map([[note.id, { left: 0, right, dy: 0 }]]) });
         return;
       }
       case "erase": {
@@ -307,7 +332,7 @@ export class Editor {
     const g = this.gesture;
     this.gesture = null;
     if (!g) return;
-    const clear = { preview: null, hidden: null, creating: [], marquee: null, stroke: null, pedalPreview: null };
+    let pending: Promise<unknown> | null = null;
     switch (g.kind) {
       case "pending":
         // A click on an empty spot clears the selection; a click on a note was handled on press.
@@ -321,18 +346,18 @@ export class Editor {
         const moved = applyMove(g.originals, d);
         const trackId = this.trackId();
         if (g.copy && trackId) {
-          void this.run(this.label("Copy", moved), [
+          pending = this.run(this.label("Copy", moved), [
             { type: "addNotes", trackId, notes: moved.map(({ pitch, start, duration, velocity }) => ({ pitch, start, duration, velocity })) },
           ]).then((r) => r && this.select(r[0] as string[]));
         } else {
-          void this.run(this.label("Move", moved), [{ type: "moveNotes", ids: g.originals.map((n) => n.id), ticks: d.ticks, semitones: d.semitones }]);
+          pending = this.run(this.label("Move", moved), [{ type: "moveNotes", ids: g.originals.map((n) => n.id), ticks: d.ticks, semitones: d.semitones }]);
         }
         break;
       }
       case "resize": {
         const after = g.originals.map((n) => this.overlay.preview?.get(n.id) ?? n);
         const commands = changeCommands(g.originals, after);
-        if (commands.length) void this.run(this.label("Resize", after), commands);
+        if (commands.length) pending = this.run(this.label("Resize", after), commands);
         break;
       }
       case "marquee": {
@@ -341,10 +366,10 @@ export class Editor {
         break;
       }
       case "pencil":
-        this.createNotes([g.note]);
+        pending = this.createNotes([g.note]);
         break;
       case "erase":
-        if (g.ids.size > 0) this.deleteIds([...g.ids]);
+        if (g.ids.size > 0) pending = this.deleteIds([...g.ids]);
         break;
       case "velocity": {
         const after = g.originals.map((n) => this.overlay.preview?.get(n.id) ?? n);
@@ -352,7 +377,7 @@ export class Editor {
         const changed = after.filter((n, i) => n.velocity !== g.originals[i]!.velocity);
         if (commands.length) {
           this.lastVelocity = changed.at(-1)?.velocity ?? this.lastVelocity;
-          void this.run(this.label("Velocity", changed), commands);
+          pending = this.run(this.label("Velocity", changed), commands);
         }
         break;
       }
@@ -361,14 +386,52 @@ export class Editor {
         const after = this.overlay.pedalPreview;
         if (trackId && after && JSON.stringify(after) !== JSON.stringify(g.original)) {
           const name = this.song.tracks[trackId]?.name ?? "";
-          void this.run(this.t("hPedal", { name }), [{ type: "setPedal", trackId, spans: after }]);
+          pending = this.run(this.t("hPedal", { name }), [{ type: "setPedal", trackId, spans: after }]);
         }
         break;
       }
       case "loop":
         break;
     }
-    this.set(clear);
+    // What the command changes stays drawn until the song has it (no flash back to the old
+    // place during the round trip), and the notes slide from the mouse into their place.
+    this.set({ marquee: null, stroke: null });
+    this.settleDrift();
+    const clear = () => {
+      if (!this.gesture) this.set({ preview: null, hidden: null, creating: [], pedalPreview: null });
+    };
+    if (pending) void pending.then(() => requestAnimationFrame(clear));
+    else clear();
+  }
+
+  private settleFrame = 0;
+
+  /** Eases the drift to zero: the notes land on the grid instead of jumping to it. */
+  private settleDrift(): void {
+    cancelAnimationFrame(this.settleFrame);
+    const from = this.overlay.drift;
+    if (!from) return;
+    const reduce = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const visible = [...from.values()].some((d) => Math.abs(d.left) > 0.5 || Math.abs(d.right) > 0.5 || Math.abs(d.dy) > 0.5);
+    if (reduce || !visible) {
+      this.set({ drift: null });
+      return;
+    }
+    const t0 = performance.now();
+    const step = () => {
+      if (this.gesture && this.gesture.kind !== "pending") return; // a new drag owns the drift now
+      const k = Math.min(1, (performance.now() - t0) / SETTLE_MS);
+      if (k >= 1) {
+        this.set({ drift: null });
+        return;
+      }
+      const f = Math.pow(1 - k, 3);
+      const next = new Map<string, NoteDrift>();
+      for (const [id, d] of from) next.set(id, { left: d.left * f, right: d.right * f, dy: d.dy * f });
+      this.set({ drift: next });
+      this.settleFrame = requestAnimationFrame(step);
+    };
+    this.settleFrame = requestAnimationFrame(step);
   }
 
   /** Esc: cancels the gesture in progress, or clears the selection. */
@@ -379,7 +442,7 @@ export class Editor {
     }
     if (this.gesture) {
       this.gesture = null;
-      this.set({ preview: null, hidden: null, creating: [], marquee: null });
+      this.set({ preview: null, hidden: null, creating: [], marquee: null, stroke: null, pedalPreview: null, drift: null });
       return;
     }
     this.select([]);
@@ -405,19 +468,19 @@ export class Editor {
     this.createNotes([this.draftNote(spec)]);
   }
 
-  private createNotes(notes: Note[]): void {
+  private createNotes(notes: Note[]): Promise<unknown> | null {
     const trackId = this.trackId();
-    if (!trackId || notes.length === 0) return;
+    if (!trackId || notes.length === 0) return null;
     this.lastVelocity = notes.at(-1)!.velocity;
-    void this.run(this.label("Create", notes), [
+    return this.run(this.label("Create", notes), [
       { type: "addNotes", trackId, notes: notes.map(({ pitch, start, duration, velocity }) => ({ pitch, start, duration, velocity })) },
     ]).then((r) => r && this.select(r[0] as string[]));
   }
 
-  private deleteIds(ids: string[], kind = "Delete"): void {
+  private deleteIds(ids: string[], kind = "Delete"): Promise<unknown> | null {
     const notes = ids.map((i) => this.song.notes[i]).filter((n): n is Note => n !== undefined);
-    if (notes.length === 0) return;
-    void this.run(this.label(kind, notes), [{ type: "deleteNotes", ids: notes.map((n) => n.id) }]);
+    if (notes.length === 0) return null;
+    return this.run(this.label(kind, notes), [{ type: "deleteNotes", ids: notes.map((n) => n.id) }]);
   }
 
   private updateCursor(x: number, y: number, mods: Mods): void {
@@ -677,6 +740,12 @@ export class Editor {
 
   openQuantizeDialog(x: number, y: number): void {
     this.set({ menu: null, quantizeDialog: { x, y } });
+  }
+
+  /** Opens any menu (tracks, instruments, keys…) with the same look as the context menu. */
+  openMenu(x: number, y: number, items: MenuItem[]): void {
+    this.gesture = null;
+    this.set({ menu: { x, y, items }, quantizeDialog: null });
   }
 
   closeMenus(): void {

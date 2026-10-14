@@ -21,6 +21,7 @@ import {
   setChord,
   setPedal,
   setSongProperties,
+  updateAnnotation,
   updateNotes,
   updateSection,
   updateTrack,
@@ -43,6 +44,7 @@ export type CommandData =
   | { type: "removeSection"; id: string }
   | { type: "setChord"; tick: number; symbol: string | null }
   | { type: "addAnnotation"; spec: Omit<Annotation, "id" | "author"> }
+  | { type: "updateAnnotation"; id: string; changes: Partial<Pick<Annotation, "start" | "end" | "text" | "trackIds">> }
   | { type: "removeAnnotation"; id: string }
   | { type: "setSongProperties"; props: SongProperties };
 
@@ -93,6 +95,9 @@ export function runCommand(tx: Transaction, c: CommandData): CommandResult {
       return null;
     case "addAnnotation":
       return addAnnotation(tx, c.spec);
+    case "updateAnnotation":
+      updateAnnotation(tx, c.id, c.changes);
+      return null;
     case "removeAnnotation":
       removeAnnotation(tx, c.id);
       return null;
