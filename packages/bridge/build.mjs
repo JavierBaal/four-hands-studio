@@ -38,9 +38,15 @@ manifest.prompts = PROMPTS.map((p) => ({
 fs.writeFileSync(path.join(out, "manifest.json"), JSON.stringify(manifest, null, 2));
 fs.copyFileSync(path.join(here, "assets", "icon.png"), path.join(out, "icon.png"));
 
-const mcpb = path.join(here, "node_modules", ".bin", process.platform === "win32" ? "mcpb.cmd" : "mcpb");
-const bin = fs.existsSync(mcpb) ? mcpb : path.join(here, "..", "..", "node_modules", ".bin", process.platform === "win32" ? "mcpb.cmd" : "mcpb");
+// The mcpb CLI runs with this same Node, without a shell: on Windows, going through cmd.exe broke
+// paths with spaces ("H:\\SALA_CREATIVA\\Four Hands Studio\\…", 14/10/2026).
+const mcpbDir = [path.join(here, "node_modules"), path.join(here, "..", "..", "node_modules")]
+  .map((d) => path.join(d, "@anthropic-ai", "mcpb"))
+  .find((d) => fs.existsSync(path.join(d, "package.json")));
+if (!mcpbDir) throw new Error("@anthropic-ai/mcpb is not installed: run npm install");
+const mcpbBin = JSON.parse(fs.readFileSync(path.join(mcpbDir, "package.json"), "utf8")).bin;
+const cli = path.join(mcpbDir, typeof mcpbBin === "string" ? mcpbBin : mcpbBin.mcpb);
 const target = path.join(here, "dist", `fourhands-mcp-${pkg.version}.mcpb`);
-execFileSync(bin, ["validate", path.join(out, "manifest.json")], { stdio: "inherit", shell: process.platform === "win32" });
-execFileSync(bin, ["pack", out, target], { stdio: "inherit", shell: process.platform === "win32" });
+execFileSync(process.execPath, [cli, "validate", path.join(out, "manifest.json")], { stdio: "inherit" });
+execFileSync(process.execPath, [cli, "pack", out, target], { stdio: "inherit" });
 console.log(`\nBridge packed: ${target}`);
