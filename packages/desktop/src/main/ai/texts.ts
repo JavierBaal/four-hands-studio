@@ -1,0 +1,186 @@
+/**
+ * What the AI reads (ESQUEMA_MCP.md, 4): the overview, the user's context and the instruments,
+ * as compact text in English. Pure functions of the song, so they are tested without the app.
+ * Notes themselves are formatted by the core (compact.ts).
+ */
+import {
+  type Song,
+  type Track,
+  barAt,
+  barHarmony,
+  barStart,
+  bpm,
+  formatPosition,
+  keyText,
+  notesOf,
+  orderedSections,
+  orderedTracks,
+  pitchName,
+  songBars,
+} from "@fourhands/core";
+import { PALETTE, type PaletteItem, instrumentName } from "../../shared/instruments.js";
+import type { SoundBankInfo } from "../../shared/protocol.js";
+
+/** What the window tells the main process about what the user sees (not part of the song). */
+export interface WindowInfo {
+  noteNames: "solfege" | "letters";
+  /** The authorship layer: the AI's notes shown in their own colour. */
+  authorship: boolean;
+  /** Ticks shown in the piano roll. */
+  visible: { start: number; end: number } | null;
+}
+
+export const DEFAULT_WINDOW: WindowInfo = { noteNames: "letters", authorship: true, visible: null };
+
+export function paletteItem(program: number | null): PaletteItem | undefined {
+  for (const group of PALETTE) for (const item of group.items) if (item.program === program) return item;
+  return undefined;
+}
+
+function rangeText(range: [number, number] | undefined): string {
+  return range ? `${pitchName(range[0])}–${pitchName(range[1])}` : "";
+}
+
+export function trackInstrument(track: Track): string {
+  const base = `${instrumentName(track.program, track.channel, "en")}${track.program !== null && track.channel !== 9 ? ` (program ${track.program})` : ""}`;
+  return track.sound ? `${base}, sound "${track.sound.name}" from ${track.sound.bank}` : base;
+}
+
+function bars(from: number, to: number): string {
+  return from === to ? `c. ${from}` : `c. ${from}–${to}`;
+}
+
+function percent(part: number, total: number): number {
+  return total === 0 ? 0 : Math.round((part / total) * 100);
+}
+
+export interface OverviewExtras {
+  /** Open interventions, for the AI to know whether someone is writing. */
+  open: { id: string; who: string; description: string }[];
+}
+
+export function overviewText(song: Song, extras: OverviewExtras = { open: [] }): string {
+  const total = songBars(song);
+  const seconds = Math.round(((total * song.meter.numerator * (4 / song.meter.denominator)) / bpm(song)) * 60);
+  const lines = [
+    `Four Hands · r${song.revision} · "${song.title}"`,
+    `Tempo ${Math.round(bpm(song) * 100) / 100} BPM · ${song.meter.numerator}/${song.meter.denominator} · ${keyText(song.key)} · ${total} bar${total === 1 ? "" : "s"} (about ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")})`,
+  ];
+  const sections = orderedSections(song);
+  lines.push(sections.length ? `Form: ${sections.map((s) => `${s.id} ${s.name} ${s.startBar}-${s.endBar}`).join(" · ")}` : "Form: no sections yet");
+
+  lines.push("Tracks:");
+  const tracks = orderedTracks(song);
+  if (tracks.length === 0) lines.push("(no tracks)");
+  for (const track of tracks) {
+    const notes = notesOf(song, track.id);
+    const parts = [`${track.id} ${track.name} · ${trackInstrument(track)}`];
+    if (notes.length === 0) parts.push("no notes");
+    else {
+      const low = Math.min(...notes.map((n) => n.pitch));
+      const high = Math.max(...notes.map((n) => n.pitch));
+      const ai = notes.filter((n) => n.shapedBy.by === "ai").length;
+      const first = barAt(song.meter, notes[0]!.start);
+      const last = barAt(song.meter, notes.at(-1)!.start);
+      parts.push(`${notes.length} notes`, bars(first, last), `${pitchName(low, song.key)}–${pitchName(high, song.key)}`);
+      parts.push(ai === 0 ? "all by the user" : ai === notes.length ? "all by an AI" : `user ${percent(notes.length - ai, notes.length)}% · AI ${percent(ai, notes.length)}%`);
+    }
+    if (track.mute) parts.push("muted");
+    if (track.solo) parts.push("solo");
+    if (track.pedal.length) parts.push(`${track.pedal.length} pedal spans`);
+    lines.push(parts.join(" · "));
+  }
+
+  if (Object.keys(song.harmony).length === 0) lines.push("Harmony: no chords written yet");
+  else {
+    lines.push("Harmony (chord of each bar; 'F, 3 G' = F, then G on beat 3):");
+    for (let start = 1; start <= total; start += 8) {
+      const end = Math.min(total, start + 7);
+      const chords: string[] = [];
+      for (let b = start; b <= end; b++) chords.push((barHarmony(song, b) || "—").replace(new RegExp(`(^|, )${b}\\.(\\d)`, "g"), "$1$2"));
+      lines.push(`${bars(start, end)}: ${chords.join(" | ")}`);
+    }
+  }
+
+  const annotations = Object.values(song.annotations).sort((a, b) => a.start - b.start);
+  if (annotations.length) {
+    lines.push("Annotations:");
+    for (const a of annotations) {
+      const where = bars(barAt(song.meter, a.start), barAt(song.meter, Math.max(a.start, a.end - 1)));
+      const on = a.trackIds.length ? ` (${a.trackIds.join(", ")})` : "";
+      lines.push(`${a.id} ${where}${on} · ${a.author.by === "user" ? "user" : "AI"}: "${a.text}"`);
+    }
+  }
+  lines.push(extras.open.length ? `Open interventions: ${extras.open.map((i) => `${i.id} by ${i.who} "${i.description}"`).join("; ")}` : "Open interventions: none");
+  return lines.join("\n");
+}
+
+export interface ContextExtras {
+  /** This client's open intervention, if any. */
+  mine: { id: string; description: string } | null;
+  /** Other AI clients connected. */
+  others: string[];
+}
+
+export function userContextText(song: Song, win: WindowInfo, extras: ContextExtras): string {
+  const ctx = song.context;
+  const lines = [`Four Hands · r${song.revision} · user context`];
+  const selected = ctx.selection.map((id) => song.notes[id]).filter((n) => n !== undefined);
+  if (selected.length === 0) lines.push("Selection: nothing selected");
+  else {
+    const start = Math.min(...selected.map((n) => n.start));
+    const end = Math.max(...selected.map((n) => n.start));
+    const trackNames = [...new Set(selected.map((n) => n.trackId))].map((id) => `${song.tracks[id]?.name ?? id} (${id})`);
+    const ids = selected.length <= 60 ? ` · ${selected.map((n) => n.id).join(" ")}` : "";
+    lines.push(`Selection: ${selected.length} note${selected.length === 1 ? "" : "s"} · ${trackNames.join(", ")} · ${bars(barAt(song.meter, start), barAt(song.meter, end))}${ids}`);
+    lines.push("  (read them with read_notes, range 'selection')");
+  }
+  lines.push(ctx.loop ? `Loop: ${bars(barAt(song.meter, ctx.loop.start), barAt(song.meter, Math.max(ctx.loop.start, ctx.loop.end - 1)))} (range 'loop')` : "Loop: none");
+  lines.push(`Cursor: ${formatPosition(song.meter, ctx.cursor)}`);
+  const active = ctx.activeTrackId ? song.tracks[ctx.activeTrackId] : undefined;
+  lines.push(`Active track (open in the piano roll): ${active ? `${active.name} (${active.id})` : "none"}`);
+  if (win.visible) {
+    lines.push(`Visible in the piano roll: ${bars(barAt(song.meter, win.visible.start), barAt(song.meter, Math.max(win.visible.start, win.visible.end - 1)))}`);
+  }
+  lines.push(
+    win.noteNames === "solfege"
+      ? "Note names the user reads: Do Re Mi (Do, Re, Mi, Fa, Sol, La, Si), middle C = Do4. The tools still use C4."
+      : "Note names the user reads: C D E, middle C = C4.",
+  );
+  lines.push(`The AI's notes are ${win.authorship ? "shown in their own colour (blue) next to the user's (amber)" : "shown in the same colour as the user's (authorship layer off)"}.`);
+  lines.push("Your changes go straight into the song as you write them; the user sees them live and undoes a whole intervention in one step.");
+  lines.push(extras.mine ? `Your open intervention: ${extras.mine.id} "${extras.mine.description}"` : "Your open intervention: none");
+  if (extras.others.length) lines.push(`Other AI connected: ${extras.others.join(", ")}`);
+  return lines.join("\n");
+}
+
+export function instrumentsText(banks: SoundBankInfo[]): string {
+  const lines = ["Four Hands · instruments (built-in sound; ranges are the real sounding range)"];
+  for (const group of PALETTE) {
+    lines.push(`${group.en}:`);
+    for (const item of group.items) {
+      const program = item.program === null ? "drums" : `program ${item.program}`;
+      lines.push(`  ${item.en} / ${item.es} · ${program}${item.range ? ` · ${rangeText(item.range)}` : ""}`);
+    }
+  }
+  lines.push("Any General MIDI program number (0-127) also works.");
+  if (banks.length === 0) lines.push("Installed sound banks: none");
+  else {
+    lines.push("Installed sound banks (list one's sounds with list_instruments, bank):");
+    for (const b of banks) lines.push(`  ${b.id} · "${b.name}" · ${b.presets.length} sounds`);
+  }
+  return lines.join("\n");
+}
+
+export function bankText(bank: SoundBankInfo): string {
+  const lines = [`Four Hands · sounds of ${bank.id} ("${bank.name}")`, "Use them as sound: '<bank file> / <sound name>'."];
+  for (const p of bank.presets) lines.push(`  ${p.name}${p.bankMSB === 128 ? " (drum kit)" : ""}`);
+  return lines.join("\n");
+}
+
+/** "c. 17–20" for a span of ticks. */
+export function spanText(song: Song, start: number, end: number): string {
+  return bars(barAt(song.meter, start), barAt(song.meter, Math.max(start, end - 1)));
+}
+
+export { barStart };

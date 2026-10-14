@@ -1,5 +1,27 @@
 import { describe, expect, it } from "vitest";
-import { PROMPTS, TOOLS } from "./index.js";
+import { PROMPTS, SERVER_INSTRUCTIONS, TOOLS } from "./index.js";
+
+const byName = Object.fromEntries(TOOLS.map((t) => [t.name, t]));
+
+const READ_ONLY = ["get_song_overview", "get_user_context", "read_notes", "list_instruments", "point_to"];
+const NEED_INTERVENTION = [
+  "end_intervention",
+  "add_notes",
+  "edit_notes",
+  "repitch_notes",
+  "move_notes",
+  "copy_notes",
+  "delete_notes",
+  "quantize_notes",
+  "shape_velocities",
+  "write_pedal",
+  "set_harmony",
+  "set_sections",
+  "set_song_properties",
+  "add_track",
+  "update_track",
+  "annotate",
+];
 
 describe("tool definitions", () => {
   it("have unique snake_case names", () => {
@@ -8,36 +30,52 @@ describe("tool definitions", () => {
     for (const n of names) expect(n).toMatch(/^[a-z][a-z0-9_]*$/);
   });
 
-  it("all declare annotations (required by the Claude extensions directory)", () => {
+  it("all declare annotations and a short title (users read titles in Claude's settings)", () => {
     for (const t of TOOLS) {
       expect(typeof t.annotations.readOnlyHint).toBe("boolean");
       expect(typeof t.annotations.destructiveHint).toBe("boolean");
+      expect(t.title.length).toBeLessThanOrEqual(28);
     }
   });
 
-  it("read tools are read-only and only delete_notes is destructive", () => {
-    const byName = Object.fromEntries(TOOLS.map((t) => [t.name, t.annotations]));
-    for (const n of ["get_song_overview", "get_user_context", "read_notes", "point_to"]) expect(byName[n]?.readOnlyHint).toBe(true);
-    for (const n of ["begin_intervention", "add_notes", "delete_notes", "end_intervention"]) expect(byName[n]?.readOnlyHint).toBe(false);
+  // The annotations decide the permission group the user sees (PRUEBA_S1.md, conclusion 2).
+  it("reading tools are read-only, the rest are writes, and only delete_notes is destructive", () => {
+    expect(TOOLS.filter((t) => t.annotations.readOnlyHint).map((t) => t.name).sort()).toEqual([...READ_ONLY].sort());
     expect(TOOLS.filter((t) => t.annotations.destructiveHint).map((t) => t.name)).toEqual(["delete_notes"]);
   });
 
-  it("write tools need an intervention", () => {
-    for (const n of ["add_notes", "delete_notes", "end_intervention"]) {
-      expect(Object.keys(TOOLS.find((t) => t.name === n)?.inputSchema ?? {})).toContain("intervention_id");
-    }
+  it("every write tool needs an intervention", () => {
+    for (const n of NEED_INTERVENTION) expect(Object.keys(byName[n]?.inputSchema ?? {}), n).toContain("intervention_id");
+    expect(TOOLS.length).toBe(READ_ONLY.length + NEED_INTERVENTION.length + 1); // + begin_intervention
   });
 
   it("begin_intervention announces the 5-minute auto close", () => {
-    expect(TOOLS.find((t) => t.name === "begin_intervention")?.description).toMatch(/5 minutes/);
+    expect(byName.begin_intervention?.description).toMatch(/5 minutes/);
   });
 
   it("point_to promises not to move the user's view", () => {
-    const pointTo = TOOLS.find((t) => t.name === "point_to");
-    expect(pointTo?.description).toMatch(/does NOT move the user's view/);
+    expect(byName.point_to?.description).toMatch(/does NOT move the user's view/);
+  });
+
+  // The mandatory rules live in the tools, not in a skill (ESQUEMA_MCP.md, 9).
+  it("the tools that move notes promise to keep the played deviation", () => {
+    for (const n of ["move_notes", "repitch_notes", "copy_notes", "edit_notes"]) expect(byName[n]?.description, n).toMatch(/deviation/);
+    expect(byName.quantize_notes?.description).toMatch(/only when the user asks/);
+  });
+
+  it("the tools that change existing notes protect the user's later edits", () => {
+    for (const n of ["edit_notes", "repitch_notes", "move_notes", "delete_notes", "quantize_notes", "shape_velocities"]) {
+      expect(byName[n]?.description, n).toMatch(/user changed after/);
+      expect(Object.keys(byName[n]?.inputSchema ?? {}), n).toContain("base_revision");
+    }
+  });
+
+  it("no tool composes", () => {
+    for (const t of TOOLS) expect(t.name).not.toMatch(/compose|generate|harmonize|variation|orchestrate/);
+    expect(SERVER_INSTRUCTIONS).toMatch(/does not compose/);
   });
 
   it("prompts render with their arguments", () => {
-    expect(PROMPTS[0]?.render({ feeling: "coming home" })).toContain("coming home");
+    expect(PROMPTS.find((p) => p.name === "compose_from_feelings")?.render({ feeling: "coming home" })).toContain("coming home");
   });
 });

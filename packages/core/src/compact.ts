@@ -124,8 +124,8 @@ function formatPlaced(song: Song, p: Placed): string {
   return parts.join(" ");
 }
 
-/** Chords of a bar: those that start in it, or the one still sounding from before. */
-function barHarmony(song: Song, bar: number): string {
+/** Chords of a bar: those that start in it, or the one still sounding from before. "Am", "F, 17.3 G". */
+export function barHarmony(song: Song, bar: number): string {
   const start = barStart(song.meter, bar);
   const end = barStart(song.meter, bar + 1);
   const chords = Object.entries(song.harmony)
@@ -143,6 +143,8 @@ export interface ReadNotesOptions {
   /** Bars, inclusive, by the notes' nominal start. */
   fromBar?: number;
   toBar?: number;
+  /** Only these notes (a page of a long read, or the user's selection). */
+  noteIds?: ReadonlySet<string>;
 }
 
 /** Notes grouped by track and bar, with the harmony at the head of each bar. */
@@ -154,7 +156,7 @@ export function formatNotes(song: Song, options: ReadNotesOptions = {}): string 
   const blocks: string[] = [];
   for (const track of tracks) {
     const placed = Object.values(song.notes)
-      .filter((n) => n.trackId === track.id)
+      .filter((n) => n.trackId === track.id && (!options.noteIds || options.noteIds.has(n.id)))
       .map(place)
       .filter((p) => {
         const bar = barAt(song.meter, p.start);

@@ -10,7 +10,7 @@ import type { BankPreset } from "../shared/soundbank-info.js";
 import type { Lang, Strings, Translate } from "../shared/i18n.js";
 import { activeTrack } from "./context.js";
 import type { Editor, MenuItem } from "./editor.js";
-import { PALETTE, type PaletteItem, instrumentName, paletteName } from "./instruments.js";
+import { PALETTE, type PaletteItem, instrumentName, paletteName } from "../shared/instruments.js";
 import { barRange, keyName } from "./music.js";
 import type { Replica } from "./replica.js";
 

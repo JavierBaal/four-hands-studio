@@ -43,6 +43,8 @@ interface UndoStep {
   actor: Authorship;
   author: Authorship;
   label: string;
+  /** Transactions of the same group that follow each other become this one step (an AI intervention). */
+  group?: string;
 }
 
 function clone<T>(value: T): T {
@@ -118,6 +120,13 @@ export interface TransactionMeta {
   label: string;
   /** Defaults to the actor. Set it to the AI when the user accepts an AI proposal. */
   author?: Authorship;
+  /**
+   * Joins this transaction to the previous one if it had the same group and nothing happened in
+   * between (no other edit, undo or redo): one AI intervention = one undo step = one history entry,
+   * even though it arrives in several calls (ESQUEMA_MCP.md, 5.1). If the user edits in the
+   * middle, the next call starts a new step, so linear undo stays correct.
+   */
+  group?: string;
 }
 
 export interface SongDocumentOptions {
@@ -137,6 +146,9 @@ export class SongDocument {
   private readonly listeners = new Set<(patch: Patch) => void>();
   private readonly now: () => number;
   private inTransaction = false;
+  /** The step the last edit created or extended, while it can still be extended. */
+  private openStep: UndoStep | null = null;
+  private merged = false;
 
   constructor(song: Song, options: SongDocumentOptions = {}) {
     this.song = song;
@@ -185,10 +197,34 @@ export class SongDocument {
       this.inTransaction = false;
     }
     if (tx.ops.length === 0) return result;
-    this.undoStack.push({ ops: tx.ops, inverses: tx.inverses, actor: meta.actor, author, label: meta.label });
+    const top = this.undoStack.at(-1);
+    if (meta.group !== undefined && top !== undefined && top === this.openStep && top.group === meta.group) {
+      top.ops.push(...tx.ops);
+      top.inverses.push(...tx.inverses);
+      this.redoStack.length = 0;
+      this.commit("edit", top.actor, top.author, top.label, tx.ops, true);
+      return result;
+    }
+    const step: UndoStep = { ops: tx.ops, inverses: tx.inverses, actor: meta.actor, author, label: meta.label };
+    if (meta.group !== undefined) step.group = meta.group;
+    this.undoStack.push(step);
     this.redoStack.length = 0;
     this.commit("edit", meta.actor, author, meta.label, tx.ops);
+    this.openStep = step;
     return result;
+  }
+
+  /**
+   * True when the last change extended the previous step instead of creating one: its history
+   * entry was replaced (same step, newer revision), not added.
+   */
+  get lastChangeMerged(): boolean {
+    return this.merged;
+  }
+
+  /** Stops a group from growing (the intervention ended): the next transaction is a new step. */
+  closeGroup(group: string): void {
+    if (this.openStep?.group === group) this.openStep = null;
   }
 
   /** Undoes the last transaction, whoever made it. Returns false if there is nothing to undo. */
@@ -197,6 +233,7 @@ export class SongDocument {
     if (!step) return false;
     const ops = [...step.inverses].reverse();
     for (const op of ops) applyOp(this.song, op);
+    this.openStep = null;
     this.redoStack.push(step);
     this.commit("undo", actor, step.author, step.label, ops);
     return true;
@@ -207,6 +244,7 @@ export class SongDocument {
     if (!step) return false;
     const inverses: Op[] = [];
     for (const op of step.ops) inverses.push(applyOp(this.song, op));
+    this.openStep = null;
     this.undoStack.push({ ...step, inverses });
     this.commit("redo", actor, step.author, step.label, step.ops);
     return true;
@@ -225,9 +263,12 @@ export class SongDocument {
     if (ops.length > 0) this.emit({ revision: this.song.revision, ops });
   }
 
-  private commit(kind: HistoryEntry["kind"], actor: Authorship, author: Authorship, label: string, ops: Op[]): void {
+  private commit(kind: HistoryEntry["kind"], actor: Authorship, author: Authorship, label: string, ops: Op[], merge = false): void {
     this.song.revision += 1;
-    this.history.push({ revision: this.song.revision, kind, actor, author, label, at: this.now() });
+    const entry: HistoryEntry = { revision: this.song.revision, kind, actor, author, label, at: this.now() };
+    if (merge) this.history[this.history.length - 1] = entry;
+    else this.history.push(entry);
+    this.merged = merge;
     const all: Op[] = [...ops, ...this.pruneContext(), { op: "set", path: ["counters"], value: this.song.counters }];
     this.emit({ revision: this.song.revision, ops: all });
   }

@@ -46,7 +46,8 @@ export class Replica {
       if (op.op === "set" && op.path.length === 2 && op.path[0] === "notes") this.fresh.set(op.path[1]!, performance.now());
     }
     this.song.revision = m.patch.revision;
-    this.history.push(...m.history);
+    if (m.replacesLast) this.history.splice(-1, 1, ...m.history);
+    else this.history.push(...m.history);
     this.undo = { canUndo: m.canUndo, canRedo: m.canRedo, undoLabel: m.undoLabel, redoLabel: m.redoLabel };
     this.bump();
   }

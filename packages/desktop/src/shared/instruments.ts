@@ -2,7 +2,7 @@
  * Short instrument names for the piano roll bar ("Melodía (cuerdas) · Cuerdas").
  * The instruments of the MVP palette have their own name; the rest, their General MIDI family.
  */
-import type { Lang } from "../shared/i18n.js";
+import type { Lang } from "./i18n.js";
 
 const NAMED: Record<number, [es: string, en: string]> = {
   0: ["Piano", "Piano"],
@@ -37,6 +37,9 @@ const NAMED: Record<number, [es: string, en: string]> = {
   89: ["Pad cálido", "Warm pad"],
 };
 
+/** Instruments with a name of their own, by General MIDI program (the AI can ask for them by name). */
+export const NAMED_PROGRAMS: Readonly<Record<number, readonly [string, string]>> = NAMED;
+
 const FAMILIES: [es: string, en: string][] = [
   ["Piano", "Piano"],
   ["Percusión afinada", "Chromatic percussion"],
@@ -67,6 +70,8 @@ export interface PaletteItem {
   program: number | null;
   es: string;
   en: string;
+  /** Real sounding range, lowest and highest MIDI note (what the AI reads in list_instruments). */
+  range?: [low: number, high: number];
 }
 
 /**
@@ -78,45 +83,45 @@ export const PALETTE: { es: string; en: string; items: PaletteItem[] }[] = [
     es: "Teclados",
     en: "Keyboards",
     items: [
-      { program: 0, es: "Piano", en: "Piano" },
-      { program: 4, es: "Piano eléctrico", en: "Electric piano" },
-      { program: 6, es: "Clave", en: "Harpsichord" },
-      { program: 8, es: "Celesta", en: "Celesta" },
-      { program: 19, es: "Órgano", en: "Organ" },
+      { program: 0, es: "Piano", en: "Piano", range: [21, 108] },
+      { program: 4, es: "Piano eléctrico", en: "Electric piano", range: [28, 103] },
+      { program: 6, es: "Clave", en: "Harpsichord", range: [29, 89] },
+      { program: 8, es: "Celesta", en: "Celesta", range: [60, 108] },
+      { program: 19, es: "Órgano", en: "Organ", range: [24, 96] },
     ],
   },
   {
     es: "Cuerdas",
     en: "Strings",
     items: [
-      { program: 48, es: "Cuerdas", en: "Strings" },
-      { program: 49, es: "Cuerdas lentas", en: "Slow strings" },
-      { program: 40, es: "Violines", en: "Violins" },
-      { program: 41, es: "Violas", en: "Violas" },
-      { program: 42, es: "Chelos", en: "Cellos" },
-      { program: 43, es: "Contrabajos", en: "Double basses" },
-      { program: 45, es: "Pizzicato", en: "Pizzicato" },
-      { program: 46, es: "Arpa", en: "Harp" },
+      { program: 48, es: "Cuerdas", en: "Strings", range: [28, 96] },
+      { program: 49, es: "Cuerdas lentas", en: "Slow strings", range: [28, 96] },
+      { program: 40, es: "Violines", en: "Violins", range: [55, 100] },
+      { program: 41, es: "Violas", en: "Violas", range: [48, 88] },
+      { program: 42, es: "Chelos", en: "Cellos", range: [36, 81] },
+      { program: 43, es: "Contrabajos", en: "Double basses", range: [28, 67] },
+      { program: 45, es: "Pizzicato", en: "Pizzicato", range: [28, 93] },
+      { program: 46, es: "Arpa", en: "Harp", range: [23, 104] },
     ],
   },
   {
     es: "Viento y voces",
     en: "Winds and voices",
     items: [
-      { program: 73, es: "Flauta", en: "Flute" },
-      { program: 68, es: "Oboe", en: "Oboe" },
-      { program: 71, es: "Clarinete", en: "Clarinet" },
-      { program: 70, es: "Fagot", en: "Bassoon" },
-      { program: 60, es: "Trompa", en: "French horn" },
-      { program: 52, es: "Coro", en: "Choir" },
+      { program: 73, es: "Flauta", en: "Flute", range: [60, 96] },
+      { program: 68, es: "Oboe", en: "Oboe", range: [58, 93] },
+      { program: 71, es: "Clarinete", en: "Clarinet", range: [50, 94] },
+      { program: 70, es: "Fagot", en: "Bassoon", range: [34, 76] },
+      { program: 60, es: "Trompa", en: "French horn", range: [35, 77] },
+      { program: 52, es: "Coro", en: "Choir", range: [40, 81] },
     ],
   },
   {
     es: "Otros",
     en: "Others",
     items: [
-      { program: 89, es: "Pad cálido", en: "Warm pad" },
-      { program: 47, es: "Timbales", en: "Timpani" },
+      { program: 89, es: "Pad cálido", en: "Warm pad", range: [24, 108] },
+      { program: 47, es: "Timbales", en: "Timpani", range: [38, 57] },
       { program: null, es: "Percusión", en: "Drums" },
     ],
   },

@@ -5,22 +5,37 @@
  * Tool names, descriptions and server instructions are in English on purpose;
  * the AI talks to the user in the user's language.
  *
- * For now this holds the tools of the installation test (PRUEBA_MCPB.md) and of the
- * permissions test S1 (PRUEBA_S1.md): a representative slice of ESQUEMA_MCP.md with
- * read-only, pointing, writing and destructive tools. The full schema is added in milestone H3.
+ * Milestone H3 (the AI's hand): reading, interventions, every write tool of ESQUEMA_MCP.md, 6, and
+ * point_to. Still to come in H4: summarize, analyze, get_changes_since, get_history, get_proposals
+ * and withdraw_proposal; list_skills and load_skill arrive with the built-in skills.
+ *
+ * No tool composes (ESQUEMA_MCP.md, 8): they read, write, and transform mechanically.
  */
 import { z } from "zod";
 
-/** Bumped whenever a tool, its parameters or its meaning changes. The app refuses older bridges. */
-export const TOOLS_VERSION = 2;
+/** Bumped whenever a tool, its parameters or its meaning changes. The app refuses other bridges. */
+export const TOOLS_VERSION = 3;
 
 export const SERVER_INSTRUCTIONS = `You are composing together with the user inside Four Hands Studio, a shared MIDI score.
 The user sees every change you make, live.
-Start by calling get_song_overview and get_user_context: "this" and "here" mean the user's selection, loop or cursor.
+
+Start of each turn: call get_user_context (and get_song_overview the first time, or when the user
+may have changed the song). "This", "here" and "these bars" refer to the user's selection, loop or cursor.
+
 To change the song: begin_intervention with a short description in the user's language, make your edits,
-then end_intervention. One intervention = one proposal = one undo step.
+then end_intervention. One intervention = one undo step for the user.
+
+Respect what the user played: notes may carry a timing deviation (~s, ~d). Moving, repitching and copying
+keep each note's deviation. Quantize only when the user asks or clearly wants it.
+To change only the pitches of a rhythm the user drew or played, use repitch_notes.
+
 Never assume you can move the user's view, selection or playback. To show something, use point_to.
-Talk to the user in their language.`;
+
+Talk to the user with the note names and octave convention from get_user_context
+(e.g. Do Re Mi, middle C = Do4), even though the tools always use scientific pitch (C4 = middle C).
+
+The app does not compose: you decide every note. Describe what you hear in the score; never call the
+user's choices errors.`;
 
 export interface ToolAnnotations {
   readOnlyHint: boolean;
@@ -31,6 +46,7 @@ export interface ToolAnnotations {
 
 export interface ToolDefinition {
   name: string;
+  /** What the user sees in Claude's settings (PRUEBA_S1.md, 5): short and clear. */
   title: string;
   description: string;
   /** Zod raw shape, as the MCP TypeScript SDK expects it. */
@@ -42,46 +58,47 @@ const readOnly: ToolAnnotations = { readOnlyHint: true, destructiveHint: false, 
 const write: ToolAnnotations = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false };
 const destructive: ToolAnnotations = { ...write, destructiveHint: true };
 
-const RANGE_HELP = "Bars like '17-24' or '17.3-18.2', or 'selection', 'loop', 'section:Coro', 'all'.";
+const RANGE_HELP = "Bars like '17-24', '17', '17.3-18.2', or 'selection', 'loop', 'section:Coro', 'all'.";
+const PITCH_HELP = "Pitch in scientific notation, middle C = C4 (C4, Eb5, F#3).";
+const POSITION_HELP = "Position bar.beat, plus a fraction of a beat if needed (17.1, 17.3+1/2, 17.2+1/3 for a triplet).";
+const DURATION_HELP = "Duration as a fraction of a whole note; '.' dotted, 't' triplet, '+' tie (1/4, 1/8., 1/8t, 1/2+1/8).";
 const NOTE_FORMAT =
   "One note per line: pitch position duration [velocity] [deviation]. " +
-  "Pitch in scientific notation, middle C = C4 (C4, Eb5, F#3). Position bar.beat, plus a fraction of a beat if needed (17.1, 17.3+1/2). " +
-  "Duration as a fraction of a whole note; '.' dotted, 't' triplet, '+' tie (1/4, 1/8., 1/8t, 1/2+1/8). Velocity v1-v127. " +
-  "Deviation from the grid only if wanted: ~s for the start, ~d for the duration, in beats (~s+0.03). " +
+  `${PITCH_HELP} ${POSITION_HELP} ${DURATION_HELP} Velocity v1-v127 (default v80). ` +
+  "Deviation from the grid only if you want a played feel: ~s for the start, ~d for the duration, in beats (~s+0.03). " +
   "Example: 'E5 17.1 1/4 v72'. If any line is wrong the whole call is rejected and nothing is written.";
+const INTERVENTION = z.string().describe("From begin_intervention, e.g. 'i12'");
+const TRACKS = z.array(z.string()).optional().describe("Track ids or names, e.g. ['t3'] or ['Violines']; all tracks if omitted");
+const NOTE_IDS = z.array(z.string()).optional().describe("Note ids, e.g. ['n482', 'n483']");
+const RANGE = z.string().optional().describe(`Instead of note_ids: ${RANGE_HELP}`);
+const BASE = z
+  .string()
+  .optional()
+  .describe("The revision you last read (e.g. 'r1540'), if newer than the intervention's base. Notes the user changed after it are protected.");
+const TARGET_HELP = "Choose the notes with note_ids, or with range plus optional tracks.";
+const PROTECTED =
+  "Notes the user changed after the revision you read are refused, and the answer says what changed: read them again first.";
 
 export const TOOLS: readonly ToolDefinition[] = [
+  // -------------------------------------------------------------------------
+  // Reading (ESQUEMA_MCP.md, 4)
   {
     name: "get_song_overview",
     title: "Song overview",
     description:
-      "Read the overview of the song open in Four Hands Studio: title, tempo, meter, key, form (sections with bars), " +
-      "tracks (instrument, range, note count, share by author), harmony per bar, annotations, current revision and pending proposals. " +
+      "Read the overview of the song open in Four Hands Studio: title, tempo, meter, key, length, form (sections with bars), " +
+      "tracks (id, instrument, sound, range, note count, share by author), harmony per bar, annotations and current revision. " +
       "Small on purpose: call it first. Read-only.",
     inputSchema: {},
     annotations: readOnly,
-  },
-  {
-    name: "point_to",
-    title: "Point to a place",
-    description:
-      "Point the user to a place in the score with a short reason. A mark appears on their screen; if they click it, the app takes them there. " +
-      "It does NOT change the song and does NOT move the user's view, selection or playback. " +
-      "range: bars like '17-24', '17.3-18.2', or 'section:Coro'. tracks: optional track ids or names (e.g. 't3', 'Violines').",
-    inputSchema: {
-      range: z.string().describe("Bars, e.g. '17-24', '17.3-18.2', 'section:Coro'"),
-      tracks: z.array(z.string()).optional().describe("Optional track ids or names"),
-      reason: z.string().describe("Short reason, in the user's language"),
-    },
-    annotations: { ...readOnly, idempotentHint: false },
   },
   {
     name: "get_user_context",
     title: "User context",
     description:
       "Read what the user is looking at and how they work: selection, loop, cursor, active track, visible bars, " +
-      "view preferences (note names Do Re Mi or C D E, octave of middle C, scale degrees), active theory aids, " +
-      "and whether they review proposals or apply them directly. This is what 'this' and 'here' mean. Read-only.",
+      "note names they read (Do Re Mi or C D E) and the octave of middle C, whether the AI's notes are shown in colour, " +
+      "and how your changes reach the song. This is what 'this' and 'here' mean. Read-only.",
     inputSchema: {},
     annotations: readOnly,
   },
@@ -91,24 +108,55 @@ export const TOOLS: readonly ToolDefinition[] = [
     description:
       "Read the notes of a range and some tracks, one compact line per note grouped by track and bar, with the chord of each bar: " +
       "id pitch position duration velocity author [deviation], e.g. 'n482 E5 17.1 1/4 v72 @u ~s+0.03'. " +
-      "@u = the user, @ai = an AI. Deviation (~s start, ~d duration, in beats) appears only off the grid: respect it, it is how the user played. " +
-      `Up to about 800 notes per call; the answer says how to ask for the next page. range: ${RANGE_HELP} Read-only.`,
+      "@u = the user, @ai = an AI. Position and duration are the nearest sixteenth or eighth-note triplet; " +
+      "deviation (~s start, ~d duration, in beats) appears only off that grid: it is how the user played, respect it. " +
+      `Up to 800 notes per call; the answer says how to ask for the next page. range: ${RANGE_HELP} Read-only.`,
     inputSchema: {
       range: z.string().describe(RANGE_HELP),
-      tracks: z.array(z.string()).optional().describe("Optional track ids or names; all tracks if omitted"),
+      tracks: TRACKS,
       page: z.number().int().min(1).optional().describe("Page number, from 1"),
     },
     annotations: readOnly,
   },
   {
+    name: "list_instruments",
+    title: "List instruments",
+    description:
+      "List the instruments you can give a track: the built-in palette with each instrument's real range, " +
+      "and the sound banks the user installed. With bank, list that bank's sounds. Use it before add_track or update_track, " +
+      "and to keep each part inside its instrument's range. Read-only.",
+    inputSchema: {
+      bank: z.string().optional().describe("A bank's file name from the list, to see its sounds"),
+    },
+    annotations: readOnly,
+  },
+  {
+    name: "point_to",
+    title: "Point to a place",
+    description:
+      "Point the user to a place in the score with a short reason. A mark appears on their screen; if they click it, the app takes them there. " +
+      "It does NOT change the song and does NOT move the user's view, selection or playback. No intervention needed. " +
+      `range: ${RANGE_HELP} tracks and note_ids are optional.`,
+    inputSchema: {
+      range: z.string().describe("Bars, e.g. '17-24', '17.3-18.2', 'section:Coro'"),
+      tracks: TRACKS,
+      note_ids: NOTE_IDS,
+      reason: z.string().describe("Short reason, in the user's language"),
+    },
+    annotations: { ...readOnly, idempotentHint: false },
+  },
+
+  // -------------------------------------------------------------------------
+  // Interventions (ESQUEMA_MCP.md, 5)
+  {
     name: "begin_intervention",
     title: "Begin an intervention",
     description:
       "Start a change to the song. Every write tool needs the intervention_id this returns. " +
-      "description: what you are about to do, short and in the user's language; the user sees it in the history and on the proposal bar " +
-      "('Reharmonizo el coro, c. 17-20'). base_revision: the revision you read (e.g. 'r1532'); notes the user changed after it are protected. " +
-      "The answer says whether the user reviews proposals or applies changes directly. " +
-      "Close it with end_intervention. An intervention with no calls for 5 minutes closes by itself.",
+      "description: what you are about to do, short and in the user's language; the user sees it while you write and in the history " +
+      "('Contramelodía de chelo, c. 17-20'). base_revision: the revision you read (e.g. 'r1532'); notes the user changed after it are protected. " +
+      "The answer says how your changes reach the song. " +
+      "Close it with end_intervention. An intervention with no calls for 5 minutes closes by itself, and the user can close it too.",
     inputSchema: {
       description: z.string().describe("Short description in the user's language"),
       base_revision: z.string().describe("Revision you read, e.g. 'r1532'"),
@@ -116,37 +164,251 @@ export const TOOLS: readonly ToolDefinition[] = [
     annotations: write,
   },
   {
+    name: "end_intervention",
+    title: "End the intervention",
+    description:
+      "Close an intervention. Everything you wrote in it becomes a single undo step for the user. " +
+      "(When the user reviews proposals, it becomes a proposal they accept or discard in the app.)",
+    inputSchema: {
+      intervention_id: INTERVENTION,
+    },
+    annotations: write,
+  },
+
+  // -------------------------------------------------------------------------
+  // Writing (ESQUEMA_MCP.md, 6). All need an open intervention.
+  {
     name: "add_notes",
     title: "Add notes",
-    description:
-      `Add notes to one track inside an open intervention. The user sees them appear live. Returns their ids. ${NOTE_FORMAT}`,
+    description: `Add notes to one track inside an open intervention. The user sees them appear live. Returns their ids. ${NOTE_FORMAT}`,
     inputSchema: {
-      intervention_id: z.string().describe("From begin_intervention, e.g. 'i12'"),
+      intervention_id: INTERVENTION,
       track: z.string().describe("Track id or name, e.g. 't3' or 'Violines'"),
       notes: z.string().describe("Notes, one per line"),
     },
     annotations: write,
   },
   {
+    name: "edit_notes",
+    title: "Edit notes",
+    description:
+      "Change some fields of existing notes. One note per line: its id, then only what changes, in any order: " +
+      `pitch, position, duration, velocity, deviation. E.g. 'n482 F5' (pitch only), 'n483 v40', 'n484 18.1 1/2'. ` +
+      "Fields you leave out stay exactly as they are, including the played deviation. " +
+      "A new position or duration is taken exactly as written (add ~s / ~d to keep a played feel). " +
+      `To change only pitches, prefer repitch_notes; to shift notes, move_notes. ${PROTECTED}`,
+    inputSchema: {
+      intervention_id: INTERVENTION,
+      changes: z.string().describe("One note per line: id and the fields that change"),
+      base_revision: BASE,
+    },
+    annotations: write,
+  },
+  {
+    name: "repitch_notes",
+    title: "Change pitches only",
+    description:
+      "Change only the pitches of some notes and keep their rhythm, durations, velocities and played deviation untouched. " +
+      "For 'my rhythm, your pitches': the user draws or plays a rhythm and you choose the notes. " +
+      `One note per line: id and new pitch, e.g. 'n482 E5'. ${PITCH_HELP} ${PROTECTED}`,
+    inputSchema: {
+      intervention_id: INTERVENTION,
+      pitches: z.string().describe("One note per line: id and new pitch"),
+      base_revision: BASE,
+    },
+    annotations: write,
+  },
+  {
+    name: "move_notes",
+    title: "Move notes",
+    description:
+      "Shift notes in time and/or pitch. Each note keeps its own played deviation. " +
+      "by_time: '+1 bar', '-2 beats', '+1/8', '+1 bar 2 beats'. by_semitones: chromatic transposition. " +
+      "by_degrees: transposition inside the song's key (scale steps; notes outside the scale keep their alteration). " +
+      `${TARGET_HELP} ${PROTECTED}`,
+    inputSchema: {
+      intervention_id: INTERVENTION,
+      note_ids: NOTE_IDS,
+      range: RANGE,
+      tracks: TRACKS,
+      by_time: z.string().optional().describe("E.g. '+1 bar', '-2 beats', '+1/8'"),
+      by_semitones: z.number().int().optional().describe("E.g. 12 for an octave up"),
+      by_degrees: z.number().int().optional().describe("Scale steps in the song's key, e.g. 2 for a third up"),
+      base_revision: BASE,
+    },
+    annotations: write,
+  },
+  {
+    name: "copy_notes",
+    title: "Copy notes",
+    description:
+      "Copy notes, as they are (pitches, rhythm, velocities and played deviation), to another place and/or track. " +
+      "to: where the copy starts, bar.beat (e.g. '25.1'): a range starts there; with note_ids, the first note lands there. " +
+      `to_track: optional, defaults to each note's own track. ${TARGET_HELP} Returns the new ids.`,
+    inputSchema: {
+      intervention_id: INTERVENTION,
+      note_ids: NOTE_IDS,
+      range: RANGE,
+      tracks: TRACKS,
+      to: z.string().describe("Start of the copy, e.g. '25.1'"),
+      to_track: z.string().optional().describe("Track id or name"),
+    },
+    annotations: write,
+  },
+  {
     name: "delete_notes",
     title: "Delete notes",
-    description:
-      "Delete notes by id inside an open intervention. Notes the user changed after the intervention's base revision are refused, " +
-      "and the answer says what changed.",
+    description: `Delete notes inside an open intervention. ${TARGET_HELP} ${PROTECTED}`,
     inputSchema: {
-      intervention_id: z.string().describe("From begin_intervention, e.g. 'i12'"),
-      note_ids: z.array(z.string()).min(1).describe("Note ids, e.g. ['n482', 'n483']"),
+      intervention_id: INTERVENTION,
+      note_ids: NOTE_IDS,
+      range: RANGE,
+      tracks: TRACKS,
+      base_revision: BASE,
     },
     annotations: destructive,
   },
   {
-    name: "end_intervention",
-    title: "End the intervention",
+    name: "quantize_notes",
+    title: "Quantize notes",
     description:
-      "Close an intervention. If the user reviews proposals it becomes a proposal they accept or discard in the app; " +
-      "if they apply directly, the changes enter the song. Either way it is a single undo step.",
+      "Pull notes towards a grid: an explicit decision, only when the user asks or clearly wants it (it removes the played feel). " +
+      "grid: '1/16', '1/8', '1/8t', '1/4'… strength 0-100 % (100 = exactly on the grid). ends: also quantize where notes end. " +
+      `${TARGET_HELP} ${PROTECTED}`,
     inputSchema: {
-      intervention_id: z.string().describe("From begin_intervention, e.g. 'i12'"),
+      intervention_id: INTERVENTION,
+      note_ids: NOTE_IDS,
+      range: RANGE,
+      tracks: TRACKS,
+      grid: z.string().describe("E.g. '1/16', '1/8t'"),
+      strength: z.number().min(0).max(100).optional().describe("Percent, default 100"),
+      ends: z.boolean().optional().describe("Also quantize the ends (default false)"),
+      base_revision: BASE,
+    },
+    annotations: write,
+  },
+  {
+    name: "shape_velocities",
+    title: "Shape velocities",
+    description:
+      "Set the velocities (loudness) of some notes. Use one of: velocity (all the same); from and to (a crescendo or diminuendo across the notes, in time order); " +
+      "accent with every_beats (add accent to the notes that fall on every Nth beat, from the first beat of each bar). " +
+      `Velocities stay within 1-127. Changing only velocities does not change whose notes they are. ${TARGET_HELP} ${PROTECTED}`,
+    inputSchema: {
+      intervention_id: INTERVENTION,
+      note_ids: NOTE_IDS,
+      range: RANGE,
+      tracks: TRACKS,
+      velocity: z.number().int().min(1).max(127).optional(),
+      from: z.number().int().min(1).max(127).optional(),
+      to: z.number().int().min(1).max(127).optional(),
+      accent: z.number().int().min(-126).max(126).optional().describe("Added to the accented notes, e.g. 12"),
+      every_beats: z.number().int().min(1).optional().describe("E.g. 1 = every beat, 2 = every other beat"),
+      base_revision: BASE,
+    },
+    annotations: write,
+  },
+  {
+    name: "write_pedal",
+    title: "Write sustain pedal",
+    description:
+      "Write the sustain pedal of a track: one span per line, 'start-end' positions where the pedal goes down and comes up " +
+      "(e.g. '17.1-17.4+1/2'; a bare bar means its start: '17-18' = down at 17.1, up at 18.1). " +
+      "The spans you write replace the pedal inside range (by default, from the first to the last span you write). " +
+      "An empty spans text with a range clears the pedal there. Spans cannot overlap.",
+    inputSchema: {
+      intervention_id: INTERVENTION,
+      track: z.string().describe("Track id or name"),
+      spans: z.string().describe("One span per line, e.g. '17.1-17.4+1/2'"),
+      range: z.string().optional().describe(`Where the pedal is replaced. ${RANGE_HELP}`),
+    },
+    annotations: write,
+  },
+  {
+    name: "set_harmony",
+    title: "Write chords",
+    description:
+      "Write or change the chord symbols of the harmony ruler: one per line, position and symbol, e.g. '17 Am', '17.3 F/A', '18 E7sus4'. " +
+      "A bare bar means its first beat. '18 -' clears the chord at that position. " +
+      "clear_range: optional, removes every chord inside it first (to rewrite a passage). " +
+      "The harmony ruler is what read_notes shows at the head of each bar; writing chords does not write notes.",
+    inputSchema: {
+      intervention_id: INTERVENTION,
+      chords: z.string().describe("One chord per line: position and symbol"),
+      clear_range: z.string().optional().describe(RANGE_HELP),
+    },
+    annotations: write,
+  },
+  {
+    name: "set_sections",
+    title: "Write sections",
+    description:
+      "Create, rename, move or remove sections of the form, one per line: 'Coro 17-24' creates; 's3 Coro final 41-48' changes section s3; " +
+      "'s3 -' removes it. Section ids come from get_song_overview.",
+    inputSchema: {
+      intervention_id: INTERVENTION,
+      sections: z.string().describe("One section per line"),
+    },
+    annotations: write,
+  },
+  {
+    name: "set_song_properties",
+    title: "Song properties",
+    description:
+      "Change the title, tempo, meter or key of the song (one of each per song). " +
+      "tempo in BPM (quarter notes per minute); meter like '3/4' or '6/8'; key like 'A minor', 'Eb major', 'F# minor'. " +
+      "Changing the meter keeps every note where it is in time, so bar numbers change: tell the user.",
+    inputSchema: {
+      intervention_id: INTERVENTION,
+      title: z.string().optional(),
+      tempo: z.number().min(10).max(400).optional().describe("BPM"),
+      meter: z.string().optional().describe("E.g. '3/4'"),
+      key: z.string().optional().describe("E.g. 'A minor'"),
+    },
+    annotations: write,
+  },
+  {
+    name: "add_track",
+    title: "Add a track",
+    description:
+      "Create a track. instrument: a name from list_instruments (e.g. 'Cellos', 'Chelos') or a General MIDI program number; " +
+      "sound: optional, a sound from an installed bank as 'bank file / sound name' (from list_instruments with bank). Returns the track id.",
+    inputSchema: {
+      intervention_id: INTERVENTION,
+      name: z.string().describe("Track name as the user will read it, in their language"),
+      instrument: z.string().optional().describe("From list_instruments; piano if omitted"),
+      sound: z.string().optional().describe("'bank file / sound name'"),
+    },
+    annotations: write,
+  },
+  {
+    name: "update_track",
+    title: "Change a track",
+    description:
+      "Change a track's name, instrument, installed sound, volume (0-100) or pan (-100 left to 100 right). " +
+      "sound: 'bank file / sound name', or 'default' to go back to the built-in sound.",
+    inputSchema: {
+      intervention_id: INTERVENTION,
+      track: z.string().describe("Track id or name"),
+      name: z.string().optional(),
+      instrument: z.string().optional(),
+      sound: z.string().optional(),
+      volume: z.number().min(0).max(100).optional(),
+      pan: z.number().min(-100).max(100).optional(),
+    },
+    annotations: write,
+  },
+  {
+    name: "annotate",
+    title: "Add a note in words",
+    description:
+      "Leave a short text annotation over some bars (and optionally some tracks), visible on the form ruler: an idea, a question, a reminder. " +
+      `range: ${RANGE_HELP}`,
+    inputSchema: {
+      intervention_id: INTERVENTION,
+      range: z.string().describe(RANGE_HELP),
+      tracks: TRACKS,
+      text: z.string().describe("In the user's language"),
     },
     annotations: write,
   },
@@ -167,7 +429,25 @@ export const PROMPTS: readonly PromptDefinition[] = [
     description: "Describe what you want to convey and the AI proposes it in notes, explaining its choices.",
     argsSchema: { feeling: z.string().describe("What you want the music to convey") },
     render: ({ feeling }) =>
-      `In Four Hands Studio, read the song first (get_song_overview). I want this to convey: ${feeling ?? ""}. ` +
-      `Tell me what you would write and where, and point to the place with point_to.`,
+      `In Four Hands Studio, read the song and what I am looking at first (get_song_overview, get_user_context). ` +
+      `I want this to convey: ${feeling ?? ""}. Write it in notes inside one intervention and explain your musical choices.`,
+  },
+  {
+    name: "review_my_harmony",
+    title: "Review my harmony",
+    description: "The AI reads the harmony of your selection and talks through options, without writing until you ask.",
+    argsSchema: {},
+    render: () =>
+      "In Four Hands Studio, read my selection (get_user_context, then read_notes with range 'selection') and talk me through its harmony " +
+      "and a few options. Do not write anything until I ask.",
+  },
+  {
+    name: "continue_my_idea",
+    title: "Continue my idea",
+    description: "The AI continues the selected phrase, respecting its style.",
+    argsSchema: {},
+    render: () =>
+      "In Four Hands Studio, read my selection (get_user_context, then read_notes with range 'selection') and continue the phrase " +
+      "right after it, in the same style, inside one intervention. Keep my notes as they are.",
   },
 ];

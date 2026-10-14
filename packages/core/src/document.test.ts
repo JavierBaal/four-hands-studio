@@ -310,3 +310,68 @@ describe("sound banks", () => {
     expect(() => doc.transact({ actor: USER, label: "x" }, (tx) => updateTrack(tx, t, { sound: { bank: "a.sf2", program: 200, bankMSB: 0, name: "x" } }))).toThrow(CommandError);
   });
 });
+
+describe("groups: one AI intervention = one undo step", () => {
+  const note = (start: number) => ({ pitch: 60, start, duration: PPQ, velocity: 80 });
+
+  it("joins the calls of an intervention into one step and one history entry", () => {
+    const { doc, t } = docWithTrack();
+    const before = snapshot(doc);
+    const meta = { actor: claude, label: "Contramelodía del chelo", group: "i1" };
+    doc.transact(meta, (tx) => addNotes(tx, t, [note(0)]));
+    expect(doc.lastChangeMerged).toBe(false);
+    doc.transact(meta, (tx) => addNotes(tx, t, [note(PPQ)]));
+    expect(doc.lastChangeMerged).toBe(true);
+    const [, second] = doc.transact(meta, (tx) => addNotes(tx, t, [note(2 * PPQ), note(3 * PPQ)]));
+    doc.transact(meta, (tx) => deleteNotes(tx, [second!]));
+    // Every call is live: its own revision, so the window sees it at once.
+    expect(doc.song.revision).toBe(5);
+    expect(Object.keys(doc.song.notes)).toHaveLength(3);
+    expect(doc.history).toHaveLength(2);
+    expect(doc.history.at(-1)).toMatchObject({ revision: 5, kind: "edit", label: "Contramelodía del chelo", actor: claude });
+    doc.undo(USER);
+    expect(snapshot(doc)).toEqual(before);
+    doc.redo(USER);
+    expect(Object.keys(doc.song.notes)).toHaveLength(3);
+  });
+
+  it("starts a new step when the user edits in the middle, so linear undo stays correct", () => {
+    const { doc, t } = docWithTrack();
+    const meta = { actor: claude, label: "Bajo del verso", group: "i1" };
+    const [a] = doc.transact(meta, (tx) => addNotes(tx, t, [note(0)]));
+    doc.transact({ actor: USER, label: "moviste 1 nota" }, (tx) => moveNotes(tx, [a!], { ticks: PPQ }));
+    doc.transact(meta, (tx) => addNotes(tx, t, [note(2 * PPQ)]));
+    expect(doc.lastChangeMerged).toBe(false);
+    expect(doc.history.map((h) => h.label)).toEqual(["Nueva pista", "Bajo del verso", "moviste 1 nota", "Bajo del verso"]);
+    doc.undo(USER);
+    doc.undo(USER);
+    expect(doc.song.notes[a!]?.start).toBe(0);
+    doc.undo(USER);
+    expect(Object.keys(doc.song.notes)).toHaveLength(0);
+  });
+
+  it("never joins across an undo, a redo or a closed group", () => {
+    const { doc, t } = docWithTrack();
+    const meta = { actor: claude, label: "Melodía", group: "i1" };
+    doc.transact(meta, (tx) => addNotes(tx, t, [note(0)]));
+    doc.undo(USER);
+    doc.transact(meta, (tx) => addNotes(tx, t, [note(PPQ)]));
+    expect(doc.lastChangeMerged).toBe(false);
+    doc.closeGroup("i1");
+    doc.transact(meta, (tx) => addNotes(tx, t, [note(2 * PPQ)]));
+    expect(doc.lastChangeMerged).toBe(false);
+    doc.transact({ ...meta, group: "i2" }, (tx) => addNotes(tx, t, [note(3 * PPQ)]));
+    expect(doc.lastChangeMerged).toBe(false);
+  });
+
+  it("a failed call leaves the step as it was", () => {
+    const { doc, t } = docWithTrack();
+    const meta = { actor: claude, label: "Melodía", group: "i1" };
+    doc.transact(meta, (tx) => addNotes(tx, t, [note(0)]));
+    expect(() => doc.transact(meta, (tx) => addNotes(tx, t, [note(PPQ), { ...note(0), pitch: 200 }]))).toThrow(CommandError);
+    doc.transact(meta, (tx) => addNotes(tx, t, [note(2 * PPQ)]));
+    expect(doc.lastChangeMerged).toBe(true);
+    doc.undo(USER);
+    expect(Object.keys(doc.song.notes)).toHaveLength(0);
+  });
+});

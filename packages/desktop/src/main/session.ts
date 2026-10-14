@@ -57,6 +57,7 @@ export class SongSession {
   private lastBackup = new Map<string, number>();
   private historySent = 0;
   private unsubscribe: () => void = () => {};
+  private readonly patchListeners = new Set<(message: PatchMessage) => void>();
   private readonly now: () => number;
 
   private constructor(
@@ -123,11 +124,19 @@ export class SongSession {
 
   private attach(): void {
     this.historySent = this.doc.history.length;
+    let revisionSent = this.doc.song.revision;
     this.unsubscribe = this.doc.subscribe((patch) => {
-      const history = this.doc.history.slice(this.historySent);
+      let history = this.doc.history.slice(this.historySent);
       this.historySent = this.doc.history.length;
+      // An AI intervention that grows keeps one history entry: it is replaced, not added.
+      const replacesLast = history.length === 0 && patch.revision > revisionSent && this.doc.lastChangeMerged;
+      if (replacesLast) history = this.doc.history.slice(-1);
+      revisionSent = patch.revision;
       if (patch.ops.some((op) => op.path[0] !== "context") || history.length > 0) this.markDirty();
-      this.options.onPatch?.({ patch, history, ...this.undoState() });
+      const message: PatchMessage = { patch, history, ...this.undoState() };
+      if (replacesLast) message.replacesLast = true;
+      this.options.onPatch?.(message);
+      for (const listener of this.patchListeners) listener(message);
     });
   }
 
@@ -136,6 +145,17 @@ export class SongSession {
 
   get song(): Song {
     return this.doc.song;
+  }
+
+  /** The open song's document: the AI desk runs its transactions here (same command layer as the window). */
+  get document(): SongDocument {
+    return this.doc;
+  }
+
+  /** Every change, after the window has been told (the AI desk listens to protect the user's edits). */
+  onPatch(listener: (message: PatchMessage) => void): () => void {
+    this.patchListeners.add(listener);
+    return () => this.patchListeners.delete(listener);
   }
 
   get history(): readonly HistoryEntry[] {

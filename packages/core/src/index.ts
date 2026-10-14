@@ -6,3 +6,4 @@ export * from "./midi.js";
 export * from "./file.js";
 export * from "./compact.js";
 export * from "./command-data.js";
+export * from "./notation.js";

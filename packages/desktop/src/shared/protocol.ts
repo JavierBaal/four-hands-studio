@@ -46,6 +46,8 @@ export interface PatchMessage extends UndoState {
   patch: Patch;
   /** History entries added by this change. */
   history: HistoryEntry[];
+  /** The only entry in `history` replaces the last one (an AI intervention that keeps growing). */
+  replacesLast?: boolean;
 }
 
 export type Request =
@@ -55,6 +57,58 @@ export type Request =
   | { type: "setContext"; changes: Partial<SharedContext> };
 
 export type Reply = { ok: true; results: CommandResult[] } | { ok: false; error: string };
+
+// ---------------------------------------------------------------------------
+// The AI (H3): what the window shows of it (DIRECCION_ARTISTICA.md, 11; capture 07)
+
+/** An AI connected through a bridge. */
+export interface AiClientInfo {
+  /** Name its MCP client sends (`claude-ai`, `local-agent-mode-…`): what the history signs with. */
+  client: string;
+  /** Name the user reads: "Claude". */
+  name: string;
+}
+
+/** An intervention in progress: the AI is writing. Positions in ticks, for the window only. */
+export interface AiWriting {
+  id: string;
+  name: string;
+  description: string;
+  /** Notes written so far (added, changed or removed). */
+  notes: number;
+  trackIds: string[];
+  start: number | null;
+  end: number | null;
+}
+
+/** A place the AI points the user to (point_to). It never moves the view. */
+export interface AiMark {
+  id: string;
+  name: string;
+  start: number;
+  end: number;
+  trackIds: string[];
+  noteIds: string[];
+  reason: string;
+  at: number;
+}
+
+export interface AiState {
+  clients: AiClientInfo[];
+  /** An AI read the song in the last seconds. */
+  reading: string | null;
+  writing: AiWriting[];
+  mark: AiMark | null;
+}
+
+export const NO_AI: AiState = { clients: [], reading: null, writing: [], mark: null };
+
+/** What the window tells the main process about what the user sees, for get_user_context. */
+export interface ViewInfo {
+  noteNames: "solfege" | "letters";
+  authorship: boolean;
+  visible: { start: number; end: number } | null;
+}
 
 /** IPC channel names. */
 export const CH = {
@@ -75,6 +129,11 @@ export const CH = {
   soundsFolder: "fh:sounds-folder",
   soundsImport: "fh:sounds-import",
   openLink: "fh:open-link",
+  ai: "fh:ai",
+  aiState: "fh:ai-state",
+  aiClose: "fh:ai-close",
+  aiMarkSeen: "fh:ai-mark-seen",
+  viewInfo: "fh:view-info",
 } as const;
 
 /** Menu commands handled by the window (edit and view actions live there). */
