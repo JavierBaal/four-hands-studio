@@ -7,20 +7,33 @@ import { useApp } from "../context.js";
 import type { Editor, MenuItem, QuantizeSettings } from "../editor.js";
 import type { GridValue } from "../roll/geometry.js";
 
-function useFit(x: number, y: number): [React.RefObject<HTMLDivElement>, { left: number; top: number }] {
+/**
+ * Keeps a floating card inside the window: it moves up or left if it would leave it, and a list
+ * taller than the window scrolls (Fran, 14/10/2026: the bank lists went off the bottom). Fits again
+ * when its content changes (the palette and a bank's list open at the same point) and on resize.
+ */
+function useFit(x: number, y: number, content?: unknown): [React.RefObject<HTMLDivElement>, { left: number; top: number; maxHeight: number }] {
   const ref = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState({ left: x, top: y });
+  const [pos, setPos] = useState({ left: x, top: y, maxHeight: Math.max(120, innerHeight - 16) });
   useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const r = el.getBoundingClientRect();
-    setPos({ left: Math.max(8, Math.min(x, innerWidth - r.width - 8)), top: Math.max(8, Math.min(y, innerHeight - r.height - 8)) });
-  }, [x, y]);
+    const fit = () => {
+      const el = ref.current;
+      if (!el) return;
+      const maxHeight = Math.max(120, innerHeight - 16);
+      const r = el.getBoundingClientRect();
+      const height = Math.min(el.scrollHeight + (r.height - el.clientHeight), maxHeight);
+      setPos({ left: Math.max(8, Math.min(x, innerWidth - r.width - 8)), top: Math.max(8, Math.min(y, innerHeight - height - 8)), maxHeight });
+    };
+    ref.current?.scrollTo?.({ top: 0 });
+    fit();
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
+  }, [x, y, content]);
   return [ref, pos];
 }
 
 export function ContextMenu({ x, y, items, onClose }: { x: number; y: number; items: MenuItem[]; onClose(): void }) {
-  const [ref, pos] = useFit(x, y);
+  const [ref, pos] = useFit(x, y, items);
   useEffect(() => {
     const down = (e: PointerEvent) => {
       if (!ref.current?.contains(e.target as Node)) onClose();

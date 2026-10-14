@@ -537,6 +537,34 @@ await page.waitForTimeout(400);
 const end = await page.evaluate(() => window.fhTest.view.state.scrollY);
 check("wheel glides", mid > sy0 && mid < sy0 + 200 && Math.abs(end - (sy0 + 200)) < 0.5, JSON.stringify([sy0, mid, end]));
 
+// 27. A list taller than the window scrolls and stays inside it, also when a bank's list replaces the
+// palette at the same point (Fran, 14/10/2026: the last presets were out of reach).
+await page.setViewportSize({ width: 1440, height: 520 });
+await page.waitForTimeout(200);
+await page.locator(".rsubb").click();
+const inside = async () => {
+  const box = await page.locator(".menu").boundingBox();
+  return box.y >= 0 && box.y + box.height <= 520;
+};
+check("palette fits a short window", await inside(), JSON.stringify(await page.locator(".menu").boundingBox()));
+await page.locator(".menu [role=menuitem]", { hasText: "Sonatina Symphonic Orchestra" }).scrollIntoViewIfNeeded();
+await page.locator(".menu [role=menuitem]", { hasText: "Sonatina Symphonic Orchestra" }).click();
+check("bank list fits the window too", await inside(), JSON.stringify(await page.locator(".menu").boundingBox()));
+const lastPreset = page.locator(".menu [role=menuitem]").last();
+await lastPreset.scrollIntoViewIfNeeded();
+await lastPreset.click();
+await settle();
+check("the last preset can be reached", (await song()).tracks[(await song()).context.activeTrackId].sound?.name === "Cello Section Sustai", JSON.stringify((await song()).tracks[(await song()).context.activeTrackId].sound));
+// The palette opened from a track's menu (a short list) used to keep the short list's place and
+// run off the bottom.
+await page.keyboard.press("Escape");
+const hdr = await page.locator(".thdr").first().boundingBox();
+await page.mouse.click(hdr.x + 40, hdr.y + 10, { button: "right" });
+await page.locator(".menu [role=menuitem]", { hasText: "Instrumento…" }).click();
+check("palette from the track menu fits the window", await inside(), JSON.stringify(await page.locator(".menu").boundingBox()));
+await page.keyboard.press("Escape");
+await page.setViewportSize({ width: 1440, height: 900 });
+
 console.log(`${passed} passed, ${failures.length} failed`);
 for (const f of failures) console.log("FAIL", f);
 if (errors.length) console.log("page errors", errors);
