@@ -2,7 +2,7 @@
  * Canvas drawing of the piano roll, the keyboard, the velocity lane and the arrangement lanes
  * (ARQUITECTURA.md, 8), with the colours and sizes of DIRECCION_ARTISTICA.md (2.9, 4, 5).
  */
-import { type Meter, type Note, type Song, type Track, barTicks, beatTicks, songEnd } from "@fourhands/core";
+import { type Meter, type Note, type Song, type Track, barAt, barStart, barTicks, beatTicks, orderedSections, songEnd } from "@fourhands/core";
 import { type NoteNames, isBlack, noteName } from "../music.js";
 import { FONT, SIZE, T, velocityOpacity } from "../theme.js";
 import { ROW, type RollView, endTick, pitchToY, tickToX } from "./geometry.js";
@@ -304,6 +304,8 @@ export interface ArrangementLayout {
   laneHeight: number;
   /** Ticks shown across the width. */
   totalTicks: number;
+  /** Tinted blocks under the notes (LOOK.blocks). */
+  blocks?: boolean;
   activeTrackId: string | null;
   viewport: { start: number; end: number } | null;
   colors: ReadonlyMap<string, string>;
@@ -334,7 +336,23 @@ export function drawArrangement(s: Surface, song: Song, tracks: readonly Track[]
       hi = Math.max(hi, n.pitch);
     }
     const range = Math.max(hi - lo, 1);
-    ctx.fillStyle = layout.colors.get(track.id) ?? T.text2;
+    const color = layout.colors.get(track.id) ?? T.text2;
+    if (layout.blocks) {
+      // Colour as a surface (comparison of 15/10/2026): a tinted block for each section where the
+      // track plays, or one block from its first to its last bar when the song has no sections.
+      for (const [from, to] of trackBlocks(song, notes)) {
+        const x0 = from * px + 1;
+        const w = Math.max(2, (to - from) * px - 2);
+        ctx.globalAlpha = 0.16;
+        ctx.fillStyle = color;
+        roundRect(ctx, x0, y0 + 2, w, layout.laneHeight - 5, 3);
+        ctx.fill();
+        ctx.globalAlpha = 0.7;
+        ctx.fillRect(x0, y0 + 2, 2, layout.laneHeight - 5);
+        ctx.globalAlpha = 1;
+      }
+    }
+    ctx.fillStyle = color;
     const inner = layout.laneHeight - 1;
     for (const n of notes) {
       const y = y0 + inner * (0.12 + 0.7 * (1 - (n.pitch - lo) / range));
@@ -353,5 +371,20 @@ export function drawArrangement(s: Surface, song: Song, tracks: readonly Track[]
     roundRect(ctx, x0 + 0.75, 0.75, x1 - x0 - 1.5, h - 1.5, 3);
     ctx.stroke();
   }
-  void song;
+}
+
+/** Tick ranges of the arrangement blocks of a track: the sections where it has notes. */
+function trackBlocks(song: Song, notes: readonly Note[]): Array<[number, number]> {
+  const sections = orderedSections(song);
+  const first = barStart(song.meter, barAt(song.meter, notes[0]!.start));
+  const lastNote = notes.reduce((m, n) => Math.max(m, n.start + n.duration), 0);
+  const last = barStart(song.meter, barAt(song.meter, Math.max(0, lastNote - 1)) + 1);
+  if (sections.length === 0) return [[first, last]];
+  const out: Array<[number, number]> = [];
+  for (const sec of sections) {
+    const a = barStart(song.meter, sec.startBar);
+    const b = barStart(song.meter, sec.endBar + 1);
+    if (notes.some((n) => n.start < b && n.start + n.duration > a)) out.push([a, b]);
+  }
+  return out;
 }

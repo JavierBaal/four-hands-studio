@@ -326,7 +326,7 @@ export class SongActions {
       { label: `${this.t("trackMenuColor")} · ${track.name}`, header: true },
     ];
     TRACK_PALETTE.forEach((c, i) =>
-      items.push({ label: this.lang === "es" ? c.es : c.en, swatch: c.hex, active: trackColorIndex(track.color) === i, run: () => (this.editor.closeMenus(), this.setColor(id, i)) }),
+      items.push({ label: this.lang === "es" ? c.es : c.en, swatch: trackColor(i), active: trackColorIndex(track.color) === i, run: () => (this.editor.closeMenus(), this.setColor(id, i)) }),
     );
     this.editor.openMenu(x, y, items);
   }

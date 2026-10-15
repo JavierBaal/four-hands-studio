@@ -84,8 +84,15 @@ export function trackColorIndex(index: number): number {
   return ((Math.trunc(index) % n) + n) % n;
 }
 
+/**
+ * Look being compared with Fran (15/10/2026, harness only for now): `vivid` uses the more
+ * saturated palette; `blocks` tints the arrangement lanes and draws a colour bar in each header.
+ */
+export const LOOK = { vivid: false, blocks: false };
+
 export function trackColor(index: number): string {
-  return TRACK_PALETTE[trackColorIndex(index)]!.hex;
+  const c = TRACK_PALETTE[trackColorIndex(index)]!;
+  return LOOK.vivid ? c.vivid : c.hex;
 }
 
 /** Section 4: sizes, in CSS pixels. */

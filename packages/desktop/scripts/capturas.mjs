@@ -30,6 +30,11 @@ export const SHOTS = [
   { name: "07_ia_conectada_880", w: 880, h: 800, q: `?song=boceto&ai=conectada&view=${sketchView(880 - 48 - 56, 8)}` },
   { name: "07_ia_leyendo", q: `?song=boceto&ai=leyendo&view=${sketchView(1440 - 288 - 72, 12)}` },
   // H3.2: mix in the track headers, track colours, notes in the track colour, label over a note.
+  // Comparison of 15/10/2026: palette and colour surface (A: blocks, B: vivid, C: both).
+  ...[["actual", ""], ["A_bloques", "bloques"], ["B_viva", "viva"], ["C_viva_bloques", "viva,bloques"]].flatMap(([n, look]) => [
+    { name: `color_${n}`, q: `?song=boceto&look=${look}&view=${sketchView(1440 - 288 - 72, 12)}` },
+    { name: `color_${n}_sin_autoria`, q: `?song=boceto&look=${look}&view=${view({ authorship: false, startTick: 16 * BAR, pxPerTick: (1440 - 288 - 72) / 12 / BAR, scrollY: (127 - 86) * 15 })}` },
+  ]),
   { name: "h32_autoria_apagada", q: `?song=boceto&view=${view({ authorship: false, startTick: 16 * BAR, pxPerTick: (1440 - 288 - 72) / 12 / BAR, scrollY: (127 - 86) * 15 })}` },
   { name: "h32_etiqueta_nota", q: `?song=boceto&view=${sketchView(1440 - 288 - 72, 12)}`, act: async (page) => {
     await page.mouse.move(385, 620);

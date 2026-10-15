@@ -8,12 +8,16 @@ import { type Bridge, memoryBridge, windowBridge } from "./bridge.js";
 import { Ctx, activeTrack } from "./context.js";
 import { harnessAi, harnessSong } from "./harness.js";
 import { Replica } from "./replica.js";
-import { installTheme } from "./theme.js";
+import { installTheme, LOOK } from "./theme.js";
 import { ViewStore, initialView, type ViewState } from "./view.js";
 
 async function start(): Promise<void> {
   installTheme();
   const params = new URLSearchParams(location.search);
+  // ?look=viva,bloques: the looks being compared (15/10/2026), see LOOK in theme.ts.
+  const look = (params.get("look") ?? "").split(",");
+  LOOK.vivid = look.includes("viva");
+  LOOK.blocks = look.includes("bloques");
   let bridge: Bridge | null = windowBridge();
   const harness = !bridge;
   if (!bridge) {

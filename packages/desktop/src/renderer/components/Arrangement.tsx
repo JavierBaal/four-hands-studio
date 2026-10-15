@@ -11,7 +11,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { barStart, orderedSections, orderedTracks } from "@fourhands/core";
 import { activeTrack, notesByTrack, trackColors, useActions, useApp, useSize, useSong } from "../context.js";
 import { arrangementTotal, drawArrangement, prepare } from "../roll/draw.js";
-import { SIZE } from "../theme.js";
+import { LOOK, SIZE } from "../theme.js";
 import { InlineEdit } from "./InlineEdit.js";
 import { Fader } from "./Fader.js";
 import { formatDb, formatPan } from "../../shared/mix.js";
@@ -61,6 +61,7 @@ export function Arrangement({ compact, visible, onSelectTrack, onPan, onToggle }
       activeTrackId: active?.id ?? null,
       viewport: visible,
       colors,
+      blocks: LOOK.blocks,
     });
   });
 
@@ -119,7 +120,7 @@ export function Arrangement({ compact, visible, onSelectTrack, onPan, onToggle }
   const dragFrom = drag ? tracks.findIndex((tr) => tr.id === drag.id) : -1;
 
   return (
-    <section className="arr" aria-label={t("arrangement")}>
+    <section className={LOOK.blocks ? "arr blocks" : "arr"} aria-label={t("arrangement")}>
       <div className="thdrs">
         <div className="strip" />
         {tracks.map((tr, i) => {
