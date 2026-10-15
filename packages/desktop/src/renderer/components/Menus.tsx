@@ -52,7 +52,10 @@ export function ContextMenu({ x, y, items, onClose }: { x: number; y: number; it
           </div>
         ) : (
           <button key={i} role="menuitem" className={it.active ? "mitem on" : "mitem"} disabled={it.disabled} onClick={it.run}>
-            <span>{it.label}</span>
+            <span className={it.swatch ? "mlabel" : undefined}>
+              {it.swatch && <span className="mswatch" style={{ background: it.swatch }} />}
+              {it.label}
+            </span>
             {it.shortcut && <span className="mkey">{it.shortcut}</span>}
           </button>
         ),

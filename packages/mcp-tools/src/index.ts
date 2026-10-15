@@ -6,7 +6,8 @@
  * the AI talks to the user in the user's language.
  *
  * Milestone H3 (the AI's hand): reading, interventions, every write tool of ESQUEMA_MCP.md, 6, and
- * point_to. H3.1 (15/10/2026): the mix (set_mix, mute), remove_track and move_track. Still to come in H4: summarize, analyze, get_changes_since, get_history, get_proposals
+ * point_to. H3.1 (15/10/2026): the mix (set_mix, mute), remove_track and move_track. H3.2: track colours (color in
+ * add_track and update_track). Still to come in H4: summarize, analyze, get_changes_since, get_history, get_proposals
  * and withdraw_proposal; list_skills and load_skill arrive with the built-in skills.
  *
  * No tool composes (ESQUEMA_MCP.md, 8): they read, write, and transform mechanically.
@@ -14,7 +15,14 @@
 import { z } from "zod";
 
 /** Bumped whenever a tool, its parameters or its meaning changes. The app refuses other bridges. */
-export const TOOLS_VERSION = 4;
+export const TOOLS_VERSION = 5;
+
+/**
+ * Track colours by name (H3.2). The app's palette (desktop/src/shared/track-colors.ts) has the same
+ * names in the same order; a test keeps them equal. Spanish names are accepted too.
+ */
+export const TRACK_COLOR_NAMES = ["lavender", "sand", "sage", "clay", "slate", "stone", "plum", "moss", "water", "heather"] as const;
+const COLOR_HELP = `Track colour, one of: ${TRACK_COLOR_NAMES.join(", ")}. Muted tones; amber and blue are kept for who wrote each note`;
 
 export const SERVER_INSTRUCTIONS = `You are composing together with the user inside Four Hands Studio, a shared MIDI score.
 The user sees every change you make, live.
@@ -373,12 +381,13 @@ export const TOOLS: readonly ToolDefinition[] = [
     title: "Add a track",
     description:
       "Create a track. instrument: a name from list_instruments (e.g. 'Cellos', 'Chelos') or a General MIDI program number; " +
-      "sound: optional, a sound from an installed bank as 'bank file / sound name' (from list_instruments with bank). Returns the track id.",
+      "sound: optional, a sound from an installed bank as 'bank file / sound name' (from list_instruments with bank). color: optional; by default the first colour no other track uses. Returns the track id.",
     inputSchema: {
       intervention_id: INTERVENTION,
       name: z.string().describe("Track name as the user will read it, in their language"),
       instrument: z.string().optional().describe("From list_instruments; piano if omitted"),
       sound: z.string().optional().describe("'bank file / sound name'"),
+      color: z.string().optional().describe(COLOR_HELP),
     },
     annotations: write,
   },
@@ -386,7 +395,7 @@ export const TOOLS: readonly ToolDefinition[] = [
     name: "update_track",
     title: "Change a track",
     description:
-      "Change a track's name, instrument, installed sound, volume (0-100), pan (-100 left to 100 right) or mute. " +
+      "Change a track's name, instrument, installed sound, volume (0-100), pan (-100 left to 100 right), mute or colour. " +
       "sound: 'bank file / sound name', or 'default' to go back to the built-in sound. " +
       "To balance several tracks at once, use set_mix. The current mix is in get_song_overview.",
     inputSchema: {
@@ -398,6 +407,7 @@ export const TOOLS: readonly ToolDefinition[] = [
       volume: z.number().min(0).max(100).optional(),
       pan: z.number().min(-100).max(100).optional(),
       mute: z.boolean().optional().describe("Silence the whole track (an arrangement decision)"),
+      color: z.string().optional().describe(COLOR_HELP),
     },
     annotations: write,
   },

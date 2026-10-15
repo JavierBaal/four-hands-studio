@@ -127,6 +127,19 @@ await win.waitForTimeout(300);
 const unmixed = await win.evaluate(() => window.fh.snapshot().then((s) => Object.values(s.song.tracks).map((t) => `${t.name}:${Math.round(t.volume * 100)}`)));
 check("Ctrl+Z puts the mix back in one step", unmixed.includes("Organo:80") && unmixed.includes("Violines:80"), unmixed);
 
+// --- H3.2: track colours, from Claude
+const colorRead = await call("get_song_overview");
+check("the overview names the track colours", /color lavender/.test(colorRead.text), colorRead.text.slice(0, 600));
+iv = await call("begin_intervention", { description: "Colores de pista", base_revision: `r${/r(\d+)/.exec(colorRead.text)[1]}` });
+const iv4 = /Intervention (i\d+)/.exec(iv.text)?.[1];
+const recolor = await call("update_track", { intervention_id: iv4, track: "Organo", color: "musgo" });
+await call("end_intervention", { intervention_id: iv4 });
+await win.waitForTimeout(300);
+const chipColor = await win.locator(".thdr .tchip").first().evaluate((el) => getComputedStyle(el).backgroundColor);
+check("update_track colours a track and the header shows it", recolor.ok && /color moss/.test(recolor.text) && chipColor === "rgb(131, 142, 108)", `${recolor.text} ${chipColor}`);
+await win.keyboard.press("Control+z");
+await win.waitForTimeout(300);
+
 // --- Pointing and protection
 const viewBefore = await win.locator(".pgrid").getAttribute("aria-label");
 const point = await call("point_to", { range: "55", tracks: ["Contramelodia (cello)"], reason: "aquí entra el chelo" });
@@ -156,7 +169,7 @@ check("bridge.json removed on quit", !fs.existsSync(configFile));
 const logFile = path.join(home, ".config", "Four Hands Studio", "registro-app.jsonl");
 const log = fs.readFileSync(logFile, "utf8");
 const calls = log.split("\n").filter((l) => l.includes('"type":"ai_call"')).map((l) => JSON.parse(l));
-check("every call is in the app's log", calls.length === 16, calls.length);
+check("every call is in the app's log", calls.length === 20, calls.length);
 check("calls answer fast (< 200 ms in the app)", calls.every((c) => c.ms < 200), JSON.stringify(calls.map((c) => c.ms)));
 check("no page errors", errors.length === 0, errors.join("\n"));
 fs.copyFileSync(logFile, path.join(shots, "registro-app.jsonl"));

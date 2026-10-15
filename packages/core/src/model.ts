@@ -62,6 +62,9 @@ export interface PassthroughEvent {
   event: { type: string; [field: string]: unknown };
 }
 
+/** Number of colours in the track palette (the names and tones live in the app). */
+export const TRACK_COLOR_COUNT = 10;
+
 export interface Track {
   id: string;
   name: string;
@@ -75,7 +78,7 @@ export interface Track {
   pan: number;
   mute: boolean;
   solo: boolean;
-  /** Index in the track palette (DIRECCION_ARTISTICA.md). */
+  /** Index in the track palette (DIRECCION_ARTISTICA.md, 2.7), 0 to TRACK_COLOR_COUNT - 1. */
   color: number;
   /** Sustain pedal. */
   pedal: PedalSpan[];

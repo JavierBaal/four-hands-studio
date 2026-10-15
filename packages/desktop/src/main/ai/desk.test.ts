@@ -6,6 +6,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { AiState, SoundBankInfo } from "../../shared/protocol.js";
 import { SongSession } from "../session.js";
 import { AiDesk, type ToolReply } from "./desk.js";
+import { TRACK_COLOR_NAMES } from "@fourhands/mcp-tools";
+import { TRACK_PALETTE } from "../../shared/track-colors.js";
 
 const DILATACION = path.resolve(__dirname, "../../../../core/test-data/Dilatacion.mid");
 
@@ -473,5 +475,28 @@ describe("H3.1: the mix and the track list", () => {
     session.run("moviste 1 nota", [{ type: "moveNotes", ids: [note.id], ticks: PPQ }]);
     expect(fail("remove_track", { intervention_id: id, track: "t6" })).toMatch(new RegExp(`^${note.id} has changed since`));
     expect(session.song.tracks.t6).toBeDefined();
+  });
+});
+
+describe("H3.2: track colours", () => {
+  it("the overview names each track's colour", () => {
+    expect(ok("get_song_overview")).toMatch(/t1 .*mix vol 80 pan C · color lavender/);
+  });
+
+  it("add_track and update_track take a colour by name, in English or Spanish", () => {
+    const id = begin("Colores");
+    expect(ok("add_track", { intervention_id: id, name: "Arpa", instrument: "46", color: "moss" })).toMatch(/color moss/);
+    const harp = orderedTracks(session.song).at(-1)!;
+    expect(harp.color).toBe(7);
+    expect(ok("update_track", { intervention_id: id, track: "t1", color: "Ciruela" })).toMatch(/color plum/);
+    expect(session.song.tracks.t1!.color).toBe(6);
+    expect(fail("update_track", { intervention_id: id, track: "t1", color: "rojo" })).toMatch(/There is no colour 'rojo'. Colours: lavender, sand/);
+    ok("end_intervention", { intervention_id: id });
+    session.handle({ type: "undo" });
+    expect(session.song.tracks.t1!.color).toBe(0);
+  });
+
+  it("the tool descriptions list the same colour names as the app's palette", () => {
+    expect([...TRACK_COLOR_NAMES]).toEqual(TRACK_PALETTE.map((c) => c.id));
   });
 });

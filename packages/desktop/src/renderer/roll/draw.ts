@@ -78,6 +78,12 @@ export interface NotesLayer {
   ghosts: ReadonlyArray<{ note: Note; color: string }>;
   selected: ReadonlySet<string>;
   authorship: boolean;
+  /**
+   * Colour of the notes with the authorship layer off: the track's own colour (H3.2, Fran,
+   * 15/10/2026; before, the neutral `--author-off`). Ghosts stay thin and faint, so they still read
+   * as the other tracks.
+   */
+  offColor?: string | undefined;
   /** Pitch classes to highlight, or null for the piano's white and black rows. */
   scale: ReadonlySet<number> | null;
   names: NoteNames;
@@ -119,8 +125,8 @@ export function drawGrid(s: Surface, v: RollView, meter: Meter, scale: ReadonlyS
   }
 }
 
-function noteFill(note: Note, authorship: boolean): string {
-  if (!authorship) return T.authorOff;
+function noteFill(note: Note, authorship: boolean, offColor: string = T.authorOff): string {
+  if (!authorship) return offColor;
   return note.shapedBy.by === "ai" ? T.authorAi : T.authorUser;
 }
 
@@ -171,7 +177,7 @@ export function drawNotes(s: Surface, v: RollView, layer: NotesLayer): void {
       const x = tickToX(v, note.start);
       const w = Math.max(3, note.duration * v.pxPerTick);
       ctx.globalAlpha = 0.55;
-      ctx.strokeStyle = noteFill(note, layer.authorship);
+      ctx.strokeStyle = noteFill(note, layer.authorship, layer.offColor);
       roundRect(ctx, x + 0.5, y + 1.5, w - 1, SIZE.note - 1, 3);
       ctx.stroke();
     }
@@ -187,7 +193,7 @@ export function drawNotes(s: Surface, v: RollView, layer: NotesLayer): void {
     const w = Math.max(3, note.duration * v.pxPerTick + (d ? d.right - d.left : 0));
     const fade = layer.fresh?.get(note.id);
     ctx.globalAlpha = velocityOpacity(note.velocity) * (fade === undefined ? 1 : fade);
-    ctx.fillStyle = noteFill(note, layer.authorship);
+    ctx.fillStyle = noteFill(note, layer.authorship, layer.offColor);
     roundRect(ctx, x, y + 1, w, SIZE.note, 3);
     ctx.fill();
     ctx.globalAlpha = 1;
@@ -235,7 +241,7 @@ export function drawNotes(s: Surface, v: RollView, layer: NotesLayer): void {
 // ---------------------------------------------------------------------------
 // Velocity lane
 
-export function drawVelocity(s: Surface, v: RollView, notes: readonly Note[], selected: ReadonlySet<string>, authorship: boolean): void {
+export function drawVelocity(s: Surface, v: RollView, notes: readonly Note[], selected: ReadonlySet<string>, authorship: boolean, offColor?: string): void {
   const { ctx, height } = s;
   const start = v.startTick;
   const end = endTick(v);
@@ -243,7 +249,7 @@ export function drawVelocity(s: Surface, v: RollView, notes: readonly Note[], se
     if (note.start < start - 1 || note.start > end) continue;
     const h = Math.round((note.velocity / 127) * SIZE.velocityMax);
     const x = tickToX(v, note.start);
-    ctx.fillStyle = noteFill(note, authorship);
+    ctx.fillStyle = noteFill(note, authorship, offColor);
     ctx.globalAlpha = selected.size === 0 || selected.has(note.id) ? 1 : 0.45;
     roundRect(ctx, x - SIZE.velocityBar / 2, height - h, SIZE.velocityBar, h, 2);
     ctx.fill();

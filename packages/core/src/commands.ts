@@ -19,6 +19,7 @@ import {
   type Track,
   type TrackSound,
   sameAuthorship,
+  TRACK_COLOR_COUNT,
 } from "./model.js";
 
 // ---------------------------------------------------------------------------
@@ -98,6 +99,21 @@ export interface TrackSpec {
   percussion?: boolean;
   /** A preset of another sound bank (see Track.sound). */
   sound?: TrackSound;
+  /** Palette index; by default the first colour no other track uses. */
+  color?: number;
+}
+
+function checkColor(color: number): void {
+  check(isInt(color) && color >= 0 && color < TRACK_COLOR_COUNT, `Invalid colour: ${color}`);
+}
+
+/** The first palette colour no track uses; when all are taken, the least used one. */
+function freeColor(tx: Transaction): number {
+  const count = new Array<number>(TRACK_COLOR_COUNT).fill(0);
+  for (const t of Object.values(tx.song.tracks)) if (t.color >= 0 && t.color < TRACK_COLOR_COUNT) count[t.color]!++;
+  let best = 0;
+  for (let i = 1; i < TRACK_COLOR_COUNT; i++) if (count[i]! < count[best]!) best = i;
+  return best;
 }
 
 function freeChannel(tx: Transaction): number {
@@ -112,6 +128,7 @@ export function addTrack(tx: Transaction, spec: TrackSpec): string {
   check(isInt(channel) && channel >= 0 && channel <= 15, `Invalid channel: ${channel}`);
   const program = spec.program ?? (spec.percussion ? null : 0);
   if (program !== null) check(isInt(program) && program >= 0 && program <= 127, `Invalid program: ${program}`);
+  if (spec.color !== undefined) checkColor(spec.color);
   const id = tx.nextId("t");
   const track: Track = {
     id,
@@ -122,7 +139,7 @@ export function addTrack(tx: Transaction, spec: TrackSpec): string {
     pan: 0,
     mute: false,
     solo: false,
-    color: tx.song.trackOrder.length,
+    color: spec.color ?? freeColor(tx),
     pedal: [],
     extraEvents: [],
   };
@@ -146,6 +163,7 @@ export function updateTrack(tx: Transaction, id: string, changes: TrackChanges):
   if (changes.volume !== undefined) check(changes.volume >= 0 && changes.volume <= 1, "Volume must be between 0 and 1");
   if (changes.pan !== undefined) check(changes.pan >= -1 && changes.pan <= 1, "Pan must be between -1 and 1");
   if (changes.name !== undefined) check(changes.name.trim().length > 0, "A track needs a name");
+  if (changes.color !== undefined) checkColor(changes.color);
   const { sound, ...rest } = changes;
   if (sound) {
     check(sound.bank.trim().length > 0, "A sound needs its bank");

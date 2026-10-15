@@ -425,6 +425,12 @@ export class AudioLayer {
     }
   }
 
+  /** A fader moving: hear it now; the song gets the value on release. */
+  previewMix(trackId: string, volume: number, pan: number): void {
+    const track = this.replica.song.tracks[trackId];
+    if (track) this.player.previewMix(track.channel, volume, pan);
+  }
+
   audition(pitch: number, velocity: number): void {
     this.player.audition(pitch, velocity, this.channel());
   }

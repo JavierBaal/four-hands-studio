@@ -13,10 +13,14 @@ import type { Editor, MenuItem } from "./editor.js";
 import { PALETTE, type PaletteItem, instrumentName, paletteName } from "../shared/instruments.js";
 import { barRange, keyName } from "./music.js";
 import type { Replica } from "./replica.js";
+import { TRACK_PALETTE, trackColor, trackColorIndex } from "./theme.js";
+import { parseDb, parsePan } from "../shared/mix.js";
 
 /** What is being typed into right now. */
 export type Typing =
   | { kind: "trackName"; id: string }
+  | { kind: "trackVolume"; id: string }
+  | { kind: "trackPan"; id: string }
   | { kind: "title" }
   | { kind: "tempo" }
   | { kind: "section"; id: string }
@@ -209,6 +213,22 @@ export class SongActions {
     void this.run(this.h("hInstrument", { name: track.name, inst }), [{ type: "updateTrack", id, changes }]);
   }
 
+  /** While a fader moves: only the sound changes (one undo step on release, with `setMix`). */
+  previewMix(id: string, volume: number, pan: number): void {
+    this.audio?.previewMix(id, volume, pan);
+  }
+
+  /** A typed volume (dB) or pan (C, L30, R25). False if it cannot be read: the field stays open. */
+  typeMix(id: string, field: "volume" | "pan", text: string): boolean {
+    const track = this.song.tracks[id];
+    if (!track) return true;
+    const value = field === "volume" ? parseDb(text) : parsePan(text);
+    if (value === null) return false;
+    if (field === "volume") this.setMix(id, value, track.pan);
+    else this.setMix(id, track.volume, value);
+    return true;
+  }
+
   setMix(id: string, volume: number, pan: number): void {
     const track = this.song.tracks[id];
     if (!track || (track.volume === volume && track.pan === pan)) return;
@@ -286,6 +306,7 @@ export class SongActions {
       { label: track.name, header: true },
       { label: t("trackMenuInstrument"), run: () => this.paletteMenu(x, y, (item) => this.setInstrument(id, item), track) },
       { label: t("trackMenuMix"), run: () => this.openMixer(id, x, y) },
+      { label: t("trackMenuColor"), swatch: trackColor(track.color), shortcut: "›", run: () => this.colorMenu(id, x, y) },
       { label: t("trackMenuRename"), run: close(() => this.type({ kind: "trackName", id })) },
       { separator: true },
       { label: t("trackMenuUp"), disabled: i <= 0, run: close(() => this.moveTrack(id, i - 1)) },
@@ -293,6 +314,28 @@ export class SongActions {
       { separator: true },
       { label: t("trackMenuDelete"), disabled: order.length <= 1, run: close(() => this.removeTrack(id)) },
     ]);
+  }
+
+  /** The track palette, each colour with its name; the current one is marked. */
+  private colorMenu(id: string, x: number, y: number): void {
+    const track = this.song.tracks[id];
+    if (!track) return;
+    const items: MenuItem[] = [
+      { label: this.t("soundsBack"), run: () => this.trackMenu(id, x, y) },
+      { separator: true },
+      { label: `${this.t("trackMenuColor")} · ${track.name}`, header: true },
+    ];
+    TRACK_PALETTE.forEach((c, i) =>
+      items.push({ label: this.lang === "es" ? c.es : c.en, swatch: c.hex, active: trackColorIndex(track.color) === i, run: () => (this.editor.closeMenus(), this.setColor(id, i)) }),
+    );
+    this.editor.openMenu(x, y, items);
+  }
+
+  setColor(id: string, color: number): void {
+    const track = this.song.tracks[id];
+    const c = TRACK_PALETTE[color];
+    if (!track || !c || track.color === color) return;
+    void this.run(this.h("hColor", { name: track.name, color: (this.lang === "es" ? c.es : c.en).toLowerCase() }), [{ type: "updateTrack", id, changes: { color } }]);
   }
 
   // -------------------------------------------------------------------------

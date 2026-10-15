@@ -2,10 +2,11 @@
  * The piano roll proper: rulers, keyboard, notes and velocity lane (DIRECCION_ARTISTICA.md, 6.1
  * items 4–6). Draws, and passes the pointer to the Editor (editor.ts).
  */
-import { useEffect, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { type Note, barAt } from "@fourhands/core";
 import { activeTrack, notesByTrack, trackColors, useApp, useSize, useSong, useView } from "../context.js";
-import { scalePitchClasses } from "../music.js";
+import { durationName, noteName, scalePitchClasses } from "../music.js";
+import { hitTest } from "../roll/edit.js";
 import { drawGrid, drawKeyboard, drawNotes, drawPedal, drawStroke, drawVelocity, prepare } from "../roll/draw.js";
 import { T } from "../theme.js";
 import { type RollView, yToPitch } from "../roll/geometry.js";
@@ -36,6 +37,13 @@ const mods = (e: { shiftKey: boolean; altKey: boolean; ctrlKey: boolean; metaKey
 
 export function RollArea({ v, editor, audio, playhead, onResize, onWheel, onKeyPress }: RollAreaProps) {
   const { t, replica } = useApp();
+  // H3.2: a label over the note under the mouse (pitch, velocity, length), after a short pause.
+  const [hover, setHover] = useState<{ id: string; x: number; y: number } | null>(null);
+  const hoverTimer = useRef(0);
+  const clearHover = () => {
+    clearTimeout(hoverTimer.current);
+    setHover(null);
+  };
   const song = useSong();
   const view = useView();
   const track = activeTrack(song);
@@ -131,6 +139,7 @@ export function RollArea({ v, editor, audio, playhead, onResize, onWheel, onKeyP
           ghosts,
           selected,
           authorship: view.authorship,
+          offColor: track ? colors.get(track.id) : undefined,
           scale: null,
           names: view.noteNames,
           song,
@@ -151,7 +160,7 @@ export function RollArea({ v, editor, audio, playhead, onResize, onWheel, onKeyP
         }
       }
       const vel = velRef.current && prepare(velRef.current);
-      if (vel && view.lane === "velocity") drawVelocity(vel, v, own, selected, view.authorship);
+      if (vel && view.lane === "velocity") drawVelocity(vel, v, own, selected, view.authorship, track ? colors.get(track.id) : undefined);
       if (vel && view.lane === "pedal") drawPedal(vel, v, overlay.pedalPreview ?? track?.pedal ?? []);
       if (vel && overlay.stroke) drawStroke(vel, overlay.stroke);
       if (fresh.size > 0 && !matchMedia("(prefers-reduced-motion: reduce)").matches) frame = requestAnimationFrame(draw);
@@ -206,11 +215,20 @@ export function RollArea({ v, editor, audio, playhead, onResize, onWheel, onKeyP
         <canvas
           ref={notesRef}
           style={{ cursor: overlay.cursor }}
-          onPointerDown={notesDown}
+          onPointerDown={(e) => (clearHover(), notesDown(e))}
           onPointerMove={(e) => {
             const p = local(e);
             editor.pointerMove(p.x, p.y, mods(e));
+            const hit = e.buttons === 0 ? hitTest(own, v, p.x, p.y) : null;
+            if (!hit) clearHover();
+            else if (hit.note.id !== hover?.id) {
+              clearTimeout(hoverTimer.current);
+              setHover(null);
+              const id = hit.note.id;
+              hoverTimer.current = window.setTimeout(() => setHover({ id, x: p.x, y: p.y }), 350);
+            }
           }}
+          onPointerLeave={clearHover}
           onPointerUp={(e) => {
             const p = local(e);
             editor.pointerUp(p.x, p.y);
@@ -228,6 +246,7 @@ export function RollArea({ v, editor, audio, playhead, onResize, onWheel, onKeyP
         />
         <canvas ref={headRef} className="playhead-layer" />
         <AiOverlay v={v} />
+        {hover && <NoteLabel note={own.find((n) => n.id === hover.id)} x={hover.x} y={hover.y} width={size.width} />}
       </div>
       <div className="vtab" role="tablist">
         <button role="tab" className={view.lane === "velocity" ? "vtabb on" : "vtabb"} aria-selected={view.lane === "velocity"} onClick={() => viewStore.set({ lane: "velocity" })}>
@@ -268,6 +287,20 @@ export function RollArea({ v, editor, audio, playhead, onResize, onWheel, onKeyP
           }}
         />
       </div>
+    </div>
+  );
+}
+
+/** Label over a note: what a musician reads (DIRECCION_ARTISTICA.md tokens, like the context menu). */
+function NoteLabel({ note, x, y, width }: { note: Note | undefined; x: number; y: number; width: number }) {
+  const { t, lang } = useApp();
+  const view = useView();
+  const song = useSong();
+  if (!note) return null;
+  const parts = [noteName(note.pitch, view.noteNames, song.key), `${t("velocity").toLowerCase()} ${note.velocity}`, durationName(note.duration, lang)];
+  return (
+    <div className="notetip" role="tooltip" style={x > width - 240 ? { right: width - x + 12, top: Math.max(4, y - 30) } : { left: x + 12, top: Math.max(4, y - 30) }}>
+      {parts.join(" · ")}
     </div>
   );
 }

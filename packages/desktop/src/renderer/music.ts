@@ -66,3 +66,36 @@ export function barRange(meter: Meter, start: number, end: number): string {
   const b = barAt(meter, Math.max(start, end - 1));
   return a === b ? `${a}` : `${a}–${b}`;
 }
+
+const FIGURES: ReadonlyArray<{ ticks: number; es: string; en: string }> = [
+  { ticks: PPQ * 4, es: "redonda", en: "whole" },
+  { ticks: PPQ * 2, es: "blanca", en: "half" },
+  { ticks: PPQ, es: "negra", en: "quarter" },
+  { ticks: PPQ / 2, es: "corchea", en: "eighth" },
+  { ticks: PPQ / 4, es: "semicorchea", en: "sixteenth" },
+  { ticks: PPQ / 8, es: "fusa", en: "thirty-second" },
+];
+
+/**
+ * A duration as a musician says it (H3.2, label over a note): "negra", "corchea con puntillo",
+ * "negra de tresillo"; "≈ blanca" when it is within 10 % of one (played or articulated notes,
+ * like Dilatación's at 95 %); otherwise beats: "1,3 tiempos".
+ */
+export function durationName(ticks: number, lang: Lang): string {
+  const kinds: Array<{ ticks: number; text: string }> = [];
+  for (const f of FIGURES) {
+    const name = lang === "es" ? f.es : f.en;
+    kinds.push({ ticks: f.ticks, text: name });
+    kinds.push({ ticks: f.ticks * 1.5, text: lang === "es" ? `${name} con puntillo` : `dotted ${name}` });
+    kinds.push({ ticks: (f.ticks * 2) / 3, text: lang === "es" ? `${name} de tresillo` : `${name} triplet` });
+  }
+  const exact = kinds.find((k) => Math.abs(k.ticks - ticks) <= 1);
+  if (exact) return exact.text;
+  let best = kinds[0]!;
+  for (const k of kinds) if (Math.abs(Math.log(k.ticks / ticks)) < Math.abs(Math.log(best.ticks / ticks))) best = k;
+  if (Math.abs(best.ticks - ticks) <= best.ticks * 0.1) return `≈ ${best.text}`;
+  const beats = ticks / PPQ;
+  const text = (Math.round(beats * 10) / 10).toString();
+  const shown = lang === "es" ? text.replace(".", ",") : text;
+  return lang === "es" ? `${shown} ${beats === 1 ? "tiempo" : "tiempos"}` : `${shown} ${beats === 1 ? "beat" : "beats"}`;
+}

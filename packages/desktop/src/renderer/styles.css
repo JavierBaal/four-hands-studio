@@ -43,8 +43,26 @@ canvas { display: block; }
 .arr { display: flex; border-bottom: 1px solid var(--line); background: var(--bg-lane); flex: none; }
 .thdrs { width: 196px; flex: none; border-right: 1px solid var(--line); }
 .strip { height: 22px; position: relative; border-bottom: 1px solid var(--line-soft); box-sizing: border-box; }
-.lh { height: 26px; box-sizing: border-box; border-bottom: 1px solid var(--lane-row); }
-.thdr { display: flex; align-items: center; gap: 8px; padding: 0 8px 0 10px; cursor: pointer; }
+.lh { height: 40px; box-sizing: border-box; border-bottom: 1px solid var(--lane-row); }
+.thdr { display: flex; flex-direction: column; justify-content: center; gap: 3px; padding: 0 8px 0 10px; cursor: pointer; }
+.trow { display: flex; align-items: center; gap: 8px; min-width: 0; height: 20px; }
+/* H3.2: volume and pan under the name, aligned with it (chip 10 px + gap 8 px). */
+.tmix { display: flex; align-items: center; gap: 4px; padding-left: 18px; height: 12px; }
+.tmix.muted { opacity: .5; }
+.fader { position: relative; height: 12px; cursor: ew-resize; outline: none; touch-action: none; }
+.fader.fvol { flex: 1; min-width: 40px; }
+.fader.fpan { width: 34px; flex: none; margin-left: 4px; }
+.frail { position: absolute; left: 0; right: 0; top: 5px; height: 2px; border-radius: 1px; background: var(--line-strong); }
+.ffill { position: absolute; top: 5px; height: 2px; border-radius: 1px; background: var(--text-2); }
+.fcentre { position: absolute; top: 3px; width: 1px; height: 6px; margin-left: -.5px; background: var(--line-on); }
+.fknob { position: absolute; top: 2px; width: 8px; height: 8px; margin-left: -4px; border-radius: 50%; background: var(--text); box-shadow: 0 0 0 2px var(--bg-lane); }
+.fader:hover .fknob, .fknob.on { transform: scale(1.25); }
+.fader:focus-visible .fknob { box-shadow: 0 0 0 2px var(--bg-lane), 0 0 0 3px var(--line-on); }
+.mixval { width: 34px; flex: none; font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; font-size: 10px; color: var(--text-2); text-align: right; cursor: text; line-height: 12px; }
+.mixval.pan { width: 26px; }
+input.inline.mixval.card { width: 64px; height: 22px; font-size: 12px; }
+.mixtype { white-space: nowrap; min-width: 64px; cursor: text; border-bottom: 1px dotted var(--line-on); }
+input.inline.mixval { height: 16px; padding: 0 2px; font-size: 10px; text-align: right; color: var(--text); }
 .tchip { width: 10px; height: 10px; border-radius: 3px; flex: none; }
 .tname { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tname.on { font-weight: 600; }
@@ -137,6 +155,8 @@ canvas { display: block; }
 .mitem { display: flex; align-items: center; justify-content: space-between; height: 32px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: var(--text); cursor: pointer; text-align: left; }
 .mitem:hover:not(:disabled), .mitem.on { background: var(--bg-control-on); }
 .mitem:disabled { color: var(--text-2); opacity: .55; cursor: default; }
+.mlabel { display: flex; align-items: center; gap: 10px; }
+.mswatch { width: 12px; height: 12px; border-radius: 3px; flex: none; }
 .mkey { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-2); }
 .qdialog { padding: 6px 12px 12px; gap: 10px; }
 .qrow { display: flex; align-items: center; gap: 10px; color: var(--text); }
@@ -249,3 +269,6 @@ canvas { display: block; }
 .pflag > span { min-width: 0; }
 .edge { position: absolute; right: 0; top: 44px; z-index: 4; display: flex; align-items: center; gap: 6px; background: var(--ai-surface-2); border: 1px solid var(--ai-line); border-right: 0; border-radius: 8px 0 0 8px; padding: 6px 10px; color: var(--ai-text); font: inherit; font-size: 12px; cursor: pointer; }
 .edge.left { right: auto; left: 0; border-right: 1px solid var(--ai-line); border-left: 0; border-radius: 0 8px 8px 0; }
+
+/* H3.2: label over the note under the mouse. */
+.notetip { position: absolute; z-index: 4; pointer-events: none; white-space: nowrap; font-size: 12px; color: var(--text); background: var(--bg-menu); border: 1px solid var(--line-strong); border-radius: 6px; padding: 3px 8px; box-shadow: 0 6px 16px rgba(0, 0, 0, .35); font-variant-numeric: tabular-nums; }

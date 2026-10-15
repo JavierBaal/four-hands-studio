@@ -74,11 +74,18 @@ export const T = {
   keyBlackLine: "#1b1916",
 } as const;
 
-/** 2.7 Track colours, by track order. To be extended to 8–10 tones (DIRECCION_ARTISTICA.md, 12). */
-export const TRACK_COLORS = ["#8d86a8", "#a59a7a", "#7fa196", "#a5807a", "#7c8fa3", "#8a8a80"] as const;
+export { TRACK_PALETTE, type TrackColor } from "../shared/track-colors.js";
+import { TRACK_PALETTE } from "../shared/track-colors.js";
+
+export const TRACK_COLORS = TRACK_PALETTE.map((c) => c.hex);
+
+export function trackColorIndex(index: number): number {
+  const n = TRACK_PALETTE.length;
+  return ((Math.trunc(index) % n) + n) % n;
+}
 
 export function trackColor(index: number): string {
-  return TRACK_COLORS[((index % TRACK_COLORS.length) + TRACK_COLORS.length) % TRACK_COLORS.length]!;
+  return TRACK_PALETTE[trackColorIndex(index)]!.hex;
 }
 
 /** Section 4: sizes, in CSS pixels. */
@@ -86,7 +93,8 @@ export const SIZE = {
   topBar: 52,
   trackHeader: 196,
   trackHeaderCompact: 44,
-  arrangeLane: 26,
+  /** H3.2: 26 → 40 so volume and pan fit under the name (pending Fran's approval). */
+  arrangeLane: 40,
   arrangeLaneCompact: 14,
   arrangeStrip: 22,
   rulerLabel: 72,

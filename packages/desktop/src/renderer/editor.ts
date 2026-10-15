@@ -48,6 +48,8 @@ export interface MenuItem {
   separator?: boolean;
   active?: boolean;
   disabled?: boolean;
+  /** A colour sample before the label (track colours). */
+  swatch?: string;
   run?: () => void;
 }
 

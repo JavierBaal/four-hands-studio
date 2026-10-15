@@ -3,6 +3,7 @@
  * as compact text in English. Pure functions of the song, so they are tested without the app.
  * Notes themselves are formatted by the core (compact.ts).
  */
+import { trackColorId } from "../../shared/track-colors.js";
 import {
   type Song,
   type Track,
@@ -97,7 +98,7 @@ export function overviewText(song: Song, extras: OverviewExtras = { open: [] }):
       parts.push(`${notes.length} notes`, bars(first, last), `${pitchName(low, song.key)}–${pitchName(high, song.key)}`, `avg v${velocity}`);
       parts.push(ai === 0 ? "all by the user" : ai === notes.length ? "all by an AI" : `user ${percent(notes.length - ai, notes.length)}% · AI ${percent(ai, notes.length)}%`);
     }
-    parts.push(mixText(track));
+    parts.push(mixText(track), `color ${trackColorId(track.color)}`);
     if (track.solo) parts.push("solo (the user is listening to it alone)");
     if (track.pedal.length) parts.push(`${track.pedal.length} pedal spans`);
     lines.push(parts.join(" · "));

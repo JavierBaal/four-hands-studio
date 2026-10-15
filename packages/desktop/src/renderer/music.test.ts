@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { centerOnPitches, gridTicks, pitchToY, snapFloor, tickToX, xToTick, yToPitch, zoomAt, type RollView } from "./roll/geometry.js";
-import { barRange, isBlack, keyName, noteName, scalePitchClasses, transportPosition } from "./music.js";
+import { barRange, durationName, isBlack, keyName, noteName, scalePitchClasses, transportPosition } from "./music.js";
 
 const m44 = { numerator: 4, denominator: 4 };
 
@@ -62,5 +62,18 @@ describe("roll geometry", () => {
     const y = centerOnPitches(v, 57, 86);
     const mid = (pitchToY({ ...v, scrollY: y }, 86) + pitchToY({ ...v, scrollY: y }, 57) + 15) / 2;
     expect(mid).toBeCloseTo(225);
+  });
+});
+
+describe("durations as musicians say them (H3.2)", () => {
+  it("names figures, dots and triplets, and approximates played lengths", () => {
+    expect(durationName(960, "es")).toBe("negra");
+    expect(durationName(1440, "es")).toBe("negra con puntillo");
+    expect(durationName(320, "es")).toBe("corchea de tresillo");
+    expect(durationName(3840, "en")).toBe("whole");
+    expect(durationName(720, "en")).toBe("dotted eighth");
+    expect(durationName(Math.round(1920 * 0.95), "es")).toBe("≈ blanca");
+    expect(durationName(1150, "es")).toBe("1,2 tiempos");
+    expect(durationName(1150, "en")).toBe("1.2 beats");
   });
 });

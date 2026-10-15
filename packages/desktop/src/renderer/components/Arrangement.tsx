@@ -13,6 +13,9 @@ import { activeTrack, notesByTrack, trackColors, useActions, useApp, useSize, us
 import { arrangementTotal, drawArrangement, prepare } from "../roll/draw.js";
 import { SIZE } from "../theme.js";
 import { InlineEdit } from "./InlineEdit.js";
+import { Fader } from "./Fader.js";
+import { formatDb, formatPan } from "../../shared/mix.js";
+import type { Track } from "@fourhands/core";
 
 export interface ArrangementProps {
   compact: boolean;
@@ -95,7 +98,7 @@ export function Arrangement({ compact, visible, onSelectTrack, onPan, onToggle }
     return Math.max(0, Math.min(tracks.length - 1, from + Math.round(d.dy / laneHeight)));
   };
   const headerDown = (e: React.PointerEvent<HTMLDivElement>, id: string) => {
-    if (e.button !== 0 || (e.target as HTMLElement).closest("button, input")) return;
+    if (e.button !== 0 || (e.target as HTMLElement).closest("button, input, .fader, .mixval")) return;
     e.currentTarget.setPointerCapture(e.pointerId);
     setDrag({ id, y0: e.clientY, dy: 0, moved: false });
   };
@@ -136,40 +139,43 @@ export function Arrangement({ compact, visible, onSelectTrack, onPan, onToggle }
                   e.preventDefault();
                   actions.trackMenu(tr.id, e.clientX, e.clientY);
                 }}
-                onDoubleClick={(e) => !(e.target as HTMLElement).closest("button") && actions.type({ kind: "trackName", id: tr.id })}
+                onDoubleClick={(e) => !(e.target as HTMLElement).closest("button, .tmix") && actions.type({ kind: "trackName", id: tr.id })}
               >
-                <span className="tchip" style={{ background: colors.get(tr.id) }} />
-                {typing ? (
-                  <InlineEdit className="track" value={tr.name} onCommit={(v) => (actions.renameTrack(tr.id, v), actions.type(null))} onCancel={() => actions.type(null)} />
-                ) : (
-                  <span className={tr.id === active?.id ? "tname on" : "tname"}>{tr.name}</span>
-                )}
-                <span className="ms">
-                  <button
-                    className={tr.mute ? "msb on" : "msb"}
-                    aria-label={t("mute")}
-                    title={t("mute")}
-                    aria-pressed={tr.mute}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onToggle(tr.id, "mute");
-                    }}
-                  >
-                    M
-                  </button>
-                  <button
-                    className={tr.solo ? "msb on" : "msb"}
-                    aria-label={t("solo")}
-                    title={t("solo")}
-                    aria-pressed={tr.solo}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onToggle(tr.id, "solo");
-                    }}
-                  >
-                    S
-                  </button>
-                </span>
+                <div className="trow">
+                  <span className="tchip" style={{ background: colors.get(tr.id) }} />
+                  {typing ? (
+                    <InlineEdit className="track" value={tr.name} onCommit={(v) => (actions.renameTrack(tr.id, v), actions.type(null))} onCancel={() => actions.type(null)} />
+                  ) : (
+                    <span className={tr.id === active?.id ? "tname on" : "tname"}>{tr.name}</span>
+                  )}
+                  <span className="ms">
+                    <button
+                      className={tr.mute ? "msb on" : "msb"}
+                      aria-label={t("mute")}
+                      title={t("mute")}
+                      aria-pressed={tr.mute}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onToggle(tr.id, "mute");
+                      }}
+                    >
+                      M
+                    </button>
+                    <button
+                      className={tr.solo ? "msb on" : "msb"}
+                      aria-label={t("solo")}
+                      title={t("solo")}
+                      aria-pressed={tr.solo}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onToggle(tr.id, "solo");
+                      }}
+                    >
+                      S
+                    </button>
+                  </span>
+                </div>
+                {!compact && <TrackMix track={tr} />}
               </div>
               {dropAt === i && dropAt > dragFrom && <div className="dropline" />}
             </div>
@@ -205,5 +211,63 @@ export function Arrangement({ compact, visible, onSelectTrack, onPan, onToggle }
         <div style={{ height: tracks.length * laneHeight }} />
       </div>
     </section>
+  );
+}
+
+/**
+ * Volume and pan in sight under the track name (H3.2): a fader and its value for each. The value
+ * is typed with a double click (volume in dB, pan as C, L30 or R25), like the tempo.
+ */
+function TrackMix({ track }: { track: Track }) {
+  const { t, lang } = useApp();
+  const actions = useActions();
+  const typing = actions.typing;
+  const typingVolume = typing?.kind === "trackVolume" && typing.id === track.id;
+  const typingPan = typing?.kind === "trackPan" && typing.id === track.id;
+  const volText = formatDb(track.volume, lang);
+  const panText = formatPan(track.pan);
+  const commitTyped = (field: "volume" | "pan", text: string) => {
+    if (actions.typeMix(track.id, field, text)) actions.type(null);
+  };
+  return (
+    <div className={track.mute ? "tmix muted" : "tmix"}>
+      <Fader
+        className="fvol"
+        value={track.volume}
+        min={0}
+        max={1}
+        reset={0.8}
+        label={t("volume")}
+        valueText={`${volText} dB`}
+        onInput={(v) => actions.previewMix(track.id, v, track.pan)}
+        onCommit={(v) => actions.setMix(track.id, v, track.pan)}
+      />
+      {typingVolume ? (
+        <InlineEdit className="mixval" value={volText} inputMode="numeric" maxLength={8} title={t("volumeTypeHint")} onCommit={(v) => commitTyped("volume", v)} onCancel={() => actions.type(null)} />
+      ) : (
+        <span className="mixval mono" title={t("volumeTypeHint")} onDoubleClick={(e) => (e.stopPropagation(), actions.type({ kind: "trackVolume", id: track.id }))}>
+          {volText}
+        </span>
+      )}
+      <Fader
+        className="fpan"
+        bipolar
+        value={track.pan}
+        min={-1}
+        max={1}
+        reset={0}
+        label={t("pan")}
+        valueText={panText}
+        onInput={(v) => actions.previewMix(track.id, track.volume, v)}
+        onCommit={(v) => actions.setMix(track.id, track.volume, v)}
+      />
+      {typingPan ? (
+        <InlineEdit className="mixval pan" value={panText} maxLength={5} title={t("panTypeHint")} onCommit={(v) => commitTyped("pan", v)} onCancel={() => actions.type(null)} />
+      ) : (
+        <span className="mixval pan mono" title={t("panTypeHint")} onDoubleClick={(e) => (e.stopPropagation(), actions.type({ kind: "trackPan", id: track.id }))}>
+          {panText}
+        </span>
+      )}
+    </div>
   );
 }

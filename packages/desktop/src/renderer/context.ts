@@ -64,7 +64,8 @@ export function activeTrack(song: Song): Track | null {
 }
 
 export function trackColors(song: Song): Map<string, string> {
-  return new Map(song.trackOrder.map((id, i) => [id, trackColor(i)]));
+  // Each track keeps its own colour (`Track.color`), also when the tracks are reordered.
+  return new Map(song.trackOrder.map((id) => [id, trackColor(song.tracks[id]?.color ?? 0)]));
 }
 
 /** Notes grouped by track, recomputed only when the song changes. */

@@ -246,6 +246,12 @@ export class Player {
     this.onLive?.("off", { pitch, velocity: 0, tick: this.liveTick() });
   }
 
+  /** Volume and pan heard at once while a fader moves, before the song has the new value (H3.2). */
+  previewMix(channel: number, volume: number, pan: number): void {
+    this.engine?.now({ kind: "cc", ch: channel, cc: 7, value: Math.round(Math.max(0, Math.min(1, volume)) * 127) });
+    this.engine?.now({ kind: "cc", ch: channel, cc: 10, value: Math.round(64 + Math.max(-1, Math.min(1, pan)) * 63) });
+  }
+
   liveCc(cc: number, value: number, channel: number): void {
     this.engine?.now({ kind: "cc", ch: channel, cc, value });
     this.onLiveCc?.(cc, value, this.liveTick());

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { addNotes, addSection, addTrack, deleteNotes, moveNotes, removeTrack, setChord, setSongProperties, updateNotes, updateTrack } from "./commands.js";
 import { CommandError, type Patch, SongDocument } from "./document.js";
-import { USER, ai, barAt, barStart, beatTicks, emptySong, notesOf } from "./model.js";
+import { TRACK_COLOR_COUNT, USER, ai, barAt, barStart, beatTicks, emptySong, notesOf } from "./model.js";
 import { EIGHTH_TRIPLET, PPQ, SIXTEENTH, nominalGridPosition } from "./time.js";
 
 const claude = ai("claude-ai");
@@ -373,5 +373,35 @@ describe("groups: one AI intervention = one undo step", () => {
     expect(doc.lastChangeMerged).toBe(true);
     doc.undo(USER);
     expect(Object.keys(doc.song.notes)).toHaveLength(0);
+  });
+});
+
+describe("track colours (H3.2)", () => {
+  it("give a new track the first colour nobody uses, and keep it when tracks are removed or reordered", () => {
+    const doc = new SongDocument(emptySong("Colores"), { now: () => 1000 });
+    const [a, b, c] = doc.transact({ actor: USER, label: "Pistas" }, (tx) => [addTrack(tx, { name: "A" }), addTrack(tx, { name: "B" }), addTrack(tx, { name: "C" })]);
+    expect([a, b, c].map((id) => doc.song.tracks[id!]!.color)).toEqual([0, 1, 2]);
+    doc.transact({ actor: USER, label: "Quitar B" }, (tx) => removeTrack(tx, b!));
+    const d = doc.transact({ actor: USER, label: "D" }, (tx) => addTrack(tx, { name: "D" }));
+    expect(doc.song.tracks[d]!.color).toBe(1);
+    expect(doc.song.tracks[c!]!.color).toBe(2);
+  });
+
+  it("reuse the least used colour when the palette is full", () => {
+    const doc = new SongDocument(emptySong("Llena"), { now: () => 1000 });
+    const ids = doc.transact({ actor: USER, label: "Pistas" }, (tx) => Array.from({ length: TRACK_COLOR_COUNT + 1 }, (_, i) => addTrack(tx, { name: `P${i}` })));
+    expect(ids.map((id) => doc.song.tracks[id]!.color)).toEqual([...Array.from({ length: TRACK_COLOR_COUNT }, (_, i) => i), 0]);
+  });
+
+  it("accept a chosen colour, change it in one undo step and refuse one outside the palette", () => {
+    const doc = new SongDocument(emptySong("Elegir"), { now: () => 1000 });
+    const t = doc.transact({ actor: claude, label: "Chelo" }, (tx) => addTrack(tx, { name: "Chelo", color: 6 }));
+    expect(doc.song.tracks[t]!.color).toBe(6);
+    doc.transact({ actor: USER, label: "Color" }, (tx) => updateTrack(tx, t, { color: 8 }));
+    expect(doc.song.tracks[t]!.color).toBe(8);
+    doc.undo(USER);
+    expect(doc.song.tracks[t]!.color).toBe(6);
+    expect(() => doc.transact({ actor: USER, label: "Mal" }, (tx) => updateTrack(tx, t, { color: TRACK_COLOR_COUNT }))).toThrow(CommandError);
+    expect(() => doc.transact({ actor: USER, label: "Mal" }, (tx) => addTrack(tx, { name: "X", color: -1 }))).toThrow(CommandError);
   });
 });

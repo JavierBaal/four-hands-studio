@@ -5,6 +5,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Track } from "@fourhands/core";
 import { useActions, useApp, useSong } from "../context.js";
+import { formatDb, formatPan, parseDb, parsePan } from "../../shared/mix.js";
+import { InlineEdit } from "./InlineEdit.js";
 
 export function Mixer() {
   const actions = useActions();
@@ -17,7 +19,8 @@ export function Mixer() {
 }
 
 function MixerCard({ track, x, y }: { track: Track; x: number; y: number }) {
-  const { t } = useApp();
+  const { t, lang } = useApp();
+  const [typing, setTyping] = useState<"volume" | "pan" | null>(null);
   const actions = useActions();
   const [volume, setVolume] = useState(track.volume);
   const [pan, setPan] = useState(track.pan);
@@ -51,7 +54,26 @@ function MixerCard({ track, x, y }: { track: Track; x: number; y: number }) {
     };
   }, [track.id]);
   const commit = () => actions.setMix(track.id, volume, pan);
-  const panText = pan === 0 ? "C" : pan < 0 ? `L${Math.round(-pan * 100)}` : `R${Math.round(pan * 100)}`;
+  const panText = formatPan(pan);
+  const volText = formatDb(volume, lang);
+  // H3.2: the value can be typed, like the tempo (volume in dB, pan as C, L30 or R25).
+  const typed = (field: "volume" | "pan", text: string) => {
+    const v = field === "volume" ? parseDb(text) : parsePan(text);
+    if (v === null) return;
+    const next = field === "volume" ? { volume: v, pan } : { volume, pan: v };
+    if (field === "volume") setVolume(v);
+    else setPan(v);
+    actions.setMix(track.id, next.volume, next.pan);
+    setTyping(null);
+  };
+  const value = (field: "volume" | "pan", text: string, hint: string) =>
+    typing === field ? (
+      <InlineEdit className="mixval card" value={text} maxLength={8} title={hint} onCommit={(v) => typed(field, v)} onCancel={() => setTyping(null)} />
+    ) : (
+      <span className="mono qval mixtype" role="button" tabIndex={0} title={hint} onClick={(e) => (e.preventDefault(), setTyping(field))} onKeyDown={(e) => e.key === "Enter" && setTyping(field)}>
+        {text}
+      </span>
+    );
   return (
     <div className="menu qdialog" ref={ref} role="dialog" aria-label={t("mixTitle")} style={pos}>
       <div className="mhead">
@@ -59,13 +81,13 @@ function MixerCard({ track, x, y }: { track: Track; x: number; y: number }) {
       </div>
       <label className="qrow">
         <span>{t("volume")}</span>
-        <input type="range" min={0} max={100} value={Math.round(volume * 100)} onChange={(e) => setVolume(Number(e.target.value) / 100)} onPointerUp={commit} onKeyUp={commit} />
-        <span className="mono qval">{Math.round(volume * 100)}</span>
+        <input type="range" min={0} max={100} value={Math.round(volume * 100)} onChange={(e) => (setVolume(Number(e.target.value) / 100), actions.previewMix(track.id, Number(e.target.value) / 100, pan))} onPointerUp={commit} onKeyUp={commit} />
+        {value("volume", `${volText} dB`, t("volumeTypeHint"))}
       </label>
       <label className="qrow">
         <span>{t("pan")}</span>
-        <input type="range" min={-100} max={100} value={Math.round(pan * 100)} onChange={(e) => setPan(Number(e.target.value) / 100)} onPointerUp={commit} onKeyUp={commit} onDoubleClick={() => (setPan(0), actions.setMix(track.id, volume, 0))} />
-        <span className="mono qval">{panText}</span>
+        <input type="range" min={-100} max={100} value={Math.round(pan * 100)} onChange={(e) => (setPan(Number(e.target.value) / 100), actions.previewMix(track.id, volume, Number(e.target.value) / 100))} onPointerUp={commit} onKeyUp={commit} onDoubleClick={() => (setPan(0), actions.setMix(track.id, volume, 0))} />
+        {value("pan", panText, t("panTypeHint"))}
       </label>
       <div className="qbtns">
         <button className="btn" onClick={() => (commit(), actions.closeMixer())}>

@@ -29,6 +29,25 @@ export const SHOTS = [
   { name: "07_ia_borde", q: `?song=boceto&ai=fuera&view=${sketchView(1440 - 288 - 72, 12)}` },
   { name: "07_ia_conectada_880", w: 880, h: 800, q: `?song=boceto&ai=conectada&view=${sketchView(880 - 48 - 56, 8)}` },
   { name: "07_ia_leyendo", q: `?song=boceto&ai=leyendo&view=${sketchView(1440 - 288 - 72, 12)}` },
+  // H3.2: mix in the track headers, track colours, notes in the track colour, label over a note.
+  { name: "h32_autoria_apagada", q: `?song=boceto&view=${view({ authorship: false, startTick: 16 * BAR, pxPerTick: (1440 - 288 - 72) / 12 / BAR, scrollY: (127 - 86) * 15 })}` },
+  { name: "h32_etiqueta_nota", q: `?song=boceto&view=${sketchView(1440 - 288 - 72, 12)}`, act: async (page) => {
+    await page.mouse.move(385, 620);
+    await page.mouse.move(386, 620);
+    await page.waitForTimeout(600);
+  } },
+  { name: "h32_menu_color", q: `?song=boceto&view=${sketchView(1440 - 288 - 72, 12)}`, act: async (page) => {
+    await page.locator(".thdr").nth(3).click({ button: "right", position: { x: 120, y: 12 } });
+    await page.getByRole("menuitem", { name: /^Color/ }).click();
+  } },
+  { name: "h32_escribir_volumen", q: `?song=boceto&view=${sketchView(1440 - 288 - 72, 12)}`, act: async (page) => {
+    await page.locator(".tmix .mixval").nth(4).dblclick();
+    await page.keyboard.type("-6,5");
+  } },
+  { name: "h32_tarjeta_mezcla", q: `?song=boceto&view=${sketchView(1440 - 288 - 72, 12)}`, act: async (page) => {
+    await page.locator(".thdr").nth(1).click({ button: "right", position: { x: 120, y: 12 } });
+    await page.getByRole("menuitem", { name: /Volumen/ }).click();
+  } },
 ];
 
 const types = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".mid": "audio/midi", ".woff2": "font/woff2", ".woff": "font/woff" };
@@ -53,6 +72,7 @@ for (const s of SHOTS) {
   await page.goto(`http://localhost:${port}/index.html${s.q}`);
   await page.waitForFunction(() => window.fhReady === true, null, { timeout: 15000 }).catch(() => errors.push("the window did not start"));
   await page.waitForTimeout(400);
+  if (s.act) await s.act(page).catch((e) => errors.push(String(e)));
   const file = path.join(outDir, `${s.name}.png`);
   await page.screenshot({ path: file });
   if (errors.length) failed = true;

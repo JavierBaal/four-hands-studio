@@ -15,6 +15,7 @@
  *
  * H3 applies changes directly. Proposals (H4) will change what end_intervention does, not the tools.
  */
+import { TRACK_PALETTE, trackColorByName, trackColorId } from "../../shared/track-colors.js";
 import {
   type Authorship,
   CommandError,
@@ -901,7 +902,11 @@ export class AiDesk {
       const percussion = instrument === null && !sound;
       const channel = percussion ? 9 : this.freeChannel();
       if (channel === null) throw new MusicError("There is no free MIDI channel for another track");
-      const id = this.write(iv, (tx) => addTrack(tx, { name, program: percussion ? null : (instrument ?? 0), channel, ...(sound ? { sound } : {}), ...(percussion ? { percussion: true } : {}) }));
+      const colorText = this.str(args, "color", false);
+      const color = colorText !== undefined ? colorIndex(colorText) : undefined;
+      const id = this.write(iv, (tx) =>
+        addTrack(tx, { name, program: percussion ? null : (instrument ?? 0), channel, ...(sound ? { sound } : {}), ...(percussion ? { percussion: true } : {}), ...(color !== undefined ? { color } : {}) }),
+      );
       iv.trackIds.add(id);
       iv.other.push(`track ${name}`);
       this.emit();
@@ -930,7 +935,9 @@ export class AiDesk {
         if (typeof args.mute !== "boolean") throw new MusicError("'mute' is true or false");
         changes.mute = args.mute;
       }
-      if (Object.keys(changes).length === 0) throw new MusicError("Say what to change: name, instrument, sound, volume, pan or mute");
+      const colorText = this.str(args, "color", false);
+      if (colorText !== undefined) changes.color = colorIndex(colorText);
+      if (Object.keys(changes).length === 0) throw new MusicError("Say what to change: name, instrument, sound, volume, pan, mute or color");
       this.write(iv, (tx) => updateTrack(tx, trackId, changes));
       iv.trackIds.add(trackId);
       iv.other.push(`track ${this.song.tracks[trackId]!.name}`);
@@ -1104,12 +1111,19 @@ function formatPitch(pitch: number): string {
   return `${names[pitch % 12]}${Math.floor(pitch / 12) - 1}`;
 }
 
+/** Palette index of a colour named by the AI (English or Spanish). */
+function colorIndex(text: string): number {
+  const i = trackColorByName(text);
+  if (i === null) throw new MusicError(`There is no colour '${text}'. Colours: ${TRACK_PALETTE.map((c) => c.id).join(", ")}`);
+  return i;
+}
+
 function describeTrack(song: Song, id: string): string {
   const t = song.tracks[id]!;
   const parts = [t.name];
   if (t.sound) parts.push(`sound "${t.sound.name}" from ${t.sound.bank}`);
   else if (t.program === null || t.channel === 9) parts.push("drums");
   else parts.push(`program ${t.program}`);
-  parts.push(`volume ${Math.round(t.volume * 100)}`, `pan ${Math.round(t.pan * 100)}`);
+  parts.push(`volume ${Math.round(t.volume * 100)}`, `pan ${Math.round(t.pan * 100)}`, `color ${trackColorId(t.color)}`);
   return parts.join(" · ");
 }

@@ -18,7 +18,7 @@ const server = http.createServer((req, res) => {
 }).listen(0);
 const port = server.address().port;
 const browser = await chromium.launch(executablePath ? { executablePath } : {});
-const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } }); // H3.2: the arrangement grew (volume and pan in the headers); pitch 57 must stay in sight.
 const errors = [];
 page.on("pageerror", (e) => errors.push(String(e)));
 
@@ -563,7 +563,63 @@ await page.mouse.click(hdr.x + 40, hdr.y + 10, { button: "right" });
 await page.locator(".menu [role=menuitem]", { hasText: "Instrumento…" }).click();
 check("palette from the track menu fits the window", await inside(), JSON.stringify(await page.locator(".menu").boundingBox()));
 await page.keyboard.press("Escape");
-await page.setViewportSize({ width: 1440, height: 900 });
+await page.setViewportSize({ width: 1440, height: 1000 });
+
+// H3.2: volume and pan in the track header, typed values, colours and the label over a note.
+await page.keyboard.press("Escape");
+const firstId = (await song()).trackOrder[0];
+const vol0 = (await song()).tracks[firstId].volume;
+const fader = await page.locator(".tmix .fvol").first().boundingBox();
+const undoDepth = async () => page.evaluate(() => window.fhTest.replica.history.length);
+const h0 = await undoDepth();
+await page.mouse.move(fader.x + fader.width * vol0, fader.y + fader.height / 2);
+await page.mouse.down();
+await page.mouse.move(fader.x + fader.width * 0.3, fader.y + fader.height / 2, { steps: 6 });
+check("fader does not change the song while dragging", (await song()).tracks[firstId].volume === vol0);
+await page.mouse.up();
+await settle();
+const vol1 = (await song()).tracks[firstId].volume;
+check("fader sets the volume on release, in one step", Math.abs(vol1 - 0.3) < 0.05 && (await undoDepth()) === h0 + 1, `${vol1} ${h0} ${await undoDepth()}`);
+await page.locator(".tmix .mixval").first().dblclick();
+await page.keyboard.type("-6");
+await page.keyboard.press("Enter");
+await settle();
+const vol2 = (await song()).tracks[firstId].volume;
+check("typed volume in dB", Math.round(vol2 * 127) === Math.round(Math.pow(10, -6 / 40) * 127), String(vol2));
+check("volume shown in dB", (await page.locator(".tmix .mixval").first().textContent()) === "−6,0", await page.locator(".tmix .mixval").first().textContent());
+await page.locator(".tmix .mixval.pan").first().dblclick();
+await page.keyboard.type("L30");
+await page.keyboard.press("Enter");
+await settle();
+check("typed pan", (await song()).tracks[firstId].pan === -0.3, String((await song()).tracks[firstId].pan));
+await page.locator(".tmix .fpan").first().dblclick();
+await settle();
+check("double click centres the pan", (await song()).tracks[firstId].pan === 0);
+const hdr2 = await page.locator(".thdr").first().boundingBox();
+await page.mouse.click(hdr2.x + 60, hdr2.y + 10, { button: "right" });
+await page.locator(".menu [role=menuitem]", { hasText: "Color" }).click();
+await page.locator(".menu [role=menuitem]", { hasText: "Musgo" }).click();
+await settle();
+check("colour from the track menu", (await song()).tracks[firstId].color === 7 && (await lastLabel())?.includes("color musgo"), `${(await song()).tracks[firstId].color} ${await lastLabel()}`);
+const chip = await page.locator(".thdr .tchip").first().evaluate((el) => getComputedStyle(el).backgroundColor);
+check("the header chip follows the colour", chip === "rgb(131, 142, 108)", chip);
+// Label over a note: hover one of the active track's notes and wait.
+const someNote = await page.evaluate(() => {
+  const s = window.fhTest.replica.song;
+  const id = s.context.activeTrackId ?? s.trackOrder[0];
+  return Object.values(s.notes).filter((n) => n.trackId === id).sort((a, b) => a.start - b.start)[0];
+});
+const viewNow = await page.evaluate(() => window.fhTest.view.state);
+const gridH32 = await page.locator(".pgrid canvas:not(.playhead-layer)").boundingBox();
+const nx = gridH32.x + (someNote.start - viewNow.startTick) * viewNow.pxPerTick + 3;
+const ny = gridH32.y + (127 - someNote.pitch) * 15 - viewNow.scrollY + 7;
+if (nx > gridH32.x && nx < gridH32.x + gridH32.width && ny > gridH32.y && ny < gridH32.y + gridH32.height) {
+  await page.mouse.move(nx, ny);
+  await page.mouse.move(nx + 1, ny);
+  await page.waitForTimeout(600);
+  const tip = await page.locator(".notetip").textContent().catch(() => null);
+  check("label over a note", !!tip && tip.includes(`velocidad ${someNote.velocity}`), String(tip));
+} else check("label over a note (note in sight)", false, JSON.stringify({ nx, ny, gridH32 }));
 
 console.log(`${passed} passed, ${failures.length} failed`);
 for (const f of failures) console.log("FAIL", f);
