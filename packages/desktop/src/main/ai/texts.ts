@@ -46,6 +46,17 @@ export function trackInstrument(track: Track): string {
   return track.sound ? `${base}, sound "${track.sound.name}" from ${track.sound.bank}` : base;
 }
 
+/** "pan C", "pan L30", "pan R15". */
+export function panText(pan: number): string {
+  const v = Math.round(pan * 100);
+  return v === 0 ? "C" : v < 0 ? `L${-v}` : `R${v}`;
+}
+
+/** "mix vol 80 pan L30" or "mix vol 80 pan C muted". */
+export function mixText(track: Track): string {
+  return `mix vol ${Math.round(track.volume * 100)} pan ${panText(track.pan)}${track.mute ? " muted" : ""}`;
+}
+
 function bars(from: number, to: number): string {
   return from === to ? `c. ${from}` : `c. ${from}–${to}`;
 }
@@ -82,11 +93,12 @@ export function overviewText(song: Song, extras: OverviewExtras = { open: [] }):
       const ai = notes.filter((n) => n.shapedBy.by === "ai").length;
       const first = barAt(song.meter, notes[0]!.start);
       const last = barAt(song.meter, notes.at(-1)!.start);
-      parts.push(`${notes.length} notes`, bars(first, last), `${pitchName(low, song.key)}–${pitchName(high, song.key)}`);
+      const velocity = Math.round(notes.reduce((sum, n) => sum + n.velocity, 0) / notes.length);
+      parts.push(`${notes.length} notes`, bars(first, last), `${pitchName(low, song.key)}–${pitchName(high, song.key)}`, `avg v${velocity}`);
       parts.push(ai === 0 ? "all by the user" : ai === notes.length ? "all by an AI" : `user ${percent(notes.length - ai, notes.length)}% · AI ${percent(ai, notes.length)}%`);
     }
-    if (track.mute) parts.push("muted");
-    if (track.solo) parts.push("solo");
+    parts.push(mixText(track));
+    if (track.solo) parts.push("solo (the user is listening to it alone)");
     if (track.pedal.length) parts.push(`${track.pedal.length} pedal spans`);
     lines.push(parts.join(" · "));
   }

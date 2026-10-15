@@ -41,7 +41,7 @@ const transport = new StdioClientTransport({ command: process.execPath, args: [b
 const client = new Client({ name: "claude-ai", version: "e2e" });
 await client.connect(transport);
 const tools = (await client.listTools()).tools;
-check("the bridge lists the H3 tools", tools.length === 22, tools.length);
+check("the bridge lists the H3.1 tools", tools.length === 25, tools.length);
 check("read tools are read-only for Claude's permissions", tools.filter((t) => t.annotations?.readOnlyHint).length === 5);
 await win.waitForFunction(() => document.querySelector(".aichip")?.textContent?.includes("Claude conectado"), null, { timeout: 8000 }).catch(() => {});
 check("chip says Claude is connected", (await win.locator(".aichip").innerText()).includes("Claude conectado"));
@@ -113,6 +113,20 @@ await call("end_intervention", { intervention_id: iv2 });
 const playedAfter = await win.evaluate((ids) => window.fh.snapshot().then((s) => JSON.stringify(ids.map((id) => s.song.notes[id]))), played.ids);
 check("route 6: what the user played is untouched (not quantized)", playedAfter === played.snapshot);
 
+// --- H3.1: the mix, from Claude
+const mixRead = await call("get_song_overview");
+check("the overview shows the mix", /mix vol 80 pan C/.test(mixRead.text), mixRead.text.slice(0, 600));
+iv = await call("begin_intervention", { description: "Equilibro la mezcla", base_revision: `r${/r(\d+)/.exec(mixRead.text)[1]}` });
+const iv3 = /Intervention (i\d+)/.exec(iv.text)?.[1];
+const mix = await call("set_mix", { intervention_id: iv3, mix: "Organo vol 60 pan L30\nViolines vol 85 pan R20" });
+await call("end_intervention", { intervention_id: iv3 });
+const mixed = await win.evaluate(() => window.fh.snapshot().then((s) => Object.values(s.song.tracks).map((t) => `${t.name}:${Math.round(t.volume * 100)}:${Math.round(t.pan * 100)}`)));
+check("set_mix changes volume and pan of the real song", mix.ok && mixed.includes("Organo:60:-30") && mixed.includes("Violines:85:20"), `${mix.text} ${mixed}`);
+await win.keyboard.press("Control+z");
+await win.waitForTimeout(300);
+const unmixed = await win.evaluate(() => window.fh.snapshot().then((s) => Object.values(s.song.tracks).map((t) => `${t.name}:${Math.round(t.volume * 100)}`)));
+check("Ctrl+Z puts the mix back in one step", unmixed.includes("Organo:80") && unmixed.includes("Violines:80"), unmixed);
+
 // --- Pointing and protection
 const viewBefore = await win.locator(".pgrid").getAttribute("aria-label");
 const point = await call("point_to", { range: "55", tracks: ["Contramelodia (cello)"], reason: "aquí entra el chelo" });
@@ -142,7 +156,7 @@ check("bridge.json removed on quit", !fs.existsSync(configFile));
 const logFile = path.join(home, ".config", "Four Hands Studio", "registro-app.jsonl");
 const log = fs.readFileSync(logFile, "utf8");
 const calls = log.split("\n").filter((l) => l.includes('"type":"ai_call"')).map((l) => JSON.parse(l));
-check("every call is in the app's log", calls.length === 12, calls.length);
+check("every call is in the app's log", calls.length === 16, calls.length);
 check("calls answer fast (< 200 ms in the app)", calls.every((c) => c.ms < 200), JSON.stringify(calls.map((c) => c.ms)));
 check("no page errors", errors.length === 0, errors.join("\n"));
 fs.copyFileSync(logFile, path.join(shots, "registro-app.jsonl"));

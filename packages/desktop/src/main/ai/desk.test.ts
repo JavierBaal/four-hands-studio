@@ -414,3 +414,64 @@ describe("several AIs and pointing", () => {
     void USER;
   });
 });
+
+describe("H3.1: the mix and the track list", () => {
+  it("the overview shows each track's mix and average velocity", () => {
+    const text = ok("get_song_overview");
+    expect(text).toMatch(/t1 .* avg v\d+ .*mix vol 80 pan C/);
+  });
+
+  it("set_mix balances several tracks in one undo step", () => {
+    const before = orderedTracks(session.song).map((t) => ({ v: t.volume, p: t.pan, m: t.mute }));
+    const id = begin("Equilibro la mezcla");
+    const text = ok("set_mix", { intervention_id: id, mix: "t1 vol 65 pan -40\nPiano ostinato vol 70 pan R25\nBateria mute\nt3 pan C vol 85" });
+    expect(text).toContain("t1 Organo · mix vol 65 pan L40");
+    expect(text).toMatch(/Piano ostinato · mix vol 70 pan R25/);
+    expect(text).toMatch(/Bateria · mix vol 80 pan C muted/);
+    expect(session.song.tracks.t3).toMatchObject({ volume: 0.85, pan: 0 });
+    // Velocities, notes and authorship untouched: the mix is not the music.
+    expect(Object.values(session.song.notes).every((n) => n.shapedBy.by === "user")).toBe(true);
+    expect(ok("end_intervention", { intervention_id: id })).toMatch(/the mix/);
+    session.handle({ type: "undo" });
+    expect(orderedTracks(session.song).map((t) => ({ v: t.volume, p: t.pan, m: t.mute }))).toEqual(before);
+  });
+
+  it("set_mix rejects the whole call when a line is wrong", () => {
+    const id = begin("Mezcla");
+    const revision = session.song.revision;
+    expect(fail("set_mix", { intervention_id: id, mix: "t1 vol 65\nt2 vol 140" })).toMatch(/^Line 2 \("t2 vol 140"\): volume goes from 0 to 100\. Nothing was written\.$/);
+    expect(fail("set_mix", { intervention_id: id, mix: "t1 solo" })).toMatch(/write the track first/);
+    expect(fail("set_mix", { intervention_id: id, mix: "t1 vol 60\nt1 pan L10" })).toMatch(/appears twice/);
+    expect(fail("set_mix", { intervention_id: id, mix: "t1 pan X9" })).toMatch(/is not a pan/);
+    expect(session.song.revision).toBe(revision);
+  });
+
+  it("update_track mutes; solo stays the user's", () => {
+    const id = begin("El órgano calla");
+    ok("update_track", { intervention_id: id, track: "t1", mute: true });
+    expect(session.song.tracks.t1!.mute).toBe(true);
+    expect(fail("update_track", { intervention_id: id, track: "t1", mute: "yes" })).toMatch(/true or false/);
+  });
+
+  it("move_track reorders and remove_track removes, each undone in one step", () => {
+    const id = begin("Ordeno las pistas");
+    const order = [...session.song.trackOrder];
+    expect(ok("move_track", { intervention_id: id, track: "t5", position: 1 })).toMatch(/^Tracks now: 1\. Bajo \(contrabajo\) \(t5\)/);
+    expect(fail("move_track", { intervention_id: id, track: "t5", position: 9 })).toMatch(/position goes from 1 to 6/);
+    const notes = notesOf(session.song, "t6").length;
+    expect(ok("remove_track", { intervention_id: id, track: "Bateria" })).toMatch(new RegExp(`removed, with its ${notes} notes`));
+    expect(session.song.tracks.t6).toBeUndefined();
+    ok("end_intervention", { intervention_id: id });
+    session.handle({ type: "undo" });
+    expect(session.song.trackOrder).toEqual(order);
+    expect(notesOf(session.song, "t6")).toHaveLength(notes);
+  });
+
+  it("remove_track is refused if the user changed that track after the AI read it", () => {
+    const id = begin("Quito la percusión");
+    const note = notesOf(session.song, "t6")[0]!;
+    session.run("moviste 1 nota", [{ type: "moveNotes", ids: [note.id], ticks: PPQ }]);
+    expect(fail("remove_track", { intervention_id: id, track: "t6" })).toMatch(new RegExp(`^${note.id} has changed since`));
+    expect(session.song.tracks.t6).toBeDefined();
+  });
+});

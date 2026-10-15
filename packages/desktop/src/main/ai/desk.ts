@@ -59,11 +59,13 @@ import {
   updateNotes,
   updateSection,
   updateTrack,
+  moveTrack,
+  removeTrack,
 } from "@fourhands/core";
 import { NAMED_PROGRAMS, PALETTE } from "../../shared/instruments.js";
 import type { AiClientInfo, AiMark, AiState, AiWriting, PatchMessage, SoundBankInfo } from "../../shared/protocol.js";
 import type { SongSession } from "../session.js";
-import { DEFAULT_WINDOW, type WindowInfo, bankText, instrumentsText, overviewText, paletteItem, spanText, userContextText } from "./texts.js";
+import { DEFAULT_WINDOW, type WindowInfo, bankText, instrumentsText, mixText, overviewText, paletteItem, spanText, userContextText } from "./texts.js";
 
 export type ToolReply = { ok: true; text: string } | { ok: false; error: string };
 
@@ -924,12 +926,67 @@ export class AiDesk {
       if (volume !== undefined) changes.volume = Math.max(0, Math.min(100, volume)) / 100;
       const pan = this.num(args, "pan");
       if (pan !== undefined) changes.pan = Math.max(-100, Math.min(100, pan)) / 100;
-      if (Object.keys(changes).length === 0) throw new MusicError("Say what to change: name, instrument, sound, volume or pan");
+      if (args.mute !== undefined) {
+        if (typeof args.mute !== "boolean") throw new MusicError("'mute' is true or false");
+        changes.mute = args.mute;
+      }
+      if (Object.keys(changes).length === 0) throw new MusicError("Say what to change: name, instrument, sound, volume, pan or mute");
       this.write(iv, (tx) => updateTrack(tx, trackId, changes));
       iv.trackIds.add(trackId);
       iv.other.push(`track ${this.song.tracks[trackId]!.name}`);
       this.emit();
       return `Track ${trackId}: ${describeTrack(this.song, trackId)}. ${this.rev()}`;
+    },
+
+    set_mix: (conn, args) => {
+      const iv = this.intervention(conn, args);
+      const all = lines(this.str(args, "mix")!);
+      if (all.length === 0) throw new MusicError("No tracks: one per line, e.g. 't1 vol 65 pan -40'");
+      const changes = all.map(({ n, text }) => {
+        try {
+          return { ...this.mixLine(text), line: n };
+        } catch (error) {
+          throw new MusicError(`Line ${n} ("${text}"): ${(error as Error).message}`);
+        }
+      });
+      const seen = new Set<string>();
+      for (const c of changes) {
+        if (seen.has(c.trackId)) throw new MusicError(`Line ${c.line}: ${this.song.tracks[c.trackId]!.name} appears twice`);
+        seen.add(c.trackId);
+      }
+      this.write(iv, (tx) => {
+        for (const c of changes) updateTrack(tx, c.trackId, c.changes);
+      });
+      for (const c of changes) iv.trackIds.add(c.trackId);
+      iv.other.push("the mix");
+      this.emit();
+      const after = changes.map((c) => `${c.trackId} ${this.song.tracks[c.trackId]!.name} · ${mixText(this.song.tracks[c.trackId]!)}`);
+      return `Mix set:\n${after.join("\n")}\n${this.rev()}`;
+    },
+
+    move_track: (conn, args) => {
+      const iv = this.intervention(conn, args);
+      const trackId = this.track(this.str(args, "track")!);
+      const position = Math.round(this.num(args, "position") ?? NaN);
+      const count = this.song.trackOrder.length;
+      if (!(position >= 1 && position <= count)) throw new MusicError(`position goes from 1 to ${count}`);
+      this.write(iv, (tx) => moveTrack(tx, trackId, position - 1));
+      iv.other.push(`order of tracks`);
+      this.emit();
+      return `Tracks now: ${orderedTracks(this.song).map((t, i) => `${i + 1}. ${t.name} (${t.id})`).join(" · ")}. ${this.rev()}`;
+    },
+
+    remove_track: (conn, args) => {
+      const iv = this.intervention(conn, args);
+      const trackId = this.track(this.str(args, "track")!);
+      const track = this.song.tracks[trackId]!;
+      const ids = Object.values(this.song.notes).filter((n) => n.trackId === trackId).map((n) => n.id);
+      this.guard(iv, ids, args);
+      this.write(iv, (tx) => removeTrack(tx, trackId));
+      iv.removed += ids.length;
+      iv.other.push(`removed track ${track.name}`);
+      this.emit();
+      return `Track ${trackId} "${track.name}" removed, with its ${plural(ids.length, "note")}. The user can undo it in one step. ${this.rev()}`;
     },
 
     annotate: (conn, args) => {
@@ -989,6 +1046,41 @@ export class AiDesk {
     const preset = bank.presets.find((p) => fold(p.name) === key) ?? bank.presets.find((p) => fold(p.name).startsWith(key));
     if (!preset) throw new MusicError(`${bank.id} has no sound '${text.slice(at + 1).trim()}'. See list_instruments with bank '${bank.id}'`);
     return { bank: bank.id, program: preset.program, bankMSB: preset.bankMSB, name: preset.name };
+  }
+
+  /** "Violines vol 80 pan L25 mute": the track is what is left after the settings, read from the end. */
+  private mixLine(text: string): { trackId: string; changes: { volume?: number; pan?: number; mute?: boolean } } {
+    const tokens = text.split(/\s+/);
+    const changes: { volume?: number; pan?: number; mute?: boolean } = {};
+    const value = (raw: string | undefined, what: string): string => {
+      if (raw === undefined) throw new MusicError(`'${what}' needs a value`);
+      return raw;
+    };
+    // Settings are pairs ("vol 70", "pan L30") or words ("mute"); scan for the first one.
+    const first = tokens.findIndex((t) => /^(vol|volume|pan|mute|unmute)$/i.test(t));
+    if (first <= 0) throw new MusicError("write the track first, then 'vol', 'pan', 'mute' or 'unmute'");
+    const trackId = this.track(tokens.slice(0, first).join(" "));
+    for (let i = first; i < tokens.length; i++) {
+      const key = tokens[i]!.toLowerCase();
+      if (key === "mute" || key === "unmute") {
+        changes.mute = key === "mute";
+      } else if (key === "vol" || key === "volume") {
+        const v = Number(value(tokens[++i], key));
+        if (!(v >= 0 && v <= 100)) throw new MusicError("volume goes from 0 to 100");
+        changes.volume = v / 100;
+      } else if (key === "pan") {
+        const raw = value(tokens[++i], key).toUpperCase();
+        const m = /^(C|CENTER|CENTRO)$|^([LR])(\d{1,3})$|^([+-]?\d{1,3})$/.exec(raw);
+        if (!m) throw new MusicError(`'pan ${raw}' is not a pan (-100 to 100, or L30, R20, C)`);
+        const v = m[1] ? 0 : m[2] ? (m[2] === "L" ? -1 : 1) * Number(m[3]) : Number(m[4]);
+        if (Math.abs(v) > 100) throw new MusicError("pan goes from -100 (left) to 100 (right)");
+        changes.pan = v / 100;
+      } else {
+        throw new MusicError(`'${tokens[i]}' is not 'vol', 'pan', 'mute' or 'unmute'`);
+      }
+    }
+    if (Object.keys(changes).length === 0) throw new MusicError("nothing to change");
+    return { trackId, changes };
   }
 
   /** A free melodic channel: never 10 (drums) nor 16 (the metronome). */

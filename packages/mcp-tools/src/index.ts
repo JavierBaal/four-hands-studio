@@ -6,7 +6,7 @@
  * the AI talks to the user in the user's language.
  *
  * Milestone H3 (the AI's hand): reading, interventions, every write tool of ESQUEMA_MCP.md, 6, and
- * point_to. Still to come in H4: summarize, analyze, get_changes_since, get_history, get_proposals
+ * point_to. H3.1 (15/10/2026): the mix (set_mix, mute), remove_track and move_track. Still to come in H4: summarize, analyze, get_changes_since, get_history, get_proposals
  * and withdraw_proposal; list_skills and load_skill arrive with the built-in skills.
  *
  * No tool composes (ESQUEMA_MCP.md, 8): they read, write, and transform mechanically.
@@ -14,7 +14,7 @@
 import { z } from "zod";
 
 /** Bumped whenever a tool, its parameters or its meaning changes. The app refuses other bridges. */
-export const TOOLS_VERSION = 3;
+export const TOOLS_VERSION = 4;
 
 export const SERVER_INSTRUCTIONS = `You are composing together with the user inside Four Hands Studio, a shared MIDI score.
 The user sees every change you make, live.
@@ -87,7 +87,8 @@ export const TOOLS: readonly ToolDefinition[] = [
     title: "Song overview",
     description:
       "Read the overview of the song open in Four Hands Studio: title, tempo, meter, key, length, form (sections with bars), " +
-      "tracks (id, instrument, sound, range, note count, share by author), harmony per bar, annotations and current revision. " +
+      "tracks (id, instrument, sound, mix: volume, pan and mute; range, note count, average velocity, share by author), " +
+      "harmony per bar, annotations and current revision. " +
       "Small on purpose: call it first. Read-only.",
     inputSchema: {},
     annotations: readOnly,
@@ -385,8 +386,9 @@ export const TOOLS: readonly ToolDefinition[] = [
     name: "update_track",
     title: "Change a track",
     description:
-      "Change a track's name, instrument, installed sound, volume (0-100) or pan (-100 left to 100 right). " +
-      "sound: 'bank file / sound name', or 'default' to go back to the built-in sound.",
+      "Change a track's name, instrument, installed sound, volume (0-100), pan (-100 left to 100 right) or mute. " +
+      "sound: 'bank file / sound name', or 'default' to go back to the built-in sound. " +
+      "To balance several tracks at once, use set_mix. The current mix is in get_song_overview.",
     inputSchema: {
       intervention_id: INTERVENTION,
       track: z.string().describe("Track id or name"),
@@ -395,8 +397,48 @@ export const TOOLS: readonly ToolDefinition[] = [
       sound: z.string().optional(),
       volume: z.number().min(0).max(100).optional(),
       pan: z.number().min(-100).max(100).optional(),
+      mute: z.boolean().optional().describe("Silence the whole track (an arrangement decision)"),
     },
     annotations: write,
+  },
+  {
+    name: "set_mix",
+    title: "Balance the mix",
+    description:
+      "Set volume, pan and mute of several tracks in one step, one track per line: the track (id or name), then any of " +
+      "'vol 70' (0-100), 'pan -30' (-100 left to 100 right; also 'pan L30', 'pan R20', 'pan C'), 'mute' or 'unmute'. " +
+      "E.g. 't1 vol 65 pan -40', 'Violines vol 80 pan L25', 'Bateria mute'. Read the current mix in get_song_overview first. " +
+      "You cannot hear the result: describe what you changed and why, and let the user listen. " +
+      "Solo is the user's listening tool and is not available.",
+    inputSchema: {
+      intervention_id: INTERVENTION,
+      mix: z.string().describe("One track per line, e.g. 't1 vol 65 pan -40'"),
+    },
+    annotations: write,
+  },
+  {
+    name: "move_track",
+    title: "Reorder a track",
+    description: "Move a track to another place in the track list (position 1 = top). Only the order changes, not the music.",
+    inputSchema: {
+      intervention_id: INTERVENTION,
+      track: z.string().describe("Track id or name"),
+      position: z.number().int().min(1).describe("New position, 1 = top"),
+    },
+    annotations: write,
+  },
+  {
+    name: "remove_track",
+    title: "Remove a track",
+    description:
+      "Remove a track and all its notes. Only when the user asks for it or clearly agrees: say what will go. " +
+      "Refused if the user changed after the revision you read any note of that track. The user can undo it in one step.",
+    inputSchema: {
+      intervention_id: INTERVENTION,
+      track: z.string().describe("Track id or name"),
+      base_revision: BASE,
+    },
+    annotations: destructive,
   },
   {
     name: "annotate",
