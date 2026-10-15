@@ -504,7 +504,7 @@ await settle();
 await page.keyboard.press("Home");
 await settle();
 check("Home goes back to the start", (await song()).context.cursor === 0);
-check("tools are icon buttons", (await page.locator(".tool.icon svg").count()) === 3 && (await page.getByRole("button", { name: "Goma" }).count()) === 1);
+check("tools are icon buttons", (await page.locator(".tool.icon svg").count()) === 4 && (await page.getByRole("button", { name: "Goma" }).count()) === 1);
 
 // 24. Fluid movement: a dragged note follows the mouse (drift) with its snapped place as target, and
 // lands there after release; the wheel glides to where its steps add up.
@@ -620,6 +620,68 @@ if (nx > gridH32.x && nx < gridH32.x + gridH32.width && ny > gridH32.y && ny < g
   const tip = await page.locator(".notetip").textContent().catch(() => null);
   check("label over a note", !!tip && tip.includes(`velocidad ${someNote.velocity}`), String(tip));
 } else check("label over a note (note in sight)", false, JSON.stringify({ nx, ny, gridH32 }));
+
+// 15/10/2026: save state, splitters, vertical zoom and the zoom tool.
+// (In the harness there is no SoundFont, so the label shows that; the tooltip carries the save time.)
+check("save time in the tooltip", /^Último guardado: \d\d:\d\d:\d\d · /.test((await page.locator(".saved").getAttribute("title")) ?? ""), await page.locator(".saved").getAttribute("title"));
+// Splitter between arrangement and piano roll: drag down 80 px, the arrangement grows; double click resets.
+const arrBox0 = await page.locator(".arr").boundingBox();
+const sp = await page.locator(".split.arrsplit").boundingBox();
+await page.mouse.move(sp.x + sp.width / 2, sp.y + sp.height / 2);
+await page.mouse.down();
+await page.mouse.move(sp.x + sp.width / 2, sp.y + sp.height / 2 - 80, { steps: 5 });
+await page.mouse.up();
+await settle();
+const arrBox1 = await page.locator(".arr").boundingBox();
+check("splitter makes the arrangement shorter (it scrolls)", Math.abs(arrBox1.height - (arrBox0.height - 80)) < 3, `${arrBox0.height} → ${arrBox1.height}`);
+await page.locator(".split.arrsplit").dblclick();
+await settle();
+check("double click on the splitter resets it", Math.abs((await page.locator(".arr").boundingBox()).height - arrBox0.height) < 2);
+// Header width.
+const hs = await page.locator(".split.hdrsplit").boundingBox();
+await page.mouse.move(hs.x + 3, hs.y + 40);
+await page.mouse.down();
+await page.mouse.move(hs.x + 103, hs.y + 40, { steps: 5 });
+await page.mouse.up();
+await settle();
+check("track names widen", Math.abs((await page.locator(".thdrs").boundingBox()).width - 296) < 3, String((await page.locator(".thdrs").boundingBox()).width));
+const remembered = await page.evaluate(() => JSON.parse(localStorage.getItem("fh.layout") ?? "{}"));
+await page.waitForTimeout(500);
+check("the layout is remembered", (await page.evaluate(() => JSON.parse(localStorage.getItem("fh.layout") ?? "{}"))).headerWidth === 296, JSON.stringify(remembered));
+await page.locator(".split.hdrsplit").dblclick();
+// Vertical zoom: Shift+H makes rows taller, by a step.
+const row0 = await page.evaluate(() => window.fhTest.view.state.rowHeight);
+await page.mouse.move(gridH32.x + 200, gridH32.y + 100);
+await page.keyboard.press("Shift+H");
+await page.waitForTimeout(700);
+check("Shift+H: taller rows", (await page.evaluate(() => window.fhTest.view.state.rowHeight)) === 18 && row0 === 15, String(await page.evaluate(() => window.fhTest.view.state.rowHeight)));
+await page.keyboard.press("Shift+G");
+await page.waitForTimeout(700);
+// Zoom tool: 4, then a rectangle over two bars frames them.
+await page.keyboard.press("4");
+const vz = await page.evaluate(() => window.fhTest.view.state);
+const gz = await page.locator(".pgrid canvas:not(.playhead-layer)").boundingBox();
+const bx0 = gz.x + (2 * BAR - vz.startTick) * vz.pxPerTick;
+const bx1 = gz.x + (4 * BAR - vz.startTick) * vz.pxPerTick;
+await page.mouse.move(bx0, gz.y + 40);
+await page.mouse.down();
+await page.mouse.move(bx1, gz.y + 160, { steps: 6 });
+await page.mouse.up();
+await page.waitForTimeout(500);
+const vz2 = await page.evaluate(() => window.fhTest.view.state);
+check("zoom rectangle frames two bars", Math.abs(vz2.startTick - 2 * BAR) < 40 && Math.abs(vz2.pxPerTick * 2 * BAR - gz.width) < 4, JSON.stringify({ s: vz2.startTick, w: vz2.pxPerTick * 2 * BAR, gw: gz.width, r: vz2.rowHeight }));
+await page.keyboard.down("Alt");
+await page.mouse.click(gz.x + 300, gz.y + 100);
+await page.keyboard.up("Alt");
+await page.waitForTimeout(500);
+check("Alt+click zooms out", (await page.evaluate(() => window.fhTest.view.state.pxPerTick)) < vz2.pxPerTick);
+// Zoom tool over the arrangement: a click shows half of the song.
+const lanes = await page.locator(".lanes canvas").boundingBox();
+await page.mouse.click(lanes.x + lanes.width / 2, lanes.y + 40);
+await settle();
+const az = await page.evaluate(() => window.fhTest.view.state.arrZoom);
+check("zoom tool on the arrangement", !!az && az.span > 0, JSON.stringify(az));
+await page.keyboard.press("1");
 
 console.log(`${passed} passed, ${failures.length} failed`);
 for (const f of failures) console.log("FAIL", f);

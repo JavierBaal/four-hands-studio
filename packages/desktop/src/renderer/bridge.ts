@@ -41,6 +41,8 @@ export interface Bridge {
   viewInfo(info: ViewInfo): void;
   /** "Cómo conectarla": hands the extension to Claude Desktop. */
   connectClaude(): void;
+  /** Ctrl+S: saves now, or asks where if the song still has its provisional name. */
+  save(): void;
 }
 
 export function windowBridge(): Bridge | null {
@@ -64,7 +66,7 @@ export function memoryBridge(
   const patchListeners = new Set<(m: PatchMessage) => void>();
   const fileListeners = new Set<(s: FileState) => void>();
   let historySent = 0;
-  const file: FileState = { name: options.name ?? song.title, path: `/${song.title}.fourhands`, savedAt: now(), dirty: false, error: null };
+  const file: FileState = { name: options.name ?? song.title, path: `/${song.title}.fourhands`, savedAt: now(), dirty: false, error: null, provisional: false };
   const undoState = () => ({ canUndo: doc.canUndo, canRedo: doc.canRedo, undoLabel: doc.undoLabel, redoLabel: doc.redoLabel });
   doc.subscribe((patch) => {
     const history = doc.history.slice(historySent);
@@ -128,6 +130,10 @@ export function memoryBridge(
     },
     viewInfo: () => {},
     connectClaude: () => console.log("[fh] connect claude"),
+    save: () => {
+      file.savedAt = now();
+      for (const l of fileListeners) l({ ...file });
+    },
     /** The harness plays the AI's side (scripts/capturas.mjs, scripts/interaccion.mjs). */
     setAi: (state) => {
       aiState = structuredClone(state);

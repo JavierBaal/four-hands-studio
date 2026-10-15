@@ -5,6 +5,7 @@
  */
 import { useEffect, useState, useSyncExternalStore } from "react";
 import type { AudioLayer } from "../audio-layer.js";
+import type { FileState } from "../../shared/protocol.js";
 import { activeTrack, useActions, useApp, useClock, useSong } from "../context.js";
 import { AiChip } from "./AiPresence.js";
 import { InlineEdit } from "./InlineEdit.js";
@@ -12,13 +13,13 @@ import { modLabel } from "../editor.js";
 import { keyName, noteName, transportPosition } from "../music.js";
 import { KeyboardIcon, LoopIcon, PlayIcon, RecordIcon, StopIcon, ToStartIcon } from "./Icons.js";
 
-function savedText(t: ReturnType<typeof useApp>["t"], savedAt: number | null, now: number): string {
-  if (savedAt === null) return t("saving");
-  const s = Math.max(0, Math.round((now - savedAt) / 1000));
-  if (s < 2) return t("savedNow");
-  if (s < 60) return t("savedSeconds", { n: s });
-  if (s < 3600) return t("savedMinutes", { n: Math.floor(s / 60) });
-  return t("savedHours", { n: Math.floor(s / 3600) });
+/**
+ * The state of the file, not a clock (Fran, 15/10/2026: "Guardado hace 12 min" read as "not saved
+ * for 12 minutes", when it meant "nothing changed for 12 minutes"). The time goes in the tooltip.
+ */
+function savedText(t: ReturnType<typeof useApp>["t"], file: FileState, now: number): string {
+  if (file.dirty || file.savedAt === null) return t("saving");
+  return now - file.savedAt < 2500 ? t("savedJust") : t("savedAll");
 }
 
 /** The position field follows the playhead at ~15 frames per second while playing. */
@@ -66,7 +67,7 @@ export function TopBar({ audio }: { audio: AudioLayer }) {
   const recording = audio.take !== null;
   const sound =
     audio.status === "loading" ? t("soundLoading") : audio.status === "none" ? t("soundMissing") : audio.status === "error" ? t("soundFailed") : null;
-  const saved = sound ?? (file.error ? t("saveFailed") : savedText(t, file.savedAt, now));
+  const saved = sound ?? (file.error ? t("saveFailed") : savedText(t, file, now));
   const track = activeTrack(song);
   return (
     <header className="topbar">
@@ -181,7 +182,7 @@ export function TopBar({ audio }: { audio: AudioLayer }) {
           {song.title}
         </div>
       )}
-      <span className={file.error || audio.status === "error" ? "saved err" : "saved"} title={file.error ?? file.path}>
+      <span className={file.error || audio.status === "error" ? "saved err" : "saved"} title={file.error ?? (file.savedAt !== null ? t("savedTitle", { time: new Date(file.savedAt).toLocaleTimeString(lang === "es" ? "es-ES" : "en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" }), path: file.path }) : file.path)}>
         {saved}
       </span>
       <AiChip />

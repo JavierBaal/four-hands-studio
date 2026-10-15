@@ -205,7 +205,10 @@ export class SongSession {
   // Saving
 
   fileState(): FileState {
-    return { name: path.basename(this.file, SONG_EXT), path: this.file, savedAt: this.savedAt, dirty: this.dirty, error: this.saveError };
+    const name = path.basename(this.file, SONG_EXT);
+    const untitled = this.options.untitledName;
+    const provisional = path.dirname(this.file) === this.options.songsDir && (name === untitled || name.startsWith(`${untitled} `));
+    return { name, path: this.file, savedAt: this.savedAt, dirty: this.dirty, error: this.saveError, provisional };
   }
 
   private undoState(): UndoState {

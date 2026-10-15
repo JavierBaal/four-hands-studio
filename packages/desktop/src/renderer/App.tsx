@@ -2,7 +2,7 @@
  * The window (DIRECCION_ARTISTICA.md, 6.1): top bar, arrangement, piano roll and activity panel.
  * The layout follows the approved sketches; below 1000 px of width the compact layout applies.
  */
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { Note } from "@fourhands/core";
 import { ActivityPanel, Rail } from "./components/ActivityPanel.js";
 import { AiWritingBar } from "./components/AiPresence.js";
@@ -17,9 +17,13 @@ import { KeyGuide } from "./components/KeyGuide.js";
 import { Notice, SoundsHelp } from "./components/SoundsHelp.js";
 import { SongActions } from "./song-actions.js";
 import { Editor } from "./editor.js";
-import { type RollView, centerOnPitches, clampScrollY, zoomAt } from "./roll/geometry.js";
+import { type RollView, centerOnPitches, clampScrollY, stepRow, zoomAt, zoomRowsAt } from "./roll/geometry.js";
 import type { AudioLayer } from "./audio-layer.js";
-import type { Position } from "./view.js";
+import { LAYOUT_DEFAULTS, type Position, saveLayout } from "./view.js";
+import { Splitter } from "./components/Splitter.js";
+
+/** The piano roll keeps at least this much height when the arrangement grows. */
+const ROLL_MIN = 220;
 import { type Action, DEFAULT_SHORTCUTS, PIANO_MODE_ALLOWED, actionFor } from "./shortcuts.js";
 import { SIZE } from "./theme.js";
 import type { MenuAction } from "../shared/protocol.js";
@@ -47,11 +51,12 @@ export function App({ audio, onEditor }: AppProps) {
   const song = useSong();
   const v = useView();
   const [appRef, appSize] = useSize<HTMLDivElement>();
+  const [workRef, workSize] = useSize<HTMLDivElement>();
   const [rollSize, setRollSize] = useState({ width: 0, height: 0 });
   const compact = appSize.width > 0 && appSize.width < SIZE.compactBelow;
   const track = activeTrack(song);
 
-  const rollView: RollView = { startTick: v.startTick, pxPerTick: v.pxPerTick, scrollY: v.scrollY, width: rollSize.width, height: rollSize.height };
+  const rollView: RollView = { startTick: v.startTick, pxPerTick: v.pxPerTick, scrollY: v.scrollY, rowHeight: v.rowHeight, width: rollSize.width, height: rollSize.height };
 
   // Centre the active track's notes vertically the first time it is shown.
   useEffect(() => {
@@ -86,11 +91,24 @@ export function App({ audio, onEditor }: AppProps) {
     void replica.run(label, [{ type: "updateTrack", id, changes: { [field]: on } }]);
   }, []);
 
+  const lastRowWheel = useRef(0);
   const zoom = useCallback(
     (factor: number) => {
       view.glide((g) => zoomAt({ ...rollView, startTick: g.startTick, pxPerTick: g.pxPerTick }, factor, rollSize.width / 2));
     },
     [rollSize.width],
+  );
+
+  /** Vertical zoom by one comfortable step, keeping the pitch at `anchorY` (default: the middle). */
+  const zoomRows = useCallback(
+    (dir: 1 | -1, anchorY?: number) => {
+      view.glide((g) => {
+        const at = { ...rollView, ...g };
+        const next = stepRow(g.rowHeight, dir);
+        return zoomRowsAt(at, next, anchorY ?? rollSize.height / 2);
+      });
+    },
+    [rollSize.width, rollSize.height],
   );
 
   /** Runs a shortcut or menu action. Returns false if it does not apply. */
@@ -172,6 +190,18 @@ export function App({ audio, onEditor }: AppProps) {
         case "zoomOut":
           zoom(0.8);
           return true;
+        case "zoomRowsIn":
+          zoomRows(1);
+          return true;
+        case "zoomRowsOut":
+          zoomRows(-1);
+          return true;
+        case "save":
+          bridge.save();
+          return true;
+        case "toolZoom":
+          view.set({ tool: "zoom" });
+          return true;
         case "toolArrow":
           view.set({ tool: "arrow" });
           return true;
@@ -185,7 +215,7 @@ export function App({ audio, onEditor }: AppProps) {
           return false;
       }
     },
-    [zoom],
+    [zoom, zoomRows],
   );
 
   // Keyboard: one table (shortcuts.ts). Ctrl/Cmd held turns the arrow into a pencil.
@@ -228,6 +258,7 @@ export function App({ audio, onEditor }: AppProps) {
       bridge.onMenu((a: MenuAction) => {
         if (a === "toggleAuthorship") view.set({ authorship: !view.state.authorship });
         else if (a === "togglePanel") view.set({ panelOpen: !view.state.panelOpen });
+        else if (a === "resetLayout") view.set({ ...LAYOUT_DEFAULTS, arrZoom: null });
         else perform(a);
       }),
     [perform],
@@ -241,7 +272,14 @@ export function App({ audio, onEditor }: AppProps) {
       const deltaX = e.deltaX * unit;
       const deltaY = e.deltaY * unit;
       const at = (g: Position): RollView => ({ ...rollView, ...g });
-      if (e.ctrlKey || e.metaKey) {
+      if (e.altKey) {
+        // Alt + wheel: vertical zoom by steps, around the pitch under the mouse (Studio One does the same).
+        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+        const now = performance.now();
+        if (now - lastRowWheel.current < 120 || deltaY === 0) return;
+        lastRowWheel.current = now;
+        zoomRows(deltaY < 0 ? 1 : -1, e.clientY - rect.top);
+      } else if (e.ctrlKey || e.metaKey) {
         const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
         const anchor = e.clientX - rect.left;
         view.glide((g) => zoomAt(at(g), Math.exp(-deltaY * 0.0015), anchor));
@@ -252,8 +290,20 @@ export function App({ audio, onEditor }: AppProps) {
         view.glide((g) => ({ scrollY: clampScrollY(at(g), g.scrollY + deltaY) }));
       }
     },
-    [rollSize.width, rollSize.height],
+    [rollSize.width, rollSize.height, zoomRows],
   );
+
+  // Arrangement height (splitter): as tall as the tracks need by default; the piano roll keeps at
+  // least ROLL_MIN pixels; at least one track stays in sight.
+  const laneH = compact ? SIZE.arrangeLaneCompact : SIZE.arrangeLane;
+  const arrNatural = SIZE.arrangeStrip + song.trackOrder.length * laneH + 27;
+  const arrMin = SIZE.arrangeStrip + laneH + 4;
+  const arrMax = Math.max(arrMin, (workSize.height || 800) - ROLL_MIN);
+  useEffect(() => {
+    // Saved once the view settles (a vertical zoom glides through in-between heights).
+    const id = setTimeout(() => saveLayout({ headerWidth: v.headerWidth, panelWidth: v.panelWidth, arrHeight: v.arrHeight, rowHeight: v.rowHeight }), 400);
+    return () => clearTimeout(id);
+  }, [v.headerWidth, v.panelWidth, v.arrHeight, v.rowHeight]);
 
   useSyncExternalStore(editor.subscribe, editor.getVersion);
   const overlayMenus = editor.overlay;
@@ -279,6 +329,7 @@ export function App({ audio, onEditor }: AppProps) {
     <div
       className={v.panelOpen ? "app" : "app pclosed"}
       ref={appRef}
+      style={{ "--hdr-w": `${v.headerWidth}px`, "--act-w": `${v.panelWidth}px` } as React.CSSProperties}
       onDragOver={(e) => {
         if (e.dataTransfer.types.includes("Files")) e.preventDefault();
       }}
@@ -291,8 +342,19 @@ export function App({ audio, onEditor }: AppProps) {
     >
       <TopBar audio={audio} />
       <div className="main">
-        <div className="work">
-          <Arrangement compact={compact} visible={visible} onSelectTrack={selectTrack} onPan={pan} onToggle={toggleTrack} />
+        <div className="work" ref={workRef}>
+          <Arrangement compact={compact} visible={visible} onSelectTrack={selectTrack} onPan={pan} onToggle={toggleTrack} height={v.arrHeight !== null ? Math.min(v.arrHeight, arrMax) : null} />
+          <Splitter
+            dir="row"
+            className="arrsplit"
+            value={Math.min(v.arrHeight ?? arrNatural, arrMax)}
+            min={arrMin}
+            max={arrMax}
+            sign={1}
+            label={t("splitArrangement")}
+            onChange={(h) => view.set({ arrHeight: h >= arrNatural - 2 && h <= arrNatural + 2 ? null : h })}
+            onReset={() => view.set({ arrHeight: null })}
+          />
           <section className="roll" aria-label={t("pianoRoll")}>
             <RollToolbar
               onGridMenu={(anchor) => {
@@ -304,6 +366,19 @@ export function App({ audio, onEditor }: AppProps) {
             <KeyGuide audio={audio} />
           </section>
         </div>
+        {v.panelOpen && !compact && (
+          <Splitter
+            dir="col"
+            className="actsplit"
+            value={v.panelWidth}
+            min={240}
+            max={520}
+            sign={-1}
+            label={t("splitPanel")}
+            onChange={(w) => view.set({ panelWidth: w })}
+            onReset={() => view.set({ panelWidth: LAYOUT_DEFAULTS.panelWidth })}
+          />
+        )}
         <ActivityPanel />
         <Rail />
       </div>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { centerOnPitches, gridTicks, pitchToY, snapFloor, tickToX, xToTick, yToPitch, zoomAt, type RollView } from "./roll/geometry.js";
+import { centerOnPitches, fitRect, gridTicks, pitchToY, rowMetrics, snapFloor, stepRow, tickToX, xToTick, yToPitch, zoomAt, zoomClick, zoomRowsAt, type RollView } from "./roll/geometry.js";
 import { barRange, durationName, isBlack, keyName, noteName, scalePitchClasses, transportPosition } from "./music.js";
 
 const m44 = { numerator: 4, denominator: 4 };
@@ -75,5 +75,51 @@ describe("durations as musicians say them (H3.2)", () => {
     expect(durationName(Math.round(1920 * 0.95), "es")).toBe("≈ blanca");
     expect(durationName(1150, "es")).toBe("1,2 tiempos");
     expect(durationName(1150, "en")).toBe("1.2 beats");
+  });
+});
+
+describe("vertical zoom and the zoom tool (Fran, 15/10/2026)", () => {
+  const base: RollView = { startTick: 0, pxPerTick: 0.025, scrollY: (127 - 84) * 15, width: 1000, height: 450 };
+
+  it("moves by comfortable steps and stops at the ends", () => {
+    expect(stepRow(15, 1)).toBe(18);
+    expect(stepRow(15, -1)).toBe(12);
+    expect(stepRow(24, 1)).toBe(24);
+    expect(stepRow(12, -1)).toBe(12);
+    expect(rowMetrics(15)).toEqual({ note: 13, ghost: 9, font: 10 });
+    expect(rowMetrics(24).font).toBe(12);
+  });
+
+  it("keeps the pitch under the mouse in place when rows grow", () => {
+    const anchorY = 200;
+    const before = yToPitch(base, anchorY);
+    const next = zoomRowsAt(base, 21, anchorY);
+    const after: RollView = { ...base, ...next };
+    expect(yToPitch(after, anchorY)).toBe(before);
+    expect(pitchToY(after, 60) - pitchToY(after, 61)).toBe(21);
+  });
+
+  it("frames a rectangle: its bars fill the width and its pitches fit at a comfortable height", () => {
+    // Bars 2–3 and the octave C5–C6 (13 rows) inside a 450 px tall view.
+    const x0 = tickToX(base, 3840);
+    const x1 = tickToX(base, 3 * 3840);
+    const y0 = pitchToY(base, 84) + 2;
+    const y1 = pitchToY(base, 72) + 2;
+    const f = fitRect(base, x0, y0, x1, y1);
+    expect(f.startTick).toBeCloseTo(3840, 0);
+    expect(f.pxPerTick).toBeCloseTo(1000 / (2 * 3840), 6);
+    expect(f.rowHeight).toBe(24); // 13 rows × 24 px = 312 ≤ 450: never taller than 24
+    const after: RollView = { ...base, ...f };
+    expect(pitchToY(after, 84)).toBeGreaterThanOrEqual(0);
+    expect(pitchToY(after, 72) + 24).toBeLessThanOrEqual(450);
+  });
+
+  it("a click zooms in a step in time and rows; Alt+click zooms out", () => {
+    const zin = zoomClick(base, 500, 200, false);
+    expect(zin.pxPerTick).toBeCloseTo(base.pxPerTick * 1.5, 6);
+    expect(zin.rowHeight).toBe(18);
+    const zout = zoomClick(base, 500, 200, true);
+    expect(zout.rowHeight).toBe(12);
+    expect(xToTick({ ...base, ...zin }, 500)).toBeCloseTo(xToTick(base, 500), 3);
   });
 });

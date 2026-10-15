@@ -5,7 +5,7 @@
  * one command list per gesture (one undo step).
  */
 import type { CommandData, Note } from "@fourhands/core";
-import { ROW, type RollView, pitchToY, snapFloor, snapNearest, tickToX, xToTick, yToPitch } from "./geometry.js";
+import { type RollView, rowH, pitchToY, snapFloor, snapNearest, tickToX, xToTick, yToPitch } from "./geometry.js";
 
 /** Edges are grabbed within 6 px; notes under 18 px only have a right edge (ESPEC_PIANO_ROLL.md, 4). */
 export const EDGE_PX = 6;
@@ -21,7 +21,7 @@ export interface Hit {
 }
 
 export function noteRect(v: RollView, n: Note): { x: number; y: number; w: number; h: number } {
-  return { x: tickToX(v, n.start), y: pitchToY(v, n.pitch), w: Math.max(3, n.duration * v.pxPerTick), h: ROW };
+  return { x: tickToX(v, n.start), y: pitchToY(v, n.pitch), w: Math.max(3, n.duration * v.pxPerTick), h: rowH(v) };
 }
 
 /** The note under the mouse (the topmost, i.e. the last drawn) and which part of it. */
@@ -140,7 +140,7 @@ export function inRect(notes: readonly Note[], v: RollView, r: { x0: number; y0:
   const bottom = Math.max(r.y0, r.y1);
   return notes.filter((n) => {
     const nr = noteRect(v, n);
-    return nr.x <= right && nr.x + nr.w >= left && nr.y + 1 <= bottom && nr.y + ROW - 1 >= top;
+    return nr.x <= right && nr.x + nr.w >= left && nr.y + 1 <= bottom && nr.y + nr.h - 1 >= top;
   });
 }
 

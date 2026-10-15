@@ -6,7 +6,7 @@
 import type { GridValue } from "./roll/geometry.js";
 import type { NoteNames } from "./music.js";
 
-export type Tool = "arrow" | "pencil" | "eraser";
+export type Tool = "arrow" | "pencil" | "eraser" | "zoom";
 
 export interface ViewState {
   tool: Tool;
@@ -18,6 +18,8 @@ export interface ViewState {
   startTick: number;
   /** Vertical scroll of the piano roll, in pixels from the top row (pitch 127). */
   scrollY: number;
+  /** Height of a piano roll row (vertical zoom, roll/geometry.ts ROW_STEPS). */
+  rowHeight: number;
   authorship: boolean;
   scale: boolean;
   panelOpen: boolean;
@@ -28,10 +30,48 @@ export interface ViewState {
   centredTrack: string | null;
   /** Which lane shows under the piano roll (ESPEC_PIANO_ROLL.md, 7). */
   lane: "velocity" | "pedal";
+  /**
+   * Layout the user dragged (Fran, 15/10/2026). The sizes of DIRECCION_ARTISTICA.md are the
+   * defaults; `arrHeight` null means "as tall as the tracks need".
+   */
+  headerWidth: number;
+  panelWidth: number;
+  arrHeight: number | null;
+  /** Arrangement zoom (lupa or Ctrl + wheel over it): the ticks shown, or null for the whole song. */
+  arrZoom: { start: number; span: number } | null;
+}
+
+export const LAYOUT_DEFAULTS = { headerWidth: 196, panelWidth: 288, arrHeight: null, rowHeight: 15 } as const;
+export type Layout = Pick<ViewState, "headerWidth" | "panelWidth" | "arrHeight" | "rowHeight">;
+const LAYOUT_KEY = "fh.layout";
+
+/** The layout this person left last time (a per-window convenience: localStorage is enough). */
+export function savedLayout(): Layout {
+  try {
+    const raw = JSON.parse(localStorage.getItem(LAYOUT_KEY) ?? "null") as Partial<Layout> | null;
+    if (!raw) return { ...LAYOUT_DEFAULTS };
+    const num = (v: unknown, d: number) => (typeof v === "number" && Number.isFinite(v) ? v : d);
+    return {
+      headerWidth: num(raw.headerWidth, LAYOUT_DEFAULTS.headerWidth),
+      panelWidth: num(raw.panelWidth, LAYOUT_DEFAULTS.panelWidth),
+      arrHeight: typeof raw.arrHeight === "number" && Number.isFinite(raw.arrHeight) ? raw.arrHeight : null,
+      rowHeight: Math.max(12, Math.min(24, num(raw.rowHeight, LAYOUT_DEFAULTS.rowHeight))),
+    };
+  } catch {
+    return { ...LAYOUT_DEFAULTS };
+  }
+}
+
+export function saveLayout(layout: Layout): void {
+  try {
+    localStorage.setItem(LAYOUT_KEY, JSON.stringify(layout));
+  } catch {
+    // Storage blocked: the layout simply is not remembered.
+  }
 }
 
 /** Where the piano roll is looking: the fields that move smoothly. */
-export type Position = Pick<ViewState, "startTick" | "pxPerTick" | "scrollY">;
+export type Position = Pick<ViewState, "startTick" | "pxPerTick" | "scrollY" | "rowHeight">;
 
 /** Time constant of a glide: about 90 % of the way in 2.3 × this. */
 const GLIDE_MS = 45;
@@ -57,7 +97,7 @@ export class ViewStore {
 
   /** Changes the view at once. Setting a position field stops any movement in progress. */
   set(changes: Partial<ViewState>): void {
-    if ("startTick" in changes || "pxPerTick" in changes || "scrollY" in changes) this.stopAnimation();
+    if ("startTick" in changes || "pxPerTick" in changes || "scrollY" in changes || "rowHeight" in changes) this.stopAnimation();
     this.apply(changes);
   }
 
@@ -134,10 +174,12 @@ export class ViewStore {
         startTick: mix("startTick", cur.startTick, goal.startTick, k),
         pxPerTick: mix("pxPerTick", cur.pxPerTick, goal.pxPerTick, k),
         scrollY: mix("scrollY", cur.scrollY, goal.scrollY, k),
+        rowHeight: mix("rowHeight", cur.rowHeight, goal.rowHeight, k),
       };
       const done =
         Math.abs(next.startTick - goal.startTick) * goal.pxPerTick < 0.25 &&
         Math.abs(next.scrollY - goal.scrollY) < 0.25 &&
+        Math.abs(next.rowHeight - goal.rowHeight) < 0.05 &&
         Math.abs(next.pxPerTick / goal.pxPerTick - 1) < 0.0005;
       this.apply(done ? goal : next);
       if (done) {
@@ -157,7 +199,7 @@ export class ViewStore {
   }
 
   private position(): Position {
-    return { startTick: this.state.startTick, pxPerTick: this.state.pxPerTick, scrollY: this.state.scrollY };
+    return { startTick: this.state.startTick, pxPerTick: this.state.pxPerTick, scrollY: this.state.scrollY, rowHeight: this.state.rowHeight };
   }
 
   subscribe = (listener: () => void): (() => void) => {
@@ -183,5 +225,7 @@ export function initialView(lang: "es" | "en"): ViewState {
     pencilHeld: false,
     centredTrack: null,
     lane: "velocity",
+    arrZoom: null,
+    ...savedLayout(),
   };
 }

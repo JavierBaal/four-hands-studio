@@ -36,7 +36,7 @@ import {
   DEFAULT_VELOCITY,
   strokeColumns,
 } from "./roll/edit.js";
-import { type GridValue, ROW, type RollView, gridTicks, snapFloor, snapNearest, tickToX, xToTick, yToPitch } from "./roll/geometry.js";
+import { type GridValue, type RollView, fitRect, rowH, zoomClick, gridTicks, snapFloor, snapNearest, tickToX, xToTick, yToPitch } from "./roll/geometry.js";
 import type { Replica } from "./replica.js";
 import type { Tool, ViewStore } from "./view.js";
 import { CURSORS } from "./cursors.js";
@@ -89,7 +89,8 @@ type Gesture =
   | { kind: "erase"; ids: Set<string> }
   | { kind: "velocity"; x0: number; y0: number; originals: Note[]; bar: Note | null; height: number; path: { x: number; y: number }[]; columns: Map<number, number>; erase: boolean }
   | { kind: "pedal"; mode: "draw" | "start" | "end" | "move" | "erase"; x0: number; tick0: number; original: PedalSpan[]; index: number }
-  | { kind: "loop"; tick0: number; tick1: number };
+  | { kind: "loop"; tick0: number; tick1: number }
+  | { kind: "zoom"; x0: number; y0: number; out: boolean };
 
 /** How long notes take to slide into their snapped place on release. */
 const SETTLE_MS = 110;
@@ -197,6 +198,11 @@ export class Editor {
     if (this.overlay.menu || this.overlay.quantizeDialog) this.set({ menu: null, quantizeDialog: null });
     if (button !== 0) return;
     const tool = this.tool(mods);
+    if (tool === "zoom") {
+      // Zoom tool (Fran, 15/10/2026): a click zooms in (Alt: out); a drag frames a rectangle.
+      this.gesture = { kind: "zoom", x0: x, y0: y, out: mods.alt };
+      return;
+    }
     const hit = hitTest(this.ownNotes(), this.v, x, y);
     const selectedIds = new Set(this.song.context.selection);
 
@@ -244,6 +250,10 @@ export class Editor {
       this.updateCursor(x, y, mods);
       return;
     }
+    if (g.kind === "zoom") {
+      if (Math.hypot(x - g.x0, y - g.y0) > DRAG_THRESHOLD_PX) this.set({ marquee: { x0: g.x0, y0: g.y0, x1: x, y1: y } });
+      return;
+    }
     if (g.kind === "pending") {
       if (Math.hypot(x - g.x0, y - g.y0) <= DRAG_THRESHOLD_PX) return;
       this.startDrag(g, x, y);
@@ -257,10 +267,10 @@ export class Editor {
         if (mods.shift && g.constrain === null) g.constrain = Math.abs(dx) >= Math.abs(dy) ? "time" : "pitch";
         if (!mods.shift) g.constrain = null;
         const rawTicks = dx / this.v.pxPerTick;
-        const d = clampMove(g.originals, moveDelta(rawTicks, -dy / ROW, this.grid(), g.constrain));
+        const d = clampMove(g.originals, moveDelta(rawTicks, -dy / rowH(this.v), this.grid(), g.constrain));
         const moved = applyMove(g.originals, d);
-        const off = moveDrift(g.originals, rawTicks, -dy / ROW, d, g.constrain);
-        const px = { left: off.ticks * this.v.pxPerTick, right: off.ticks * this.v.pxPerTick, dy: -off.semitones * ROW };
+        const off = moveDrift(g.originals, rawTicks, -dy / rowH(this.v), d, g.constrain);
+        const px = { left: off.ticks * this.v.pxPerTick, right: off.ticks * this.v.pxPerTick, dy: -off.semitones * rowH(this.v) };
         const anchorPitch = g.anchor.pitch + d.semitones;
         if (anchorPitch !== g.lastPitch) {
           g.lastPitch = anchorPitch;
@@ -338,6 +348,13 @@ export class Editor {
     this.gesture = null;
     if (!g) return;
     let pending: Promise<unknown> | null = null;
+    if (g.kind === "zoom") {
+      this.set({ marquee: null });
+      const big = Math.abs(x - g.x0) > 8 && Math.abs(y - g.y0) > 4;
+      const target = big ? fitRect(this.v, g.x0, g.y0, x, y) : zoomClick(this.v, g.x0, g.y0, g.out);
+      this.view.animate(target, 220);
+      return;
+    }
     switch (g.kind) {
       case "pending":
         // A click on an empty spot clears the selection; a click on a note was handled on press.
@@ -346,7 +363,7 @@ export class Editor {
       case "move": {
         const dx = x - g.x0;
         const dy = y - g.y0;
-        const d = clampMove(g.originals, moveDelta(dx / this.v.pxPerTick, -dy / ROW, this.grid(), g.constrain));
+        const d = clampMove(g.originals, moveDelta(dx / this.v.pxPerTick, -dy / rowH(this.v), this.grid(), g.constrain));
         if (d.ticks === 0 && d.semitones === 0) break;
         const moved = applyMove(g.originals, d);
         const trackId = this.trackId();
@@ -491,6 +508,11 @@ export class Editor {
   private updateCursor(x: number, y: number, mods: Mods): void {
     const tool = this.tool(mods);
     let cursor = "default";
+    if (tool === "zoom") {
+      const zoom = mods.alt ? "zoom-out" : "zoom-in";
+      if (zoom !== this.overlay.cursor) this.set({ cursor: zoom });
+      return;
+    }
     if (tool === "pencil") cursor = CURSORS.pencil;
     else if (tool === "eraser") cursor = CURSORS.eraser;
     const hit = hitTest(this.ownNotes(), this.v, x, y);
@@ -828,6 +850,7 @@ export class Editor {
       { label: t("arrow"), shortcut: "1", active: tool === "arrow", run: close(setTool("arrow")) },
       { label: t("pencil"), shortcut: "2", active: tool === "pencil", run: close(setTool("pencil")) },
       { label: t("eraser"), shortcut: "3", active: tool === "eraser", run: close(setTool("eraser")) },
+      { label: t("zoomToolShort"), shortcut: "4", active: tool === "zoom", run: close(setTool("zoom")) },
       { separator: true },
       { label: t("ctxCut"), shortcut: `${modLabel}+X`, disabled: !has, run: close(() => this.cut(hit)) },
       { label: t("ctxCopy"), shortcut: `${modLabel}+C`, disabled: !has, run: close(() => this.copy(hit)) },

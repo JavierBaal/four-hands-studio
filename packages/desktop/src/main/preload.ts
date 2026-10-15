@@ -29,6 +29,7 @@ const CH = {
   aiMarkSeen: "fh:ai-mark-seen",
   viewInfo: "fh:view-info",
   connectClaude: "fh:connect-claude",
+  save: "fh:save",
 } as const;
 
 function listen(channel: string, listener: (value: unknown) => void): () => void {
@@ -61,4 +62,5 @@ contextBridge.exposeInMainWorld("fh", {
   markSeen: (id: string) => ipcRenderer.send(CH.aiMarkSeen, id),
   viewInfo: (info: unknown) => ipcRenderer.send(CH.viewInfo, info),
   connectClaude: () => ipcRenderer.send(CH.connectClaude),
+  save: () => ipcRenderer.send(CH.save),
 });

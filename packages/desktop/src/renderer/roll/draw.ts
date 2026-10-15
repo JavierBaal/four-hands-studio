@@ -5,7 +5,7 @@
 import { type Meter, type Note, type Song, type Track, barAt, barStart, barTicks, beatTicks, orderedSections, songEnd } from "@fourhands/core";
 import { type NoteNames, isBlack, noteName } from "../music.js";
 import { FONT, SIZE, T, velocityOpacity } from "../theme.js";
-import { ROW, type RollView, endTick, pitchToY, tickToX } from "./geometry.js";
+import { type RollView, endTick, pitchToY, rowH, rowMetrics, tickToX } from "./geometry.js";
 import type { NoteDrift } from "./edit.js";
 
 export interface Surface {
@@ -36,8 +36,8 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
 }
 
 function visibleRows(v: RollView): { top: number; bottom: number } {
-  const top = Math.min(127, 127 - Math.floor(v.scrollY / ROW));
-  const bottom = Math.max(0, 127 - Math.floor((v.scrollY + v.height) / ROW));
+  const top = Math.min(127, 127 - Math.floor(v.scrollY / rowH(v)));
+  const bottom = Math.max(0, 127 - Math.floor((v.scrollY + v.height) / rowH(v)));
   return { top, bottom };
 }
 
@@ -47,7 +47,8 @@ function visibleRows(v: RollView): { top: number; bottom: number } {
 export function drawKeyboard(s: Surface, v: RollView, names: NoteNames): void {
   const { ctx, width } = s;
   const { top, bottom } = visibleRows(v);
-  ctx.font = `10px ${FONT.sans}`;
+  const ROW = rowH(v);
+  ctx.font = `${rowMetrics(ROW).font}px ${FONT.sans}`;
   ctx.textBaseline = "middle";
   for (let p = top; p >= bottom; p--) {
     const y = pitchToY(v, p);
@@ -65,7 +66,7 @@ export function drawKeyboard(s: Surface, v: RollView, names: NoteNames): void {
     }
     if (p % 12 === 0) {
       ctx.fillStyle = T.keyWhiteText;
-      ctx.fillText(noteName(p, names), 6, y + 7.5);
+      ctx.fillText(noteName(p, names), 6, y + ROW / 2);
     }
   }
 }
@@ -102,6 +103,7 @@ export interface NotesLayer {
 export function drawGrid(s: Surface, v: RollView, meter: Meter, scale: ReadonlySet<number> | null): void {
   const { ctx, width } = s;
   const { top, bottom } = visibleRows(v);
+  const ROW = rowH(v);
   for (let p = top; p >= bottom; p--) {
     const y = pitchToY(v, p);
     const light = scale ? scale.has(p % 12) : !isBlack(p);
@@ -135,6 +137,8 @@ export function drawNotes(s: Surface, v: RollView, layer: NotesLayer): void {
   const start = v.startTick;
   const end = endTick(v);
   const beat = beatTicks(layer.song.meter);
+  const ROW = rowH(v);
+  const M = rowMetrics(ROW);
 
   if (layer.band) {
     const x0 = tickToX(v, layer.band.start);
@@ -160,12 +164,12 @@ export function drawNotes(s: Surface, v: RollView, layer: NotesLayer): void {
     if (y < -ROW || y > height) continue;
     ctx.globalAlpha = 0.28;
     ctx.fillStyle = color;
-    roundRect(ctx, tickToX(v, note.start), y + 3, Math.max(2, note.duration * v.pxPerTick), SIZE.ghost, 2);
+    roundRect(ctx, tickToX(v, note.start), y + (ROW - M.ghost) / 2, Math.max(2, note.duration * v.pxPerTick), M.ghost, 2);
     ctx.fill();
   }
   ctx.globalAlpha = 1;
 
-  ctx.font = `10px ${FONT.sans}`;
+  ctx.font = `${M.font}px ${FONT.sans}`;
   ctx.textBaseline = "middle";
   // Targets first: where notes following the mouse will land.
   if (layer.drift) {
@@ -178,7 +182,7 @@ export function drawNotes(s: Surface, v: RollView, layer: NotesLayer): void {
       const w = Math.max(3, note.duration * v.pxPerTick);
       ctx.globalAlpha = 0.55;
       ctx.strokeStyle = noteFill(note, layer.authorship, layer.offColor);
-      roundRect(ctx, x + 0.5, y + 1.5, w - 1, SIZE.note - 1, 3);
+      roundRect(ctx, x + 0.5, y + 1.5, w - 1, M.note - 1, 3);
       ctx.stroke();
     }
     ctx.globalAlpha = 1;
@@ -194,22 +198,22 @@ export function drawNotes(s: Surface, v: RollView, layer: NotesLayer): void {
     const fade = layer.fresh?.get(note.id);
     ctx.globalAlpha = velocityOpacity(note.velocity) * (fade === undefined ? 1 : fade);
     ctx.fillStyle = noteFill(note, layer.authorship, layer.offColor);
-    roundRect(ctx, x, y + 1, w, SIZE.note, 3);
+    roundRect(ctx, x, y + 1, w, M.note, 3);
     ctx.fill();
     ctx.globalAlpha = 1;
     if (note.duration >= beat * 1.9 && w >= 24) {
       ctx.save();
       ctx.beginPath();
-      ctx.rect(x, y + 1, w - 2, SIZE.note);
+      ctx.rect(x, y + 1, w - 2, M.note);
       ctx.clip();
       ctx.fillStyle = T.textOnLight;
-      ctx.fillText(noteName(note.pitch, layer.names, layer.song.key), x + 4, y + 8);
+      ctx.fillText(noteName(note.pitch, layer.names, layer.song.key), x + 4, y + 1 + M.note / 2);
       ctx.restore();
     }
     if (layer.selected.has(note.id)) {
       ctx.strokeStyle = T.selectNote;
       ctx.lineWidth = 2;
-      roundRect(ctx, x - 1, y, w + 2, SIZE.note + 2, 4);
+      roundRect(ctx, x - 1, y, w + 2, M.note + 2, 4);
       ctx.stroke();
     }
   }
@@ -219,12 +223,12 @@ export function drawNotes(s: Surface, v: RollView, layer: NotesLayer): void {
     const x = tickToX(v, note.start);
     const w = Math.max(3, note.duration * v.pxPerTick);
     ctx.fillStyle = T.proposalFill;
-    roundRect(ctx, x, y + 1, w, SIZE.note, 3);
+    roundRect(ctx, x, y + 1, w, M.note, 3);
     ctx.fill();
     ctx.strokeStyle = T.proposalLine;
     ctx.lineWidth = 1.5;
     ctx.setLineDash([4, 3]);
-    roundRect(ctx, x + 0.75, y + 1.75, w - 1.5, SIZE.note - 1.5, 3);
+    roundRect(ctx, x + 0.75, y + 1.75, w - 1.5, M.note - 1.5, 3);
     ctx.stroke();
     ctx.setLineDash([]);
   }
@@ -304,6 +308,8 @@ export interface ArrangementLayout {
   laneHeight: number;
   /** Ticks shown across the width. */
   totalTicks: number;
+  /** Tick at the left edge (arrangement zoom; 0 shows from the start). */
+  startTick?: number;
   activeTrackId: string | null;
   viewport: { start: number; end: number } | null;
   colors: ReadonlyMap<string, string>;
@@ -317,6 +323,8 @@ export function arrangementTotal(song: Song): number {
 export function drawArrangement(s: Surface, song: Song, tracks: readonly Track[], notesByTrack: ReadonlyMap<string, readonly Note[]>, layout: ArrangementLayout): void {
   const { ctx, width } = s;
   const px = width / layout.totalTicks;
+  const t0 = layout.startTick ?? 0;
+  const X = (tick: number) => (tick - t0) * px;
   tracks.forEach((track, i) => {
     const y0 = layout.stripHeight + i * layout.laneHeight;
     if (track.id === layout.activeTrackId) {
@@ -339,7 +347,7 @@ export function drawArrangement(s: Surface, song: Song, tracks: readonly Track[]
       // Colour as a surface (H3.2, option C, Fran 15/10/2026): a tinted block for each section where
       // the track plays, or one block from its first to its last bar when the song has no sections.
       for (const [from, to] of trackBlocks(song, notes)) {
-        const x0 = from * px + 1;
+        const x0 = X(from) + 1;
         const w = Math.max(2, (to - from) * px - 2);
         ctx.globalAlpha = 0.16;
         ctx.fillStyle = color;
@@ -354,12 +362,12 @@ export function drawArrangement(s: Surface, song: Song, tracks: readonly Track[]
     const inner = layout.laneHeight - 1;
     for (const n of notes) {
       const y = y0 + inner * (0.12 + 0.7 * (1 - (n.pitch - lo) / range));
-      ctx.fillRect(n.start * px, Math.round(y), Math.max(1.5, n.duration * px - 0.5), 2);
+      ctx.fillRect(X(n.start), Math.round(y), Math.max(1.5, n.duration * px - 0.5), 2);
     }
   });
-  if (layout.viewport) {
-    const x0 = Math.max(0, layout.viewport.start * px);
-    const x1 = Math.min(width, layout.viewport.end * px);
+  if (layout.viewport && X(layout.viewport.end) > 0 && X(layout.viewport.start) < width) {
+    const x0 = Math.max(0, X(layout.viewport.start));
+    const x1 = Math.min(width, X(layout.viewport.end));
     const h = layout.stripHeight + tracks.length * layout.laneHeight;
     ctx.fillStyle = T.viewportFill;
     roundRect(ctx, x0, 0, x1 - x0, h, 3);

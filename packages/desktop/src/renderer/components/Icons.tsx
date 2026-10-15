@@ -73,6 +73,13 @@ export const EraserIcon = () => (
     <path d={ERASER_PATH} fill="none" stroke={T.text} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );
+/** Zoom tool: a magnifying glass (line icon, same stroke as the others). */
+export const ZoomIcon = () => (
+  <svg {...svg}>
+    <circle cx="6.8" cy="6.8" r="4.3" fill="none" stroke={T.text} strokeWidth="1.4" />
+    <path d="M10 10l3.8 3.8M5 6.8h3.6M6.8 5v3.6" fill="none" stroke={T.text} strokeWidth="1.4" strokeLinecap="round" />
+  </svg>
+);
 /** Back to the start: a bar and a triangle pointing left. */
 export const ToStartIcon = () => (
   <svg {...svg}>

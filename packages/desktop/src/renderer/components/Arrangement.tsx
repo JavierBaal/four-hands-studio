@@ -8,12 +8,14 @@
  * - "Añadir pista" under the headers opens the instrument palette.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { barStart, orderedSections, orderedTracks } from "@fourhands/core";
-import { activeTrack, notesByTrack, trackColors, useActions, useApp, useSize, useSong } from "../context.js";
+import { type Song, barStart, barTicks, orderedSections, orderedTracks } from "@fourhands/core";
+import { activeTrack, notesByTrack, trackColors, useActions, useApp, useSize, useSong, useView } from "../context.js";
 import { arrangementTotal, drawArrangement, prepare } from "../roll/draw.js";
 import { SIZE } from "../theme.js";
 import { InlineEdit } from "./InlineEdit.js";
 import { Fader } from "./Fader.js";
+import { Splitter } from "./Splitter.js";
+import { LAYOUT_DEFAULTS } from "../view.js";
 import { formatDb, formatPan } from "../../shared/mix.js";
 import type { Track } from "@fourhands/core";
 
@@ -25,6 +27,8 @@ export interface ArrangementProps {
   /** Puts the left edge of the piano roll at a tick; `animate` for jumps, not for drags. */
   onPan(startTick: number, animate: boolean): void;
   onToggle(id: string, field: "mute" | "solo"): void;
+  /** Height the user dragged (splitter), or null for as tall as the tracks need. */
+  height?: number | null;
 }
 
 interface HeaderDrag {
@@ -34,8 +38,9 @@ interface HeaderDrag {
   moved: boolean;
 }
 
-export function Arrangement({ compact, visible, onSelectTrack, onPan, onToggle }: ArrangementProps) {
-  const { t, replica } = useApp();
+export function Arrangement({ compact, visible, onSelectTrack, onPan, onToggle, height = null }: ArrangementProps) {
+  const { t, replica, view } = useApp();
+  useView();
   const actions = useActions();
   const song = useSong();
   const tracks = orderedTracks(song);
@@ -45,7 +50,18 @@ export function Arrangement({ compact, visible, onSelectTrack, onPan, onToggle }
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const colors = useMemo(() => trackColors(song), [replica.version]);
   const byTrack = useMemo(() => notesByTrack(song), [replica.version]);
-  const total = arrangementTotal(song);
+  const full = arrangementTotal(song);
+  // Zoomed arrangement (Fran, 15/10/2026): a window over the song; null shows all of it.
+  const z = useView().arrZoom;
+  const total = z ? Math.min(z.span, full) : full;
+  const t0 = z ? Math.max(0, Math.min(z.start, full - total)) : 0;
+  const tool = useView().tool;
+  const [zoomBox, setZoomBox] = useState<{ x0: number; x1: number; out: boolean } | null>(null);
+  const setZoom = (start: number, span: number) => {
+    const s2 = Math.max(barTicksOf(song), Math.min(full, span));
+    if (s2 >= full - 1) view.set({ arrZoom: null });
+    else view.set({ arrZoom: { start: Math.max(0, Math.min(start, full - s2)), span: s2 } });
+  };
   const [drag, setDrag] = useState<HeaderDrag | null>(null);
   const pan = useRef<{ grabTick: number } | null>(null);
 
@@ -58,6 +74,7 @@ export function Arrangement({ compact, visible, onSelectTrack, onPan, onToggle }
       stripHeight: SIZE.arrangeStrip,
       laneHeight,
       totalTicks: total,
+      startTick: t0,
       activeTrackId: active?.id ?? null,
       viewport: visible,
       colors,
@@ -67,11 +84,16 @@ export function Arrangement({ compact, visible, onSelectTrack, onPan, onToggle }
   // Lanes: press inside the rectangle to drag it; press elsewhere to jump there (and keep dragging).
   const tickAt = (e: { clientX: number; currentTarget: Element }) => {
     const rect = e.currentTarget.getBoundingClientRect();
-    return ((e.clientX - rect.left) / rect.width) * total;
+    return t0 + ((e.clientX - rect.left) / rect.width) * total;
   };
   const lanesDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (e.button !== 0) return;
     e.currentTarget.setPointerCapture(e.pointerId);
+    if (tool === "zoom") {
+      const x = e.clientX - e.currentTarget.getBoundingClientRect().left;
+      setZoomBox({ x0: x, x1: x, out: e.altKey });
+      return;
+    }
     const rect = e.currentTarget.getBoundingClientRect();
     const tick = tickAt(e);
     const lane = Math.floor((e.clientY - rect.top - SIZE.arrangeStrip) / laneHeight);
@@ -87,10 +109,42 @@ export function Arrangement({ compact, visible, onSelectTrack, onPan, onToggle }
     }
   };
   const lanesMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (zoomBox && e.currentTarget.hasPointerCapture(e.pointerId)) {
+      setZoomBox({ ...zoomBox, x1: e.clientX - e.currentTarget.getBoundingClientRect().left });
+      return;
+    }
     if (!pan.current || !e.currentTarget.hasPointerCapture(e.pointerId)) return;
     onPan(Math.max(0, tickAt(e) - pan.current.grabTick), false);
   };
-  const lanesUp = () => (pan.current = null);
+  const lanesUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    pan.current = null;
+    if (!zoomBox) return;
+    const w = e.currentTarget.getBoundingClientRect().width;
+    const at = (x: number) => t0 + (x / w) * total;
+    if (Math.abs(zoomBox.x1 - zoomBox.x0) > 8) {
+      const a = at(Math.min(zoomBox.x0, zoomBox.x1));
+      setZoom(a, at(Math.max(zoomBox.x0, zoomBox.x1)) - a);
+    } else {
+      // A click: twice as close (Alt: twice as far) around that point.
+      const tick = at(zoomBox.x0);
+      const span = zoomBox.out ? total * 2 : total / 2;
+      setZoom(tick - (zoomBox.x0 / w) * span, span);
+    }
+    setZoomBox(null);
+  };
+  // Over the lanes: Ctrl + wheel zooms around the mouse; Shift + wheel (or sideways) moves in time.
+  const lanesWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const frac = (e.clientX - rect.left) / rect.width;
+    if (e.ctrlKey || e.metaKey) {
+      const span = total * Math.exp(e.deltaY * 0.002);
+      const tick = t0 + frac * total;
+      setZoom(tick - frac * span, span);
+    } else if (z && (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY))) {
+      const d = e.shiftKey ? e.deltaY || e.deltaX : e.deltaX;
+      setZoom(t0 + (d / rect.width) * total, total);
+    }
+  };
 
   // Headers: drag to reorder (the header follows the mouse; the line shows where it will land).
   const targetIndex = (d: HeaderDrag) => {
@@ -119,8 +173,21 @@ export function Arrangement({ compact, visible, onSelectTrack, onPan, onToggle }
   const dragFrom = drag ? tracks.findIndex((tr) => tr.id === drag.id) : -1;
 
   return (
-    <section className="arr" aria-label={t("arrangement")}>
+    <section className="arr" aria-label={t("arrangement")} style={height !== null ? { height, overflowY: "auto" } : undefined}>
       <div className="thdrs">
+        {!compact && (
+          <Splitter
+            dir="col"
+            className="hdrsplit"
+            value={view.state.headerWidth}
+            min={140}
+            max={480}
+            sign={1}
+            label={t("splitHeaders")}
+            onChange={(w) => view.set({ headerWidth: w })}
+            onReset={() => view.set({ headerWidth: LAYOUT_DEFAULTS.headerWidth })}
+          />
+        )}
         <div className="strip" />
         {tracks.map((tr, i) => {
           const dragging = drag?.moved && drag.id === tr.id;
@@ -195,11 +262,14 @@ export function Arrangement({ compact, visible, onSelectTrack, onPan, onToggle }
           </button>
         </div>
       </div>
-      <div className="lanes" ref={boxRef}>
-        <canvas ref={canvasRef} onPointerDown={lanesDown} onPointerMove={lanesMove} onPointerUp={lanesUp} data-width={size.width} />
+      <div className="lanes" ref={boxRef} onWheel={lanesWheel}>
+        {zoomBox && Math.abs(zoomBox.x1 - zoomBox.x0) > 2 && (
+          <div className="zoombox" style={{ left: Math.min(zoomBox.x0, zoomBox.x1), width: Math.abs(zoomBox.x1 - zoomBox.x0) }} />
+        )}
+        <canvas ref={canvasRef} style={tool === "zoom" ? { cursor: zoomBox?.out ? "zoom-out" : "zoom-in" } : undefined} onPointerDown={lanesDown} onPointerMove={lanesMove} onPointerUp={lanesUp} data-width={size.width} />
         <div className="strip">
           {orderedSections(song).map((s) => {
-            const left = (barStart(song.meter, s.startBar) / total) * 100;
+            const left = ((barStart(song.meter, s.startBar) - t0) / total) * 100;
             const width = ((barStart(song.meter, s.endBar + 1) - barStart(song.meter, s.startBar)) / total) * 100;
             return (
               <span key={s.id} className="secmini" style={{ left: `${left}%`, width: `${width}%` }}>
@@ -270,4 +340,8 @@ function TrackMix({ track }: { track: Track }) {
       )}
     </div>
   );
+}
+
+function barTicksOf(song: Song): number {
+  return barTicks(song.meter);
 }

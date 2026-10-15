@@ -76,7 +76,7 @@ describe("SongSession", () => {
     expect(saved.title).toBe("Sin título");
     expect(saved.tracks.t1).toMatchObject({ name: "Piano", program: 0 });
     expect(saved.context.activeTrackId).toBe("t1");
-    expect(files.at(-1)).toMatchObject({ name: "Sin título", dirty: false, savedAt: clock, error: null });
+    expect(files.at(-1)).toMatchObject({ name: "Sin título", dirty: false, savedAt: clock, error: null, provisional: true });
     s.dispose();
   });
 
@@ -163,9 +163,12 @@ describe("SongSession", () => {
 
   it("saves as a new file and keeps autosaving there", async () => {
     const s = await SongSession.createNew(options());
+    // A new song keeps a provisional name until saved by hand: Ctrl+S asks where (H3.2).
+    expect(s.fileState().provisional).toBe(true);
     const target = path.join(root, "mis canciones", "Nocturno");
     await s.saveAs(target);
     expect(s.path).toBe(`${target}.fourhands`);
+    expect(s.fileState().provisional).toBe(false);
     s.run("Pista", [{ type: "addTrack", spec: { name: "Chelo" } }]);
     await s.flush();
     expect(parseSongFile(fs.readFileSync(s.path, "utf8")).song.trackOrder).toEqual(["t1", "t2"]);

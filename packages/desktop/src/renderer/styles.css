@@ -41,7 +41,7 @@ canvas { display: block; }
 
 /* Arrangement */
 .arr { display: flex; border-bottom: 1px solid var(--line); background: var(--bg-lane); flex: none; }
-.thdrs { width: 196px; flex: none; border-right: 1px solid var(--line); }
+.thdrs { width: var(--hdr-w, 196px); flex: none; border-right: 1px solid var(--line); position: relative; }
 .strip { height: 22px; position: relative; border-bottom: 1px solid var(--line-soft); box-sizing: border-box; }
 .lh { height: 40px; box-sizing: border-box; border-bottom: 1px solid var(--lane-row); }
 .thdr { display: flex; flex-direction: column; justify-content: center; gap: 3px; padding: 0 8px 0 10px; cursor: pointer; }
@@ -75,7 +75,7 @@ input.inline.mixval { height: 16px; padding: 0 2px; font-size: 10px; text-align:
 .msb.on { background: var(--bg-control-on); border-color: var(--line-on); color: var(--text); }
 .lanes { flex: 1; min-width: 0; position: relative; }
 .lanes canvas { position: absolute; left: 0; top: 0; width: 100%; height: 100%; cursor: pointer; }
-.lanes .strip { position: relative; pointer-events: none; }
+.lanes .strip { position: relative; pointer-events: none; overflow: hidden; }
 .secmini { position: absolute; top: 0; bottom: 0; border-left: 1px solid var(--line-section-mini); padding-left: 4px; font-size: 11px; color: var(--text-2); white-space: nowrap; overflow: hidden; line-height: 22px; box-sizing: border-box; }
 
 /* Piano roll */
@@ -114,7 +114,7 @@ input.inline.mixval { height: 16px; padding: 0 2px; font-size: 10px; text-align:
 .vlane { border-top: 1px solid var(--line); background: var(--bg-lane); }
 
 /* Activity panel */
-.activity { width: 288px; flex: none; border-left: 1px solid var(--line); background: var(--bg-panel); padding: 16px; display: flex; flex-direction: column; gap: 20px; overflow: auto; box-sizing: border-box; user-select: text; -webkit-user-select: text; }
+.activity { width: var(--act-w, 288px); flex: none; border-left: 1px solid var(--line); background: var(--bg-panel); padding: 16px; display: flex; flex-direction: column; gap: 20px; overflow: auto; box-sizing: border-box; user-select: text; -webkit-user-select: text; }
 .ah { font-size: 11px; color: var(--text-2); text-transform: uppercase; letter-spacing: .05em; margin: 0 0 8px; }
 .card { border: 1px solid var(--line-control); border-radius: 10px; padding: 12px; background: var(--bg-card); }
 .card.ai { border-color: var(--ai-line); background: var(--ai-surface); }
@@ -278,3 +278,20 @@ input.inline.mixval { height: 16px; padding: 0 2px; font-size: 10px; text-align:
 
 /* H3.2: label over the note under the mouse. */
 .notetip { position: absolute; z-index: 4; pointer-events: none; white-space: nowrap; font-size: 12px; color: var(--text); background: var(--bg-menu); border: 1px solid var(--line-strong); border-radius: 6px; padding: 3px 8px; box-shadow: 0 6px 16px rgba(0, 0, 0, .35); font-variant-numeric: tabular-nums; }
+
+/* Splitters (Fran, 15/10/2026): an invisible 6 px grip over the border, lit while used. */
+.split { flex: none; position: relative; z-index: 5; touch-action: none; outline: none; }
+.split.row { height: 6px; margin: -3px 0; cursor: row-resize; }
+.split.col { width: 6px; margin: 0 -3px; cursor: col-resize; }
+.split::after { content: ""; position: absolute; background: transparent; transition: background-color .12s; }
+.split.row::after { left: 0; right: 0; top: 2px; height: 2px; }
+.split.col::after { top: 0; bottom: 0; left: 2px; width: 2px; }
+.split:hover::after, .split.on::after, .split:focus-visible::after { background: var(--line-on); }
+.split.hdrsplit { position: absolute; top: 0; bottom: 0; right: -3px; margin: 0; }
+@media (prefers-reduced-motion: reduce) { .split::after { transition: none; } }
+.zoombox { position: absolute; top: 0; bottom: 0; z-index: 2; pointer-events: none; border: 1px dashed var(--viewport); background: var(--viewport-fill); border-radius: 3px; box-sizing: border-box; }
+/* A shorter arrangement scrolls: thin scrollbar in the tokens, and the sections strip stays on top. */
+.arr { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+.arr::-webkit-scrollbar { width: 8px; }
+.arr::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 4px; }
+.arr > .thdrs > .strip, .arr > .lanes > .strip { position: sticky; top: 0; z-index: 1; background: var(--bg-lane); }

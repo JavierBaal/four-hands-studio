@@ -173,6 +173,13 @@ async function openWith(kind: "song" | "midi"): Promise<void> {
   }
 }
 
+/** Ctrl+S: saves now; a song still under its provisional name asks where first. */
+async function save(): Promise<void> {
+  if (!songs) return;
+  if (songs.fileState().provisional) return saveAs();
+  await songs.saveNow();
+}
+
 async function saveAs(): Promise<void> {
   if (!win || !songs) return;
   const pick = await dialog.showSaveDialog(win, { defaultPath: songs.path, filters: [{ name: t("fileSong"), extensions: ["fourhands"] }] });
@@ -215,6 +222,8 @@ function buildMenu(): void {
         { label: t("menuOpen"), accelerator: "CmdOrCtrl+O", click: () => void openWith("song") },
         { label: t("menuImport"), accelerator: "CmdOrCtrl+I", click: () => void openWith("midi") },
         { type: "separator" },
+        // The window takes Ctrl+S itself (shortcut table) and asks for it; the menu shows the key.
+        { label: t("menuSave"), accelerator: "CmdOrCtrl+S", registerAccelerator: false, click: () => void save() },
         { label: t("menuSaveAs"), accelerator: "CmdOrCtrl+Shift+S", click: () => void saveAs() },
         { label: t("menuExport"), accelerator: "CmdOrCtrl+E", click: () => void exportMidi() },
         { label: t("menuShowFolder"), click: () => songs && shell.showItemInFolder(songs.path) },
@@ -245,6 +254,9 @@ function buildMenu(): void {
         { type: "separator" },
         shown(t("menuZoomIn"), "H", "zoomIn"),
         shown(t("menuZoomOut"), "G", "zoomOut"),
+        shown(t("menuRowsIn"), "Shift+H", "zoomRowsIn"),
+        shown(t("menuRowsOut"), "Shift+G", "zoomRowsOut"),
+        { label: t("menuResetLayout"), click: () => sendMenu("resetLayout") },
       ],
     },
     {
@@ -393,6 +405,7 @@ function registerIpc(): void {
   });
   ipcMain.handle(CH.ai, () => desk?.state() ?? NO_AI);
   ipcMain.on(CH.connectClaude, () => void connectWithClaude());
+  ipcMain.on(CH.save, () => void save());
   ipcMain.on(CH.aiClose, (_e, id: string) => desk?.closeByUser(String(id)));
   ipcMain.on(CH.aiMarkSeen, (_e, id: string) => desk?.markSeen(String(id)));
   ipcMain.on(CH.viewInfo, (_e, info: ViewInfo) => {

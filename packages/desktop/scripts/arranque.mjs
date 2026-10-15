@@ -37,6 +37,16 @@ await win.mouse.dblclick(grid.x + 300, grid.y + 10); // top rows: no notes or gh
 await win.waitForTimeout(1600);
 let saved = JSON.parse(fs.readFileSync(file, "utf8"));
 check("autosaves within a second", Object.keys(saved.song.notes).length === 1025, Object.keys(saved.song.notes).length);
+if (process.argv[2]) {
+  // With sound, the label tells the state (15/10/2026): "Todo guardado", and Ctrl+S saves at once.
+  await win.waitForTimeout(3600);
+  check("label says everything is saved", (await win.locator(".saved").textContent()) === "Todo guardado", await win.locator(".saved").textContent());
+  const before = fs.statSync(file).mtimeMs;
+  await win.waitForTimeout(50);
+  await win.keyboard.press("Control+s");
+  await win.waitForTimeout(400);
+  check("Ctrl+S saves now", fs.statSync(file).mtimeMs > before && (await win.locator(".saved").textContent()) === "Guardado", await win.locator(".saved").textContent());
+}
 await win.keyboard.press("Space");
 await win.waitForTimeout(2000);
 await win.keyboard.press("Space");

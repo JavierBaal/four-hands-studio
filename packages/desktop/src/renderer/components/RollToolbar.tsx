@@ -2,7 +2,7 @@
 import { barAt } from "@fourhands/core";
 import { activeTrack, useActions, useApp, useSong, useView } from "../context.js";
 import { barRange } from "../music.js";
-import { ArrowToolIcon, EraserIcon, PencilIcon } from "./Icons.js";
+import { ArrowToolIcon, EraserIcon, PencilIcon, ZoomIcon } from "./Icons.js";
 import type { Tool } from "../view.js";
 
 export interface RollToolbarProps {
@@ -61,6 +61,7 @@ export function RollToolbar({ onGridMenu }: RollToolbarProps) {
       {toolButton("arrow", t("arrow"), "1", <ArrowToolIcon />)}
       {toolButton("pencil", t("pencil"), "2", <PencilIcon />)}
       {toolButton("eraser", t("eraser"), "3", <EraserIcon />)}
+      {toolButton("zoom", t("zoomTool"), "4", <ZoomIcon />)}
       <span className="sep" />
       <button className={v.gridOn ? "tool" : "tgl"} onClick={(e) => onGridMenu(e.currentTarget)} aria-haspopup="menu">
         {v.gridOn ? `${t("grid")} ${v.grid}` : t("gridOff")} <span className="kbd">N</span>

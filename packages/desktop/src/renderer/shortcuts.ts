@@ -27,6 +27,10 @@ export type Action =
   | "toggleGrid"
   | "zoomOut"
   | "zoomIn"
+  | "zoomRowsOut"
+  | "save"
+  | "zoomRowsIn"
+  | "toolZoom"
   | "toolArrow"
   | "toolPencil"
   | "toolEraser"
@@ -44,6 +48,7 @@ export interface Combo {
 }
 
 export const DEFAULT_SHORTCUTS: Record<Action, Combo[]> = {
+  save: [{ key: "s", mod: true }],
   undo: [{ key: "z", mod: true }],
   redo: [{ key: "y", mod: true }, { key: "z", mod: true, shift: true }],
   cut: [{ key: "x", mod: true }],
@@ -67,9 +72,13 @@ export const DEFAULT_SHORTCUTS: Record<Action, Combo[]> = {
   toggleGrid: [{ key: "n" }],
   zoomOut: [{ key: "g" }],
   zoomIn: [{ key: "h" }],
+  // Vertical zoom (ESPEC_PIANO_ROLL.md, 6.2): taller or shorter rows, by comfortable steps.
+  zoomRowsOut: [{ key: "g", shift: true }],
+  zoomRowsIn: [{ key: "h", shift: true }],
   toolArrow: [{ code: "Digit1" }, { code: "Numpad1" }],
   toolPencil: [{ code: "Digit2" }, { code: "Numpad2" }],
   toolEraser: [{ code: "Digit3" }, { code: "Numpad3" }],
+  toolZoom: [{ code: "Digit4" }, { code: "Numpad4" }],
   record: [{ key: "r" }],
   pianoMode: [{ code: "KeyK", mod: true }],
 };
@@ -91,6 +100,8 @@ export const PIANO_MODE_ALLOWED: ReadonlySet<Action> = new Set<Action>([
   "toolArrow",
   "toolPencil",
   "toolEraser",
+  "toolZoom",
+  "save",
   "delete",
   "escape",
   "undo",

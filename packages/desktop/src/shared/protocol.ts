@@ -25,6 +25,8 @@ export interface FileState {
   savedAt: number | null;
   /** Changes not yet on disk. */
   dirty: boolean;
+  /** Still under its provisional name ("Sin título 2"): Ctrl+S asks where to save it. */
+  provisional: boolean;
   /** Last save error, in English (the window shows its own text). */
   error: string | null;
 }
@@ -135,7 +137,8 @@ export const CH = {
   aiMarkSeen: "fh:ai-mark-seen",
   viewInfo: "fh:view-info",
   connectClaude: "fh:connect-claude",
+  save: "fh:save",
 } as const;
 
 /** Menu commands handled by the window (edit and view actions live there). */
-export type MenuAction = "undo" | "redo" | "cut" | "copy" | "paste" | "duplicate" | "delete" | "selectAll" | "toggleAuthorship" | "togglePanel" | "zoomIn" | "zoomOut";
+export type MenuAction = "undo" | "redo" | "cut" | "copy" | "paste" | "duplicate" | "delete" | "selectAll" | "toggleAuthorship" | "togglePanel" | "zoomIn" | "zoomOut" | "zoomRowsIn" | "zoomRowsOut" | "resetLayout";

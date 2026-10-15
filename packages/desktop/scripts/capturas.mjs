@@ -30,6 +30,18 @@ export const SHOTS = [
   { name: "07_ia_conectada_880", w: 880, h: 800, q: `?song=boceto&ai=conectada&view=${sketchView(880 - 48 - 56, 8)}` },
   { name: "07_ia_leyendo", q: `?song=boceto&ai=leyendo&view=${sketchView(1440 - 288 - 72, 12)}` },
   // H3.2: mix in the track headers, track colours, notes in the track colour, label over a note.
+  // 15/10/2026: taller rows, wider names with a shorter arrangement, the zoom tool on both.
+  { name: "zoom_filas_21", q: `?song=boceto&view=${view({ rowHeight: 21, startTick: 16 * BAR, pxPerTick: (1440 - 288 - 72) / 12 / BAR, scrollY: (127 - 86) * 21 })}` },
+  { name: "paneles_nombres_anchos", q: `?song=boceto&view=${view({ headerWidth: 300, arrHeight: 170, panelWidth: 340, startTick: 16 * BAR, pxPerTick: (1440 - 340 - 72) / 12 / BAR, scrollY: (127 - 86) * 15 })}`, act: async (page) => {
+    await page.locator(".split.arrsplit").hover();
+  } },
+  { name: "lupa_arreglo", q: `?song=boceto&view=${sketchView(1440 - 288 - 72, 12)}`, act: async (page) => {
+    await page.keyboard.press("4");
+    const b = await page.locator(".lanes canvas").boundingBox();
+    await page.mouse.click(b.x + b.width * 0.4, b.y + 60);
+    await page.waitForTimeout(300);
+    await page.mouse.move(b.x + 200, b.y + 300);
+  } },
   { name: "h32_autoria_apagada", q: `?song=boceto&view=${view({ authorship: false, startTick: 16 * BAR, pxPerTick: (1440 - 288 - 72) / 12 / BAR, scrollY: (127 - 86) * 15 })}` },
   { name: "h32_etiqueta_nota", q: `?song=boceto&view=${sketchView(1440 - 288 - 72, 12)}`, act: async (page) => {
     await page.mouse.move(385, 620);
