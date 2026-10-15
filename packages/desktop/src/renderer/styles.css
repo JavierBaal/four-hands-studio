@@ -64,10 +64,10 @@ input.inline.mixval.card { width: 64px; height: 22px; font-size: 12px; }
 .mixtype { white-space: nowrap; min-width: 64px; cursor: text; border-bottom: 1px dotted var(--line-on); }
 input.inline.mixval { height: 16px; padding: 0 2px; font-size: 10px; text-align: right; color: var(--text); }
 .tchip { width: 10px; height: 10px; border-radius: 3px; flex: none; }
-/* Comparison (15/10/2026): a colour bar the height of the header instead of the small chip. */
-.arr.blocks .thdr { position: relative; padding-left: 16px; }
-.arr.blocks .tchip { position: absolute; left: 6px; top: 5px; bottom: 6px; width: 4px; height: auto; border-radius: 2px; }
-.arr.blocks .tmix { padding-left: 0; }
+/* H3.2 option C (Fran, 15/10/2026): a colour bar the height of the header instead of the small chip. */
+.arr .thdr { position: relative; padding-left: 16px; }
+.arr .tchip { position: absolute; left: 6px; top: 5px; bottom: 6px; width: 4px; height: auto; border-radius: 2px; }
+.arr .tmix { padding-left: 0; }
 .tname { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tname.on { font-weight: 600; }
 .ms { display: flex; gap: 4px; }
@@ -143,8 +143,8 @@ input.inline.mixval { height: 16px; padding: 0 2px; font-size: 10px; text-align:
   .thdrs { width: 44px; }
   .thdr { justify-content: center; padding: 0; }
   .tname, .ms { display: none; }
-  .arr.blocks .thdr { padding-left: 0; }
-  .arr.blocks .tchip { position: static; width: 10px; height: 10px; border-radius: 3px; }
+  .arr .thdr { padding-left: 0; }
+  .arr .tchip { position: static; width: 10px; height: 10px; border-radius: 3px; }
   .lh { height: 14px; }
   .secmini { font-size: 0; }
   .ttl, .saved, .fhide { display: none; }

@@ -304,8 +304,6 @@ export interface ArrangementLayout {
   laneHeight: number;
   /** Ticks shown across the width. */
   totalTicks: number;
-  /** Tinted blocks under the notes (LOOK.blocks). */
-  blocks?: boolean;
   activeTrackId: string | null;
   viewport: { start: number; end: number } | null;
   colors: ReadonlyMap<string, string>;
@@ -337,9 +335,9 @@ export function drawArrangement(s: Surface, song: Song, tracks: readonly Track[]
     }
     const range = Math.max(hi - lo, 1);
     const color = layout.colors.get(track.id) ?? T.text2;
-    if (layout.blocks) {
-      // Colour as a surface (comparison of 15/10/2026): a tinted block for each section where the
-      // track plays, or one block from its first to its last bar when the song has no sections.
+    {
+      // Colour as a surface (H3.2, option C, Fran 15/10/2026): a tinted block for each section where
+      // the track plays, or one block from its first to its last bar when the song has no sections.
       for (const [from, to] of trackBlocks(song, notes)) {
         const x0 = from * px + 1;
         const w = Math.max(2, (to - from) * px - 2);

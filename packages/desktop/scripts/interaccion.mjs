@@ -602,7 +602,7 @@ await page.locator(".menu [role=menuitem]", { hasText: "Musgo" }).click();
 await settle();
 check("colour from the track menu", (await song()).tracks[firstId].color === 7 && (await lastLabel())?.includes("color musgo"), `${(await song()).tracks[firstId].color} ${await lastLabel()}`);
 const chip = await page.locator(".thdr .tchip").first().evaluate((el) => getComputedStyle(el).backgroundColor);
-check("the header chip follows the colour", chip === "rgb(131, 142, 108)", chip);
+check("the header chip follows the colour", chip === "rgb(126, 145, 89)", chip);
 // Label over a note: hover one of the active track's notes and wait.
 const someNote = await page.evaluate(() => {
   const s = window.fhTest.replica.song;

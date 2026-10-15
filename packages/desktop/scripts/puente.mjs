@@ -136,7 +136,7 @@ const recolor = await call("update_track", { intervention_id: iv4, track: "Organ
 await call("end_intervention", { intervention_id: iv4 });
 await win.waitForTimeout(300);
 const chipColor = await win.locator(".thdr .tchip").first().evaluate((el) => getComputedStyle(el).backgroundColor);
-check("update_track colours a track and the header shows it", recolor.ok && /color moss/.test(recolor.text) && chipColor === "rgb(131, 142, 108)", `${recolor.text} ${chipColor}`);
+check("update_track colours a track and the header shows it", recolor.ok && /color moss/.test(recolor.text) && chipColor === "rgb(126, 145, 89)", `${recolor.text} ${chipColor}`);
 await win.keyboard.press("Control+z");
 await win.waitForTimeout(300);
 
