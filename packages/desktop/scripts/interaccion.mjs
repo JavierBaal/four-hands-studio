@@ -286,6 +286,18 @@ await page.keyboard.press("Space");
 await page.waitForTimeout(400);
 check("play", await page.evaluate(() => window.fhTest.audio.player.playing));
 check("playhead moves", (await page.evaluate(() => window.fhTest.audio.player.position())) > cursor);
+// The arrangement shows the same playhead, where the player is (Fran, 19/10/2026).
+const arrHead = await page.evaluate(() => {
+  const c = document.querySelector(".lanes canvas.arrhead");
+  const ctx = c.getContext("2d");
+  const { width, height } = c;
+  const data = ctx.getImageData(0, 0, width, height).data;
+  const y = Math.floor(height * 0.6);
+  let lit = -1;
+  for (let x = 0; x < width; x++) if (data[(y * width + x) * 4 + 3] > 0) { lit = x; break; }
+  return { lit: lit / (window.devicePixelRatio || 1), width: c.clientWidth, pos: window.fhTest.audio.player.position() };
+});
+check("arrangement playhead drawn", arrHead.lit >= 0, arrHead);
 await page.keyboard.press("Space");
 await settle();
 check("stop", !(await page.evaluate(() => window.fhTest.audio.player.playing)));
@@ -676,7 +688,7 @@ await page.keyboard.up("Alt");
 await page.waitForTimeout(500);
 check("Alt+click zooms out", (await page.evaluate(() => window.fhTest.view.state.pxPerTick)) < vz2.pxPerTick);
 // Zoom tool over the arrangement: a click shows half of the song.
-const lanes = await page.locator(".lanes canvas").boundingBox();
+const lanes = await page.locator(".lanes canvas:not(.arrhead)").boundingBox();
 await page.mouse.click(lanes.x + lanes.width / 2, lanes.y + 40);
 await settle();
 const az = await page.evaluate(() => window.fhTest.view.state.arrZoom);

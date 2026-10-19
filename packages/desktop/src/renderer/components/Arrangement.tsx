@@ -11,7 +11,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { type Song, barStart, barTicks, orderedSections, orderedTracks } from "@fourhands/core";
 import { activeTrack, notesByTrack, trackColors, useActions, useApp, useSize, useSong, useView } from "../context.js";
 import { arrangementTotal, drawArrangement, prepare } from "../roll/draw.js";
-import { SIZE } from "../theme.js";
+import { SIZE, T } from "../theme.js";
+import type { AudioLayer } from "../audio-layer.js";
 import { InlineEdit } from "./InlineEdit.js";
 import { Fader } from "./Fader.js";
 import { Splitter } from "./Splitter.js";
@@ -29,6 +30,8 @@ export interface ArrangementProps {
   onToggle(id: string, field: "mute" | "solo"): void;
   /** Height the user dragged (splitter), or null for as tall as the tracks need. */
   height?: number | null;
+  /** The player: its position draws the playhead over the lanes while playing (Fran, 19/10/2026). */
+  audio?: AudioLayer;
 }
 
 interface HeaderDrag {
@@ -38,7 +41,7 @@ interface HeaderDrag {
   moved: boolean;
 }
 
-export function Arrangement({ compact, visible, onSelectTrack, onPan, onToggle, height = null }: ArrangementProps) {
+export function Arrangement({ compact, visible, onSelectTrack, onPan, onToggle, height = null, audio }: ArrangementProps) {
   const { t, replica, view } = useApp();
   useView();
   const actions = useActions();
@@ -80,6 +83,30 @@ export function Arrangement({ compact, visible, onSelectTrack, onPan, onToggle, 
       colors,
     });
   });
+
+  // Playhead over the lanes (Fran, 19/10/2026): the same line as in the piano roll, on its own
+  // layer so the lanes are not redrawn every frame. Stopped, it marks the cursor, like the roll.
+  const headRef = useRef<HTMLCanvasElement>(null);
+  const playing = audio?.player.playing ?? false;
+  const cursor = song.context.cursor;
+  useEffect(() => {
+    const canvas = headRef.current;
+    if (!canvas) return;
+    let frame = 0;
+    const draw = () => {
+      const s = prepare(canvas);
+      const pos = playing ? audio!.player.position() : cursor;
+      if (s && pos !== null && pos >= t0 && pos <= t0 + total) {
+        const x = Math.round(((pos - t0) / total) * s.width);
+        s.ctx.globalAlpha = playing ? 0.85 : 0.6;
+        s.ctx.fillStyle = T.playhead;
+        s.ctx.fillRect(x - 1, 0, 2, s.height);
+      }
+      if (playing && audio!.player.playing) frame = requestAnimationFrame(draw);
+    };
+    draw();
+    return () => cancelAnimationFrame(frame);
+  }, [playing, cursor, t0, total, size.width, size.height]);
 
   // Lanes: press inside the rectangle to drag it; press elsewhere to jump there (and keep dragging).
   const tickAt = (e: { clientX: number; currentTarget: Element }) => {
@@ -267,6 +294,7 @@ export function Arrangement({ compact, visible, onSelectTrack, onPan, onToggle, 
           <div className="zoombox" style={{ left: Math.min(zoomBox.x0, zoomBox.x1), width: Math.abs(zoomBox.x1 - zoomBox.x0) }} />
         )}
         <canvas ref={canvasRef} style={tool === "zoom" ? { cursor: zoomBox?.out ? "zoom-out" : "zoom-in" } : undefined} onPointerDown={lanesDown} onPointerMove={lanesMove} onPointerUp={lanesUp} data-width={size.width} />
+        <canvas ref={headRef} className="playhead-layer arrhead" aria-hidden="true" />
         <div className="strip">
           {orderedSections(song).map((s) => {
             const left = ((barStart(song.meter, s.startBar) - t0) / total) * 100;

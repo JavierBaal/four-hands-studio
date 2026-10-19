@@ -343,7 +343,7 @@ export function App({ audio, onEditor }: AppProps) {
       <TopBar audio={audio} />
       <div className="main">
         <div className="work" ref={workRef}>
-          <Arrangement compact={compact} visible={visible} onSelectTrack={selectTrack} onPan={pan} onToggle={toggleTrack} height={v.arrHeight !== null ? Math.min(v.arrHeight, arrMax) : null} />
+          <Arrangement compact={compact} visible={visible} onSelectTrack={selectTrack} onPan={pan} onToggle={toggleTrack} audio={audio} height={v.arrHeight !== null ? Math.min(v.arrHeight, arrMax) : null} />
           <Splitter
             dir="row"
             className="arrsplit"

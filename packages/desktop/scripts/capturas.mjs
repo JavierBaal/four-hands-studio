@@ -37,7 +37,7 @@ export const SHOTS = [
   } },
   { name: "lupa_arreglo", q: `?song=boceto&view=${sketchView(1440 - 288 - 72, 12)}`, act: async (page) => {
     await page.keyboard.press("4");
-    const b = await page.locator(".lanes canvas").boundingBox();
+    const b = await page.locator(".lanes canvas:not(.arrhead)").boundingBox();
     await page.mouse.click(b.x + b.width * 0.4, b.y + 60);
     await page.waitForTimeout(300);
     await page.mouse.move(b.x + 200, b.y + 300);
@@ -59,6 +59,15 @@ export const SHOTS = [
   { name: "h32_tarjeta_mezcla", q: `?song=boceto&view=${sketchView(1440 - 288 - 72, 12)}`, act: async (page) => {
     await page.locator(".thdr").nth(1).click({ button: "right", position: { x: 120, y: 12 } });
     await page.getByRole("menuitem", { name: /Volumen/ }).click();
+  } },
+  { name: "linea_reproduccion_arreglo", q: `?song=boceto&view=${sketchView(1440 - 288 - 72, 12)}`, act: async (page) => {
+    await page.keyboard.press("Space");
+    await page.waitForTimeout(2500);
+  } },
+  { name: "linea_reproduccion_arreglo_parado", q: `?song=boceto&view=${sketchView(1440 - 288 - 72, 12)}`, act: async (page) => {
+    const b = await page.locator(".rrow.bars").boundingBox().catch(() => null);
+    if (b) await page.mouse.click(b.x + b.width * 0.45, b.y + 6);
+    await page.waitForTimeout(300);
   } },
 ];
 
