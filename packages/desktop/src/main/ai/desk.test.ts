@@ -125,6 +125,21 @@ describe("reading (route 1: the AI reads the song without the user describing it
     expect(new Set(lines.map((l) => l.split(" ")[0])).size).toBe(Object.keys(session.song.notes).length);
   });
 
+  it("analyzes what it wrote: the low clash it creates is found, with its notes (ESTUDIO_SKILLS_COMPOSICION.md, 5)", () => {
+    const whole = ok("analyze");
+    expect(whole).toMatch(/^Analysis of whole song \(c\. 1–52\), all tracks/);
+    expect(whole).toMatch(/cannot hear sounds/);
+    const iv = begin("Pedal grave de Si bemol");
+    const added = ok("add_notes", { intervention_id: iv, track: "Organo", notes: "A#1 5.1 1/1 v60" });
+    ok("end_intervention", { intervention_id: iv });
+    const id = /n\d+/.exec(added)![0];
+    const text = ok("analyze", { range: "5", tracks: ["Organo"] });
+    expect(text).toMatch(/Analysis of c\. 5, Organo/);
+    expect(text).toContain(id);
+    expect(text).toMatch(/Low register/);
+    expect(fail("analyze", { range: "90" })).toBe("Bar 90 does not exist: the song has 52 bars.");
+  });
+
   it("explains impossible ranges in musical terms", () => {
     expect(fail("read_notes", { range: "90" })).toBe("Bar 90 does not exist: the song has 52 bars.");
     expect(fail("read_notes", { range: "1-4", tracks: ["Trompeta"] })).toMatch(/^There is no track 'Trompeta'\. Tracks: t\d+/);

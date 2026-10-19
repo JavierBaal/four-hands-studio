@@ -7,3 +7,4 @@ export * from "./file.js";
 export * from "./compact.js";
 export * from "./command-data.js";
 export * from "./notation.js";
+export * from "./analysis.js";

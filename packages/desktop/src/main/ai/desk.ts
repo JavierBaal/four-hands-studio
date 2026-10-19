@@ -30,6 +30,7 @@ import {
   addNotes,
   addSection,
   addTrack,
+  analysisText,
   ai,
   barStart,
   beatTicks,
@@ -511,6 +512,24 @@ export class AiDesk {
           ? `\nPage ${page} of ${pages} (${slice.length} of ${ids.length} notes in ${range.label}).${page < pages ? ` Next: read_notes with page ${page + 1}.` : ""}`
           : `\n${plural(ids.length, "note")} in ${range.label}.`;
       return body + footer;
+    },
+
+    analyze: (_conn, args) => {
+      const song = this.song;
+      const range = resolveRange(song, this.str(args, "range", false) ?? "all");
+      const trackIds = this.tracks(args);
+      const options: Parameters<typeof analysisText>[1] = {
+        start: range.start,
+        end: range.end,
+        label: range.label,
+        // Usual range of the built-in instrument; a sound from a bank has no known range yet.
+        rangeOf: (trackId) => {
+          const track = song.tracks[trackId];
+          return track && !track.sound ? paletteItem(track.program)?.range : undefined;
+        },
+      };
+      if (trackIds) options.trackIds = trackIds;
+      return analysisText(song, options);
     },
 
     list_instruments: (_conn, args) => {
@@ -1104,7 +1123,7 @@ export class AiDesk {
   }
 }
 
-const READ_TOOLS = new Set(["get_song_overview", "get_user_context", "read_notes", "list_instruments", "point_to"]);
+const READ_TOOLS = new Set(["get_song_overview", "get_user_context", "read_notes", "analyze", "list_instruments", "point_to"]);
 
 function formatPitch(pitch: number): string {
   const names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];

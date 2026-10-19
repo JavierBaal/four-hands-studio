@@ -7,7 +7,7 @@
  *
  * Milestone H3 (the AI's hand): reading, interventions, every write tool of ESQUEMA_MCP.md, 6, and
  * point_to. H3.1 (15/10/2026): the mix (set_mix, mute), remove_track and move_track. H3.2: track colours (color in
- * add_track and update_track). Still to come in H4: summarize, analyze, get_changes_since, get_history, get_proposals
+ * add_track and update_track). 19/10/2026: analyze (ESTUDIO_SKILLS_COMPOSICION.md, 5). Still to come in H4: summarize, get_changes_since, get_history, get_proposals
  * and withdraw_proposal; list_skills and load_skill arrive with the built-in skills.
  *
  * No tool composes (ESQUEMA_MCP.md, 8): they read, write, and transform mechanically.
@@ -15,7 +15,7 @@
 import { z } from "zod";
 
 /** Bumped whenever a tool, its parameters or its meaning changes. The app refuses other bridges. */
-export const TOOLS_VERSION = 5;
+export const TOOLS_VERSION = 6;
 
 /**
  * Track colours by name (H3.2). The app's palette (desktop/src/shared/track-colors.ts) has the same
@@ -38,6 +38,9 @@ keep each note's deviation. Quantize only when the user asks or clearly wants it
 To change only the pitches of a rhythm the user drew or played, use repitch_notes.
 
 Never assume you can move the user's view, selection or playback. To show something, use point_to.
+
+You cannot hear. After writing anything substantial, run analyze on what you touched and fix what is
+clearly unintended before handing the turn back; then tell the user what only their ears can judge.
 
 Talk to the user with the note names and octave convention from get_user_context
 (e.g. Do Re Mi, middle C = Do4), even though the tools always use scientific pitch (C4 = middle C).
@@ -136,6 +139,23 @@ export const TOOLS: readonly ToolDefinition[] = [
       "and to keep each part inside its instrument's range. Read-only.",
     inputSchema: {
       bank: z.string().optional().describe("A bank's file name from the list, to see its sounds"),
+    },
+    annotations: readOnly,
+  },
+  {
+    name: "analyze",
+    title: "Analyze (your ears)",
+    description:
+      "Your substitute for ears: you cannot hear what you write, so check it. Mechanical findings for a range, each with its bars, tracks and note ids: " +
+      "close intervals too low (mud), too many notes below C3, four or more parts crowded in one octave, bars or blocks repeated identically three or more times, " +
+      "straight velocity ramps and long runs of one velocity, several tracks stopping at the same bar line or a sharp drop in loudness, " +
+      "notes outside the instrument's usual range, notes outside the key, and long notes on the beat outside the written chord. " +
+      "It describes, it does not judge: a finding can be exactly what the music wants. " +
+      "Use it after writing anything substantial and before handing the turn back, and when the user asks for your opinion. " +
+      `tracks: only those parts are reported, but every unmuted track counts as heard around them. range: ${RANGE_HELP} Default: all. Read-only.`,
+    inputSchema: {
+      range: z.string().optional().describe(`${RANGE_HELP} Default 'all'`),
+      tracks: TRACKS,
     },
     annotations: readOnly,
   },

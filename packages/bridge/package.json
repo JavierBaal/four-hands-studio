@@ -1,6 +1,6 @@
 {
   "name": "@fourhands/bridge",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "private": true,
   "description": "Four Hands bridge: stdio MCP server packaged as a Claude Desktop extension (.mcpb) that talks to the open app over a local WebSocket.",
   "type": "module",

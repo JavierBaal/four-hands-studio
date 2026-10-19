@@ -3,7 +3,7 @@ import { PROMPTS, SERVER_INSTRUCTIONS, TOOLS } from "./index.js";
 
 const byName = Object.fromEntries(TOOLS.map((t) => [t.name, t]));
 
-const READ_ONLY = ["get_song_overview", "get_user_context", "read_notes", "list_instruments", "point_to"];
+const READ_ONLY = ["get_song_overview", "get_user_context", "read_notes", "analyze", "list_instruments", "point_to"];
 const NEED_INTERVENTION = [
   "end_intervention",
   "add_notes",
@@ -50,6 +50,11 @@ describe("tool definitions", () => {
   it("every write tool needs an intervention", () => {
     for (const n of NEED_INTERVENTION) expect(Object.keys(byName[n]?.inputSchema ?? {}), n).toContain("intervention_id");
     expect(TOOLS.length).toBe(READ_ONLY.length + NEED_INTERVENTION.length + 1); // + begin_intervention
+  });
+
+  it("analyze says it describes and does not judge, and the instructions ask to use it", () => {
+    expect(byName.analyze?.description).toMatch(/does not judge/);
+    expect(SERVER_INSTRUCTIONS).toMatch(/run analyze on what you touched/);
   });
 
   it("begin_intervention announces the 5-minute auto close", () => {

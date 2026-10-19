@@ -41,8 +41,8 @@ const transport = new StdioClientTransport({ command: process.execPath, args: [b
 const client = new Client({ name: "claude-ai", version: "e2e" });
 await client.connect(transport);
 const tools = (await client.listTools()).tools;
-check("the bridge lists the H3.1 tools", tools.length === 25, tools.length);
-check("read tools are read-only for Claude's permissions", tools.filter((t) => t.annotations?.readOnlyHint).length === 5);
+check("the bridge lists the tools, analyze included", tools.length === 26 && tools.some((t) => t.name === "analyze"), tools.length);
+check("read tools are read-only for Claude's permissions", tools.filter((t) => t.annotations?.readOnlyHint).length === 6);
 await win.waitForFunction(() => document.querySelector(".aichip")?.textContent?.includes("Claude conectado"), null, { timeout: 8000 }).catch(() => {});
 check("chip says Claude is connected", (await win.locator(".aichip").innerText()).includes("Claude conectado"));
 
@@ -58,6 +58,8 @@ const overview = await call("get_song_overview");
 check("route 1: overview of Dilatación", overview.ok && /72 BPM · 4\/4 · A minor · 52 bars/.test(overview.text) && /Puente 29-36/.test(overview.text), overview.text.slice(0, 300));
 const bridgeNotes = await call("read_notes", { range: "section:Puente" });
 check("route 1: reads the bridge section, every track", bridgeNotes.ok && /notes in Puente \(c\. 29–36\)/.test(bridgeNotes.text) && (bridgeNotes.text.match(/^Four Hands · /gm) ?? []).length === 6);
+const ears = await call("analyze", { range: "section:Puente" });
+check("route 1: analyze the bridge, the AI's ears", ears.ok && /^Analysis of Puente \(c\. 29–36\), all tracks/.test(ears.text) && /cannot hear sounds/.test(ears.text), ears.text.slice(0, 300));
 const context = await call("get_user_context");
 check("route 1: reads the user's context", context.ok && /Do Re Mi/.test(context.text) && /Visible in the piano roll: c\. 1–/.test(context.text), context.text);
 
@@ -169,7 +171,7 @@ check("bridge.json removed on quit", !fs.existsSync(configFile));
 const logFile = path.join(home, ".config", "Four Hands Studio", "registro-app.jsonl");
 const log = fs.readFileSync(logFile, "utf8");
 const calls = log.split("\n").filter((l) => l.includes('"type":"ai_call"')).map((l) => JSON.parse(l));
-check("every call is in the app's log", calls.length === 20, calls.length);
+check("every call is in the app's log", calls.length === 21, calls.length);
 check("calls answer fast (< 200 ms in the app)", calls.every((c) => c.ms < 200), JSON.stringify(calls.map((c) => c.ms)));
 check("no page errors", errors.length === 0, errors.join("\n"));
 fs.copyFileSync(logFile, path.join(shots, "registro-app.jsonl"));
