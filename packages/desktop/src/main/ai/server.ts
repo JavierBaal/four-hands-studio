@@ -51,8 +51,9 @@ export class AiServer {
       // A web page can open a WebSocket to localhost but cannot send this header: browsers are kept out.
       if (url.pathname !== "/bridge" || req.headers["x-fourhands-token"] !== this.token) {
         this.options.log?.({ type: "bridge_rejected", reason: url.pathname !== "/bridge" ? "path" : "token" });
-        socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
-        socket.destroy();
+        // end(), not destroy(): on Windows destroy() resets the connection before the client reads
+        // the 401, and the bridge would see "ECONNRESET" instead of a clear refusal (19/10/2026).
+        socket.end("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
         return;
       }
       this.wss.handleUpgrade(req, socket, head, (ws) => this.onBridge(ws));
