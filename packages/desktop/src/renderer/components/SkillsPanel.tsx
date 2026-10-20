@@ -1,5 +1,5 @@
 /**
- * "Skills de la IA" (ESTUDIO_SKILLS.md, 6). Two places:
+ * "Tu IA" (ESTUDIO_SKILLS.md, 6; H4): how the AI gives its opinions, and its skills. Two places:
  * - "Skills activas" in the activity panel, as sketch 01 shows it: the skills that are on, with their
  *   origin, and "Gestionar skills…";
  * - the card: every skill Four Hands serves, built in or the user's,
@@ -9,7 +9,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import type { Strings } from "../../shared/i18n.js";
-import type { SkillCardInfo } from "../../shared/protocol.js";
+import type { AiTone, SkillCardInfo } from "../../shared/protocol.js";
 import { useActions, useAi, useApp } from "../context.js";
 
 /** The built-in skills have a title and a description in the user's language. */
@@ -26,11 +26,16 @@ export function SkillsPanel() {
   const ai = useAi();
   const ref = useRef<HTMLDivElement>(null);
   const [skills, setSkills] = useState<SkillCardInfo[] | null>(null);
+  const [tone, setTone] = useState<AiTone | null>(null);
   const open = actions.skillsPanel;
 
   useEffect(() => {
     if (open) void bridge.skills().then(setSkills);
   }, [open, actions.skillsVersion]);
+  useEffect(() => {
+    if (open) void bridge.aiTone().then(setTone);
+  }, [open]);
+  const pickTone = (next: AiTone) => void bridge.setAiTone(next).then(setTone);
 
   useEffect(() => {
     if (!open) return;
@@ -55,6 +60,21 @@ export function SkillsPanel() {
   return (
     <div className="menu qdialog skillspanel" ref={ref} role="dialog" aria-label={t("skillsTitle")}>
       <div className="mhead">{t("skillsTitle")}</div>
+      <div className="tonebox">
+        <div className="toneh">
+          <span className="sech">{t("toneTitle")}</span>
+          <div className="seg" role="radiogroup" aria-label={t("toneTitle")}>
+            {(["direct", "gentle"] as const).map((v) => (
+              <button key={v} role="radio" aria-checked={tone === v} className={tone === v ? "segb on" : "segb"} onClick={() => pickTone(v)} data-tone={v}>
+                {v === "direct" ? t("toneDirect") : t("toneGentle")}
+              </button>
+            ))}
+          </div>
+        </div>
+        <p className="skdesc">{tone === "gentle" ? t("toneGentleHint") : t("toneDirectHint")}</p>
+        <p className="skdesc toneall">{t("toneAlways")}</p>
+      </div>
+      <span className="sech skh">{t("skillsSection")}</span>
       <p className="skintro">{t("skillsIntro")}</p>
       <ul className="sklist">
         {skills?.length === 0 && <li className="hint">{t("skillsNone")}</li>}

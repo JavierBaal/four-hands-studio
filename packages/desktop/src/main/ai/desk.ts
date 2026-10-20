@@ -67,7 +67,7 @@ import {
   removeTrack,
 } from "@fourhands/core";
 import { NAMED_PROGRAMS, PALETTE } from "../../shared/instruments.js";
-import type { AiClientInfo, AiMark, AiState, AiWriting, PatchMessage, SoundBankInfo } from "../../shared/protocol.js";
+import type { AiClientInfo, AiMark, AiState, AiTone, AiWriting, PatchMessage, SoundBankInfo } from "../../shared/protocol.js";
 import type { SongSession } from "../session.js";
 import type { BankPreset } from "../../shared/soundbank-info.js";
 import { SkillError, type SkillSource, skillText, skillsFooter, skillsListText } from "./skills.js";
@@ -91,6 +91,8 @@ export interface AiDeskOptions {
   setTimer?: (fn: () => void, ms: number) => unknown;
   clearTimer?: (handle: unknown) => void;
   onState?: (state: AiState) => void;
+  /** Tu IA > Opiniones: how the user wants opinions given. */
+  tone?: () => AiTone;
   log?: (entry: Record<string, unknown>) => void;
 }
 
@@ -531,7 +533,7 @@ export class AiDesk {
     get_user_context: (conn) => {
       const mine = this.openOf(conn.client);
       const others = [...new Set([...this.connections.values()].filter((c) => c.client !== conn.client).map((c) => `${c.name} (${c.client})`))];
-      return userContextText(this.song, this.window, { mine: mine ? { id: mine.id, description: mine.description } : null, others });
+      return userContextText(this.song, this.window, { mine: mine ? { id: mine.id, description: mine.description } : null, others, tone: this.options.tone?.() ?? "direct" });
     },
 
     read_notes: (_conn, args) => {

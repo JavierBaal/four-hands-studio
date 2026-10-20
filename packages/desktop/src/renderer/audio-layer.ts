@@ -3,7 +3,7 @@
  * 8.2), Web MIDI input and recording (ESPEC, 8). Recording is a take: everything played goes in
  * as one command at the end, so the whole take undoes in one step, and it is never quantized.
  */
-import { type Note, type PedalSpan, PPQ, barAt, barStart, orderedSections } from "@fourhands/core";
+import { type Note, type PedalSpan, type Song, PPQ, barAt, barStart, orderedSections } from "@fourhands/core";
 import type { Strings, Translate } from "../shared/i18n.js";
 import { Engine } from "../audio/engine.js";
 import { INITIAL_KEYBOARD, type KeyboardState, keyAction } from "../audio/keyboard.js";
@@ -58,13 +58,19 @@ export class AudioLayer {
   /** Sound banks the user installed (refreshed when the sounds folder changes). */
   banks: SoundBankInfo[] = [];
   private bankStates = new Map<string, BankStatus>();
+  /**
+   * Con / Sin (H4): "without" plays the song as it was before the last AI intervention, to hear
+   * what it changed. Only what sounds changes: the window keeps showing the song as it is.
+   */
+  compare: "with" | "without" = "with";
+  private before: { revision: number; song: Song } | null = null;
 
   constructor(
     private readonly replica: Replica,
     private readonly bridge: Bridge,
     private readonly t: Translate,
   ) {
-    this.player = new Player(() => this.replica.song);
+    this.player = new Player(() => this.heard());
     this.player.subscribe(() => this.changed());
     this.player.onLive = (kind, n) => this.recordLive(kind, n.pitch, n.velocity, n.tick);
     this.player.onLiveCc = (cc, value, tick) => this.recordCc(cc, value, tick);
@@ -74,6 +80,9 @@ export class AudioLayer {
     };
     // Resend programs, volume and pan when a track changes.
     this.replica.subscribe(() => {
+      // Anything new on top of the AI's step: back to the song as it is.
+      const last = this.replica.undo.lastAi;
+      if (this.before && last?.revision !== this.before.revision) this.resetCompare();
       const sig = this.replica.song.trackOrder.map((id) => {
         const tr = this.replica.song.tracks[id];
         return tr ? `${tr.channel}:${tr.program}:${tr.volume}:${tr.pan}:${tr.sound ? `${tr.sound.bank}/${tr.sound.bankMSB}/${tr.sound.program}` : ""}` : "";
@@ -103,6 +112,46 @@ export class AudioLayer {
   private changed(): void {
     this.version++;
     for (const l of this.listeners) l();
+  }
+
+  /** What plays: the song, or the song without the last AI intervention (with the current loop and cursor). */
+  private heard(): Song {
+    const song = this.replica.song;
+    return this.compare === "without" && this.before ? { ...this.before.song, context: song.context } : song;
+  }
+
+  /** B, or the Con / Sin buttons: hear the song with or without the last AI intervention. */
+  async setCompare(mode: "with" | "without"): Promise<void> {
+    if (mode === this.compare) return;
+    if (mode === "with") {
+      this.resetCompare();
+      return;
+    }
+    const last = this.replica.undo.lastAi;
+    if (!last || this.take) return;
+    if (this.before?.revision !== last.revision) {
+      const song = await this.bridge.songBefore();
+      if (!song || this.replica.undo.lastAi?.revision !== last.revision) return;
+      this.before = { revision: last.revision, song };
+    }
+    this.compare = "without";
+    this.player.setup(); // the AI may have changed sounds or the mix
+    this.bridge.log({ type: "compare", mode: "without", revision: last.revision });
+    this.changed();
+  }
+
+  toggleCompare(): void {
+    void this.setCompare(this.compare === "with" ? "without" : "with");
+  }
+
+  private resetCompare(): void {
+    const was = this.compare;
+    this.compare = "with";
+    this.before = null;
+    if (was === "without") {
+      this.player.setup();
+      this.changed();
+    }
   }
 
   async init(): Promise<void> {
@@ -269,6 +318,7 @@ export class AudioLayer {
     }
     const track = activeTrack(this.replica.song);
     if (!track) return;
+    this.resetCompare(); // a take goes into the song as it is, so it is heard as it is
     if (this.player.playing) this.player.stop();
     const from = this.replica.song.context.cursor;
     this.take = { trackId: track.id, open: new Map(), notes: [], pedalDown: null, pedal: [], from };

@@ -3,7 +3,7 @@
  * The song lives in the main process; the window keeps a replica updated with patches and
  * sends every change as a list of commands (one gesture = one transaction = one undo step).
  */
-import type { CommandData, CommandResult, HistoryEntry, Patch, SharedContext, Song } from "@fourhands/core";
+import type { CommandData, CommandResult, HistoryEntry, Patch, SharedContext, Song, SongDocument } from "@fourhands/core";
 import type { BankPreset } from "./soundbank-info.js";
 
 /** A sound bank the user installed (sound-library.ts). */
@@ -36,6 +36,11 @@ export interface UndoState {
   canRedo: boolean;
   undoLabel: string | null;
   redoLabel: string | null;
+  /**
+   * The last step, when an AI made it and its intervention has ended: "Con / Sin" lets the user
+   * hear the song with and without it. Null once anything else is on top.
+   */
+  lastAi: { label: string; client: string; revision: number } | null;
 }
 
 export interface Snapshot extends UndoState {
@@ -105,6 +110,12 @@ export interface AiState {
   skillsUsed?: string[];
 }
 
+/** What "Con / Sin" can compare, as the window receives it. */
+export function lastAiOf(doc: SongDocument): UndoState["lastAi"] {
+  const step = doc.lastAiStep;
+  return step && step.author.by === "ai" ? { label: step.label, client: step.author.client, revision: step.revision } : null;
+}
+
 export const NO_AI: AiState = { clients: [], reading: null, writing: [], mark: null };
 
 /** What the window tells the main process about what the user sees, for get_user_context. */
@@ -145,7 +156,17 @@ export const CH = {
   skillsImport: "fh:skills-import",
   skillsPick: "fh:skills-pick",
   skillsFolder: "fh:skills-folder",
+  songBefore: "fh:song-before",
+  aiTone: "fh:ai-tone",
+  aiToneSet: "fh:ai-tone-set",
 } as const;
+
+/**
+ * How the AI gives its opinions (Tu IA > Opiniones). Honesty is never optional: "gentle" says the
+ * same problems, with more context and starting from what works.
+ */
+export type AiTone = "direct" | "gentle";
+export const DEFAULT_AI_TONE: AiTone = "direct";
 
 /** A skill as the window shows it (Skills de la IA). */
 export interface SkillCardInfo {

@@ -313,6 +313,15 @@ input.inline.mixval { height: 16px; padding: 0 2px; font-size: 10px; text-align:
 .aibar .pdesc b { font-weight: 600; }
 .aibar .pmeta { color: var(--ai-text-2); font-size: 12px; }
 .btn.aibtn { border-color: var(--ai-line-btn); }
+/* H4, Con / Sin of the last AI intervention: the proposal bar's segmented control (sketches 01 and 07). */
+.seg { display: inline-flex; border: 1px solid var(--ai-line-2); border-radius: 8px; overflow: hidden; }
+.segb { height: 34px; padding: 0 14px; background: transparent; border: 0; color: var(--ai-text-2); font: inherit; cursor: pointer; }
+.segb.on { background: var(--ai-line); color: var(--text); }
+.segb:focus-visible { outline: 2px solid var(--proposal-line); outline-offset: -2px; }
+.cmpbar .kbd { color: var(--ai-text-2); border-color: var(--ai-line-2); }
+.cmpbar .cmpclose { color: var(--ai-text-2); background: transparent; border-color: transparent; }
+.cmpbar .cmpclose:hover { background: var(--ai-surface-2); color: var(--ai-text); }
+.cmpbar.sin .pmeta { color: var(--ai-text); }
 .pflag { position: absolute; top: 8px; z-index: 4; display: flex; align-items: center; gap: 8px; max-width: 360px; box-sizing: border-box; background: var(--ai-surface-2); border: 1px solid var(--author-ai); border-radius: 8px; padding: 6px 10px; color: var(--ai-text); font-size: 12px; box-shadow: 0 6px 16px rgba(0, 0, 0, .3); }
 .pflag > span { min-width: 0; }
 .edge { position: absolute; right: 0; top: 44px; z-index: 4; display: flex; align-items: center; gap: 6px; background: var(--ai-surface-2); border: 1px solid var(--ai-line); border-right: 0; border-radius: 8px 0 0 8px; padding: 6px 10px; color: var(--ai-text); font: inherit; font-size: 12px; cursor: pointer; }
@@ -337,3 +346,12 @@ input.inline.mixval { height: 16px; padding: 0 2px; font-size: 10px; text-align:
 .arr::-webkit-scrollbar { width: 8px; }
 .arr::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 4px; }
 .arr > .thdrs > .strip, .arr > .lanes > .strip { position: sticky; top: 0; z-index: 1; background: var(--bg-lane); }
+
+/* H4: Tu IA > Sus opiniones (honesty always on; only the tone changes). */
+.skillspanel .tonebox { margin: 2px 10px 8px; padding: 10px 12px; border: 1px solid var(--ai-line); border-radius: 10px; background: var(--ai-surface); }
+.skillspanel .toneh { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
+.skillspanel .sech { font-weight: 600; color: var(--text); }
+.skillspanel .skh { display: block; margin: 4px 10px 2px; }
+.skillspanel .tonebox .skdesc { margin: 0; color: var(--ai-text-2); }
+.skillspanel .tonebox .toneall { margin-top: 4px; color: var(--ai-text); }
+.skillspanel .tonebox .segb { height: 30px; padding: 0 12px; }

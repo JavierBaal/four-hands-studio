@@ -25,7 +25,7 @@ import {
   runCommands,
   serializeSong,
 } from "@fourhands/core";
-import type { FileState, PatchMessage, Reply, Request, Snapshot, UndoState } from "../shared/protocol.js";
+import { type FileState, type PatchMessage, type Reply, type Request, type Snapshot, type UndoState, lastAiOf } from "../shared/protocol.js";
 import { backup, uniquePath, writeAtomic } from "./files.js";
 
 export const SONG_EXT = ".fourhands";
@@ -211,8 +211,13 @@ export class SongSession {
     return { name, path: this.file, savedAt: this.savedAt, dirty: this.dirty, error: this.saveError, provisional };
   }
 
+  /** "Con / Sin": the song without the last AI intervention, if it is still the last step. */
+  songBefore(): Song | null {
+    return this.doc.lastAiStep ? this.doc.songBeforeLastStep() : null;
+  }
+
   private undoState(): UndoState {
-    return { canUndo: this.doc.canUndo, canRedo: this.doc.canRedo, undoLabel: this.doc.undoLabel, redoLabel: this.doc.redoLabel };
+    return { canUndo: this.doc.canUndo, canRedo: this.doc.canRedo, undoLabel: this.doc.undoLabel, redoLabel: this.doc.redoLabel, lastAi: lastAiOf(this.doc) };
   }
 
   private markDirty(): void {

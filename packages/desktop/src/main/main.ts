@@ -11,7 +11,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { BRIDGE_CONFIG_FILE, TOOLS_VERSION, bridgeConfigDir } from "@fourhands/mcp-tools";
 import { type Lang, langFrom, translator } from "../shared/i18n.js";
-import { CH, NO_AI, type MenuAction, type Request, type SkillImportResult, type ViewInfo } from "../shared/protocol.js";
+import { type AiTone, CH, DEFAULT_AI_TONE, NO_AI, type MenuAction, type Request, type SkillImportResult, type ViewInfo } from "../shared/protocol.js";
 import { AiDesk } from "./ai/desk.js";
 import { SkillImportError, SkillLibrary, importSkillZip } from "./ai/skills.js";
 import { AiServer } from "./ai/server.js";
@@ -52,7 +52,11 @@ interface Settings {
   firstRunDone?: boolean;
   /** Skills the user turned off in Skills de la IA. */
   disabledSkills?: string[];
+  /** Tu IA > Opiniones (H4): how the AI gives its opinions. */
+  aiTone?: AiTone;
 }
+
+const aiTone = (): AiTone => (readSettings().aiTone === "gentle" ? "gentle" : DEFAULT_AI_TONE);
 
 function readSettings(): Settings {
   try {
@@ -299,6 +303,7 @@ async function startAi(): Promise<void> {
     builtInSounds: () => library?.defaultPresets() ?? [],
     skills: skills!,
     onState: (state) => win?.webContents.send(CH.aiState, state),
+    tone: aiTone,
     log: appendLog,
   });
   aiServer = new AiServer({
@@ -449,6 +454,16 @@ function registerIpc(): void {
     return skills?.catalog() ?? [];
   });
   ipcMain.handle(CH.skillsImport, (_e, files: string[]) => importSkills(files));
+  // Tu IA > Opiniones.
+  ipcMain.handle(CH.aiTone, () => aiTone());
+  ipcMain.handle(CH.aiToneSet, (_e, tone: string) => {
+    const next: AiTone = tone === "gentle" ? "gentle" : "direct";
+    writeSettings({ aiTone: next });
+    appendLog({ type: "ai_tone", tone: next });
+    return next;
+  });
+  // Con / Sin: the song without the last AI intervention, only to listen to it.
+  ipcMain.handle(CH.songBefore, () => songs?.songBefore() ?? null);
   ipcMain.handle(CH.skillsPick, async () => {
     if (!win) return { added: [], failed: [] };
     const pick = await dialog.showOpenDialog(win, { filters: [{ name: "ZIP", extensions: ["zip"] }], properties: ["openFile", "multiSelections"] });

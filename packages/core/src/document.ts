@@ -209,8 +209,9 @@ export class SongDocument {
     if (meta.group !== undefined) step.group = meta.group;
     this.undoStack.push(step);
     this.redoStack.length = 0;
-    this.commit("edit", meta.actor, author, meta.label, tx.ops);
+    // Open before the patch goes out, so its listeners see the step as still growing.
     this.openStep = step;
+    this.commit("edit", meta.actor, author, meta.label, tx.ops);
     return result;
   }
 
@@ -224,7 +225,29 @@ export class SongDocument {
 
   /** Stops a group from growing (the intervention ended): the next transaction is a new step. */
   closeGroup(group: string): void {
-    if (this.openStep?.group === group) this.openStep = null;
+    if (this.openStep?.group !== group) return;
+    this.openStep = null;
+    // Nothing changed in the song, but the last step is now finished: "Con / Sin" can compare it.
+    this.emit({ revision: this.song.revision, ops: [] });
+  }
+
+  /**
+   * The last step, when an AI made it and its intervention has ended: what "Con / Sin" compares
+   * (the user hears the song with and without it). Null as soon as anything else is on top.
+   */
+  get lastAiStep(): { label: string; author: Authorship; revision: number } | null {
+    const top = this.undoStack.at(-1);
+    if (!top || top.author.by !== "ai" || top === this.openStep) return null;
+    return { label: top.label, author: top.author, revision: this.song.revision };
+  }
+
+  /** The song as it was before the last step (a copy; the song itself does not change). */
+  songBeforeLastStep(): Song | null {
+    const top = this.undoStack.at(-1);
+    if (!top) return null;
+    const before = structuredClone(this.song);
+    for (const op of [...top.inverses].reverse()) applyOp(before, op);
+    return before;
   }
 
   /** Undoes the last transaction, whoever made it. Returns false if there is nothing to undo. */

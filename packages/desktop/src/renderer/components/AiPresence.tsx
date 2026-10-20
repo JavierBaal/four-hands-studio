@@ -7,6 +7,8 @@
  * None of them moves the user's view: only the user's click on "Ir" does.
  */
 import { barAt, barStart } from "@fourhands/core";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import type { AudioLayer } from "../audio-layer.js";
 import type { AiWriting } from "../../shared/protocol.js";
 import { useApp, useAi, useSong } from "../context.js";
 import { barRange } from "../music.js";
@@ -95,6 +97,60 @@ export function AiWritingBar() {
       </div>
       <button className="btn aibtn" onClick={() => bridge.closeIntervention(writing.id)}>
         {t("aiCloseIntervention")}
+      </button>
+    </div>
+  );
+}
+
+/**
+ * H4, Con / Sin (decided with Fran, 20/10/2026): the AI's changes go straight into the song, and
+ * after each intervention this bar lets the user hear the song with and without it (B), or undo
+ * it. No accepting or discarding: it is gone as soon as anything else changes the song. Same look
+ * as the proposal bar of sketches 01 and 07, without Aceptar and Descartar.
+ */
+export function AiCompareBar({ audio }: { audio: AudioLayer }) {
+  const { t, replica } = useApp();
+  const ai = useAi();
+  useSong();
+  useSyncExternalStore(audio.subscribe, audio.getVersion);
+  const last = replica.undo.lastAi;
+  const [hidden, setHidden] = useState<number | null>(null);
+  useEffect(() => {
+    if (!last) setHidden(null);
+  }, [last?.revision]);
+  if (!last || ai.writing.length > 0 || hidden === last.revision) return null;
+  const name = ai.clients.find((c) => c.client === last.client)?.name ?? (last.client.startsWith("claude") || last.client.startsWith("local-agent") ? "Claude" : last.client);
+  const without = audio.compare === "without";
+  return (
+    <div className={without ? "aibar cmpbar sin" : "aibar cmpbar"} role="region" aria-label={t("cmpRegion")}>
+      <div className="pdesc">
+        <b>{t("cmpTitle", { name })}</b> · {last.label}
+        <div className="pmeta">{without ? t("cmpMetaWithout") : t("cmpMeta")}</div>
+      </div>
+      <div className="seg" role="group" aria-label={t("cmpGroup")}>
+        <button className={without ? "segb" : "segb on"} aria-pressed={!without} onClick={() => void audio.setCompare("with")}>
+          {t("cmpWith")}
+        </button>
+        <button className={without ? "segb on" : "segb"} aria-pressed={without} onClick={() => void audio.setCompare("without")}>
+          {t("cmpWithout")}
+        </button>
+      </div>
+      <span className="kbd" aria-hidden="true">B</span>
+      <button className="btn aibtn" onClick={() => void replica.undoLast()}>
+        {t("cmpUndo")}
+      </button>
+      <button
+        className="ibtn cmpclose"
+        aria-label={t("cmpHide")}
+        title={t("cmpHide")}
+        onClick={() => {
+          void audio.setCompare("with");
+          setHidden(last.revision);
+        }}
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
       </button>
     </div>
   );

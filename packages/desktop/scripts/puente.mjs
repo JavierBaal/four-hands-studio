@@ -108,7 +108,9 @@ check("the window shows the writing bar", (await win.locator(".aibar").count()) 
 check("the chip says where Claude writes", /Claude escribe en Violines, c\. 53/.test(await win.locator(".aichip").innerText()), await win.locator(".aichip").innerText());
 await call("end_intervention", { intervention_id: ivId });
 await win.waitForTimeout(300);
-check("the writing bar goes away on end_intervention", (await win.locator(".aibar").count()) === 0);
+check("the writing bar goes away on end_intervention", (await win.locator(".aibar:not(.cmpbar)").count()) === 0);
+// H4: the change is already in the song; the Con / Sin bar offers to hear it without it.
+check("the Con / Sin bar offers the intervention that just ended", (await win.locator(".cmpbar").count()) === 1);
 
 // --- Route 6: the user records a rubato piano phrase; Claude writes a cello counter-melody
 const played = await win.evaluate(async () => {

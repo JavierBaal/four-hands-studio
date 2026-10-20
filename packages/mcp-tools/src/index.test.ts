@@ -64,6 +64,14 @@ describe("tool definitions", () => {
     expect(SERVER_INSTRUCTIONS).toMatch(/run analyze on what you touched/);
   });
 
+  it("the instructions ask for honest opinions, whatever the tone (H4)", () => {
+    expect(SERVER_INSTRUCTIONS).toMatch(/Honest opinions/);
+    expect(SERVER_INSTRUCTIONS).toMatch(/never praise your own work/);
+    expect(SERVER_INSTRUCTIONS).toMatch(/Don't change your opinion because the user insists/);
+    expect(SERVER_INSTRUCTIONS).toMatch(/only the delivery\nchanges/);
+    expect(SERVER_INSTRUCTIONS).not.toMatch(/never call the\s+user's choices errors/);
+  });
+
   it("begin_intervention announces the 5-minute auto close", () => {
     expect(byName.begin_intervention?.description).toMatch(/5 minutes/);
   });

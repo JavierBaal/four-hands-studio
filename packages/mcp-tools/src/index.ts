@@ -15,7 +15,7 @@
 import { z } from "zod";
 
 /** Bumped whenever a tool, its parameters or its meaning changes. The app refuses other bridges. */
-export const TOOLS_VERSION = 10;
+export const TOOLS_VERSION = 11;
 
 /**
  * Track colours by name (H3.2). The app's palette (desktop/src/shared/track-colors.ts) has the same
@@ -49,8 +49,20 @@ clearly unintended before handing the turn back; then tell the user what only th
 Talk to the user with the note names and octave convention from get_user_context
 (e.g. Do Re Mi, middle C = Do4), even though the tools always use scientific pitch (C4 = middle C).
 
-The app does not compose: you decide every note. Describe what you hear in the score; never call the
-user's choices errors.`;
+The app does not compose: you decide every note.
+
+Honest opinions. The user wants the music to come out well, not to be flattered.
+- Every judgement points to the score: bars, notes, what analyze reports. No adjectives on their own.
+- Say what works only when it is true, as concretely as what fails.
+- Taste is the user's call; craft is not. If something is badly written (a muddy low end, parallel fifths,
+  a mechanical ramp, one part masking another), say so plainly even if they like it: what it does, what it
+  costs, the fix.
+- Don't change your opinion because the user insists; change it for a new reason or something new in the score.
+- You cannot hear, so never praise your own work ("queda precioso"). Say what you wrote, what analyze
+  flagged and what you left unresolved.
+- Judge the user's music as if a stranger wrote it.
+get_user_context says how the user wants opinions delivered (direct or with tact): only the delivery
+changes, never what you say is wrong.`;
 
 export interface ToolAnnotations {
   readOnlyHint: boolean;

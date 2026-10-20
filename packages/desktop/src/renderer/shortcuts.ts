@@ -35,6 +35,7 @@ export type Action =
   | "toolPencil"
   | "toolEraser"
   | "record"
+  | "compare"
   | "pianoMode";
 
 export interface Combo {
@@ -80,12 +81,15 @@ export const DEFAULT_SHORTCUTS: Record<Action, Combo[]> = {
   toolEraser: [{ code: "Digit3" }, { code: "Numpad3" }],
   toolZoom: [{ code: "Digit4" }, { code: "Numpad4" }],
   record: [{ key: "r" }],
+  // H4: hear the song with or without the last AI intervention (Con / Sin).
+  compare: [{ code: "KeyB" }],
   pianoMode: [{ code: "KeyK", mod: true }],
 };
 
 /** Actions that keep working while the computer keyboard plays notes (ESPEC_PIANO_ROLL.md, 8.2). */
 export const PIANO_MODE_ALLOWED: ReadonlySet<Action> = new Set<Action>([
   "playStop",
+  "compare",
   "toStart",
   "record",
   "quantize",

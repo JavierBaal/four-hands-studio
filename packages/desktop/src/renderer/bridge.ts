@@ -3,7 +3,7 @@
  * stand-in that runs the core directly, for the browser harness and the interface tests.
  */
 import { SongDocument, USER, runCommands, type Song } from "@fourhands/core";
-import { type AiState, type FileState, type MenuAction, NO_AI, type PatchMessage, type Reply, type Request, type SkillCardInfo, type SkillImportResult, type Snapshot, type SoundBankInfo, type ViewInfo } from "../shared/protocol.js";
+import { type AiState, type AiTone, DEFAULT_AI_TONE, type FileState, type MenuAction, NO_AI, type PatchMessage, type Reply, type Request, type SkillCardInfo, type SkillImportResult, type Snapshot, type SoundBankInfo, type ViewInfo, lastAiOf } from "../shared/protocol.js";
 
 export interface AppInfo {
   soundFont: string | null;
@@ -51,6 +51,11 @@ export interface Bridge {
   /** "Importar ZIP…": the system's open dialog, then the same import. */
   pickSkills(): Promise<SkillImportResult>;
   openSkillsFolder(): void;
+  /** "Con / Sin": the song as it was before the last AI intervention (null if there is none to compare). */
+  songBefore(): Promise<Song | null>;
+  /** Tu IA > Opiniones: how the AI gives its opinions. */
+  aiTone(): Promise<AiTone>;
+  setAiTone(tone: AiTone): Promise<AiTone>;
 }
 
 export function windowBridge(): Bridge | null {
@@ -76,7 +81,7 @@ export function memoryBridge(
   const fileListeners = new Set<(s: FileState) => void>();
   let historySent = 0;
   const file: FileState = { name: options.name ?? song.title, path: `/${song.title}.fourhands`, savedAt: now(), dirty: false, error: null, provisional: false };
-  const undoState = () => ({ canUndo: doc.canUndo, canRedo: doc.canRedo, undoLabel: doc.undoLabel, redoLabel: doc.redoLabel });
+  const undoState = () => ({ canUndo: doc.canUndo, canRedo: doc.canRedo, undoLabel: doc.undoLabel, redoLabel: doc.redoLabel, lastAi: lastAiOf(doc) });
   doc.subscribe((patch) => {
     const history = doc.history.slice(historySent);
     historySent = doc.history.length;
@@ -88,6 +93,7 @@ export function memoryBridge(
   const aiListeners = new Set<(s: AiState) => void>();
   const closed: string[] = [];
   let skills: SkillCardInfo[] = structuredClone(options.skills ?? []);
+  let tone: AiTone = DEFAULT_AI_TONE;
   const on = <T>(set: Set<T>, l: T) => {
     set.add(l);
     return () => void set.delete(l);
@@ -160,6 +166,9 @@ export function memoryBridge(
     },
     pickSkills: async () => ({ added: [], failed: [] }),
     openSkillsFolder: () => console.log("[fh] open skills folder"),
+    songBefore: async () => (doc.lastAiStep ? doc.songBeforeLastStep() : null),
+    aiTone: async () => tone,
+    setAiTone: async (next) => (tone = next),
     save: () => {
       file.savedAt = now();
       for (const l of fileListeners) l({ ...file });

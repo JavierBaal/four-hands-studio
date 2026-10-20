@@ -11,7 +11,7 @@ export class Replica {
   song!: Song;
   history: HistoryEntry[] = [];
   file!: FileState;
-  undo: UndoState = { canUndo: false, canRedo: false, undoLabel: null, redoLabel: null };
+  undo: UndoState = { canUndo: false, canRedo: false, undoLabel: null, redoLabel: null, lastAi: null };
   /** Increases on every change, for React and the canvas. */
   version = 0;
   /** Notes added since the last draw, for the AI fade-in (DIRECCION_ARTISTICA.md, 9). */
@@ -35,7 +35,7 @@ export class Replica {
     this.song = s.song;
     this.history = s.history;
     this.file = s.file;
-    this.undo = { canUndo: s.canUndo, canRedo: s.canRedo, undoLabel: s.undoLabel, redoLabel: s.redoLabel };
+    this.undo = { canUndo: s.canUndo, canRedo: s.canRedo, undoLabel: s.undoLabel, redoLabel: s.redoLabel, lastAi: s.lastAi ?? null };
     this.fresh.clear();
     this.bump();
   }
@@ -48,7 +48,7 @@ export class Replica {
     this.song.revision = m.patch.revision;
     if (m.replacesLast) this.history.splice(-1, 1, ...m.history);
     else this.history.push(...m.history);
-    this.undo = { canUndo: m.canUndo, canRedo: m.canRedo, undoLabel: m.undoLabel, redoLabel: m.redoLabel };
+    this.undo = { canUndo: m.canUndo, canRedo: m.canRedo, undoLabel: m.undoLabel, redoLabel: m.redoLabel, lastAi: m.lastAi ?? null };
     this.bump();
   }
 
