@@ -51,6 +51,8 @@ export class SongActions {
   mixer: { trackId: string; x: number; y: number } | null = null;
   /** The "Get more sounds" card is open. */
   soundsHelp = false;
+  /** The "Salida MIDI" card is open (H4). */
+  midiOut = false;
   /** The "Skills de la IA" card is open. */
   skillsPanel = false;
   /** A short message at the bottom of the window, gone after a few seconds. */
@@ -130,6 +132,40 @@ export class SongActions {
   skillsChanged(): void {
     this.skillsVersion++;
     this.changed();
+  }
+
+  openMidiOut(open: boolean): void {
+    this.midiOut = open;
+    if (open) {
+      this.soundsHelp = false;
+      this.skillsPanel = false;
+      this.editor.closeMenus();
+    }
+    this.changed();
+  }
+
+  /** Where a track sounds: in Four Hands, or in the user's DAW through the MIDI out. */
+  setOutput(id: string, output: "internal" | "external"): void {
+    const track = this.song.tracks[id];
+    if (!track || (track.output === "external") === (output === "external")) return;
+    const key = output === "external" ? "hOutputDaw" : "hOutputHere";
+    void this.run(this.h(key, { name: track.name, ch: track.channel + 1 }), [{ type: "updateTrack", id, changes: { output } }]);
+  }
+
+  private outputMenu(id: string, x: number, y: number): void {
+    const track = this.song.tracks[id];
+    if (!track) return;
+    const t = this.t;
+    const pick = (o: "internal" | "external") => () => (this.editor.closeMenus(), this.setOutput(id, o));
+    this.editor.openMenu(x, y, [
+      { label: t("soundsBack"), run: () => this.trackMenu(id, x, y) },
+      { separator: true },
+      { label: `${t("trackMenuOutput")} · ${track.name}`, header: true },
+      { label: t("outputHere"), active: track.output !== "external", run: pick("internal") },
+      { label: t("outputDaw", { ch: track.channel + 1 }), active: track.output === "external", run: pick("external") },
+      { separator: true },
+      { label: t("outputSetup"), run: () => this.openMidiOut(true) },
+    ]);
   }
 
   openSoundsHelp(open: boolean): void {
@@ -365,6 +401,7 @@ export class SongActions {
       { label: track.name, header: true },
       { label: t("trackMenuInstrument"), run: () => this.paletteMenu(x, y, (item) => this.setInstrument(id, item), track) },
       { label: t("trackMenuMix"), run: () => this.openMixer(id, x, y) },
+      { label: t("trackMenuOutput"), shortcut: track.output === "external" ? t("outputDawShort") : "Four Hands", run: () => this.outputMenu(id, x, y) },
       { label: t("trackMenuColor"), swatch: trackColor(track.color), shortcut: "›", run: () => this.colorMenu(id, x, y) },
       { label: t("trackMenuRename"), run: close(() => this.type({ kind: "trackName", id })) },
       { separator: true },

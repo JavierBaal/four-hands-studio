@@ -51,6 +51,27 @@ async function expressionCurve(page) {
   await page.waitForTimeout(300);
 }
 
+async function openMidiOutCard(page) {
+  await page.locator(".thdr").nth(0).click({ button: "right", position: { x: 120, y: 12 } });
+  await page.getByRole("menuitem", { name: /^Suena en/ }).click();
+  await page.getByRole("menuitem", { name: /Configurar la salida MIDI/ }).click();
+  await page.waitForTimeout(300);
+}
+
+/** Two tracks (strings and cello) sound in the DAW; the harness pretends loopMIDI has a port. */
+async function midiOutSetup(page, port) {
+  await page.evaluate(async (port) => {
+    const { replica, audio } = window.fhTest;
+    audio.outPorts = port ? [port, "Microsoft GS Wavetable Synth"] : [];
+    audio.outName = port;
+    if (port) audio.outPort = () => ({ send() {} });
+    const ids = replica.song.trackOrder.filter((id) => /melod|chelo|cuerdas/i.test(replica.song.tracks[id].name));
+    await replica.run("x", ids.map((id) => ({ type: "updateTrack", id, changes: { output: "external" } })));
+    audio.changed();
+  }, port);
+  await page.waitForTimeout(300);
+}
+
 export const SHOTS = [
   { name: "01_pantalla_completa", q: `?song=boceto&view=${sketchView(1440 - 288 - 72, 12)}` },
   { name: "04_panel_plegado", q: `?song=boceto&view=${view({ panelOpen: false, startTick: 16 * BAR, pxPerTick: (1440 - 48 - 72) / 12 / BAR, scrollY: (127 - 86) * 15 })}` },
@@ -179,6 +200,21 @@ export const SHOTS = [
   } },
   { name: "curvas_modulacion_vacia", q: `?song=boceto&view=${view({ lane: "modulation", startTick: 16 * BAR, pxPerTick: (1440 - 288 - 72) / 12 / BAR, scrollY: (127 - 86) * 15 })}` },
   { name: "curvas_compacta_880", w: 880, h: 800, q: `?song=boceto&view=${view({ lane: "expression", startTick: 16 * BAR, pxPerTick: (880 - 48 - 56) / 8 / BAR, scrollY: (127 - 86) * 15 })}`, act: expressionCurve },
+  // H4 (20/10/2026): MIDI out to the user's DAW (Studio One with loopMIDI).
+  { name: "salida_midi_tarjeta", q: `?song=boceto&view=${sketchView(1440 - 288 - 72, 12)}`, act: async (page) => {
+    await midiOutSetup(page, "loopMIDI Port");
+    await openMidiOutCard(page);
+  } },
+  { name: "salida_midi_sin_puerto", q: `?song=boceto&view=${sketchView(1440 - 288 - 72, 12)}`, act: async (page) => {
+    await midiOutSetup(page, null);
+    await openMidiOutCard(page);
+  } },
+  { name: "salida_midi_menu_pista", q: `?song=boceto&view=${sketchView(1440 - 288 - 72, 12)}`, act: async (page) => {
+    await midiOutSetup(page, "loopMIDI Port");
+    await page.locator(".thdr").nth(2).click({ button: "right", position: { x: 120, y: 12 } });
+    await page.getByRole("menuitem", { name: /^Suena en/ }).click();
+    await page.waitForTimeout(200);
+  } },
   { name: "linea_reproduccion_arreglo", q: `?song=boceto&view=${sketchView(1440 - 288 - 72, 12)}`, act: async (page) => {
     await page.keyboard.press("Space");
     await page.waitForTimeout(2500);

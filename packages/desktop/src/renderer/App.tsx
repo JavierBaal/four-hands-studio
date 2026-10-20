@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import type { Note } from "@fourhands/core";
 import { ActivityPanel, Rail } from "./components/ActivityPanel.js";
 import { AiCompareBar, AiWritingBar } from "./components/AiPresence.js";
+import { MidiOutPanel } from "./components/MidiOutPanel.js";
 import { Arrangement } from "./components/Arrangement.js";
 import { ContextMenu, QuantizeDialog } from "./components/Menus.js";
 import { RollArea } from "./components/RollArea.js";
@@ -265,6 +266,7 @@ export function App({ audio, onEditor }: AppProps) {
         else if (a === "togglePanel") view.set({ panelOpen: !view.state.panelOpen });
         else if (a === "resetLayout") view.set({ ...LAYOUT_DEFAULTS, arrZoom: null });
         else if (a === "skills") actions.openSkills(true);
+        else if (a === "midiOut") actions.openMidiOut(true);
         else perform(a);
       }),
     [perform],
@@ -395,6 +397,7 @@ export function App({ audio, onEditor }: AppProps) {
       <Mixer />
       <SoundsHelp audio={audio} />
       <SkillsPanel />
+      <MidiOutPanel audio={audio} />
       <Notice />
     </div>
     </ActionsCtx.Provider>

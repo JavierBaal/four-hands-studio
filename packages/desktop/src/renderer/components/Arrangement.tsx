@@ -242,6 +242,11 @@ export function Arrangement({ compact, visible, onSelectTrack, onPan, onToggle, 
                   ) : (
                     <span className={tr.id === active?.id ? "tname on" : "tname"}>{tr.name}</span>
                   )}
+                  {tr.output === "external" && (
+                    <span className="tout" title={t("outputDawTitle", { ch: tr.channel + 1 })}>
+                      MIDI
+                    </span>
+                  )}
                   <span className="ms">
                     <button
                       className={tr.mute ? "msb on" : "msb"}

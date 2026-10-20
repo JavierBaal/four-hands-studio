@@ -797,6 +797,26 @@ await settle();
 check("the lane menu deletes the whole curve", !(await song()).tracks[activeId].curves);
 await page.locator('.vtab [role="tab"]', { hasText: "Velocidad" }).click();
 
+// H4 (20/10/2026): MIDI out: a track set to "Tu DAW" from its menu, the card, back from the card.
+await page.locator(".thdr").nth(1).click({ button: "right", position: { x: 120, y: 12 } });
+await page.getByRole("menuitem", { name: /^Suena en/ }).click();
+await page.getByRole("menuitem", { name: /^Tu DAW \(salida MIDI, canal \d+\)/ }).click();
+await settle();
+const secondId = (await song()).trackOrder[1];
+check("a track goes out to the DAW from its menu, with its badge", (await song()).tracks[secondId].output === "external" && (await page.locator(".thdr").nth(1).locator(".tout").count()) === 1);
+check("its history label names the channel", /suena en tu DAW \(canal \d+\)/.test(await lastLabel()), await lastLabel());
+check("the external channel goes to the router, not the synth", await page.evaluate((id) => window.fhTest.audio.externalChannels().has(window.fhTest.replica.song.tracks[id].channel), secondId));
+await page.locator(".thdr").nth(1).click({ button: "right", position: { x: 120, y: 12 } });
+await page.getByRole("menuitem", { name: /^Suena en/ }).click();
+await page.getByRole("menuitem", { name: /Configurar la salida MIDI/ }).click();
+await settle();
+check("the MIDI out card lists every track with its channel", (await page.locator(".midiout .mochans li").count()) === (await song()).trackOrder.length);
+await page.locator(".midiout .mochans li").nth(1).getByRole("radio", { name: "Four Hands" }).click();
+await settle();
+check("the card brings it back to Four Hands", !(await song()).tracks[secondId].output);
+await page.keyboard.press("Escape");
+await settle();
+
 // H4 (20/10/2026): Tu IA > Sus opiniones, direct by default and remembered.
 await page.locator(".askmanage").click();
 await page.waitForSelector(".skillspanel .skill");
