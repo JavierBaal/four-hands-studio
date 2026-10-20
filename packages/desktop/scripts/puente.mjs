@@ -41,7 +41,7 @@ const transport = new StdioClientTransport({ command: process.execPath, args: [b
 const client = new Client({ name: "claude-ai", version: "e2e" });
 await client.connect(transport);
 const tools = (await client.listTools()).tools;
-check("the bridge lists the tools, analyze included", tools.length === 26 && tools.some((t) => t.name === "analyze"), tools.length);
+check("the bridge lists the tools, analyze included", tools.length === 27 && tools.some((t) => t.name === "analyze") && tools.some((t) => t.name === "remove_annotations"), tools.length);
 check("read tools are read-only for Claude's permissions", tools.filter((t) => t.annotations?.readOnlyHint).length === 6);
 await win.waitForFunction(() => document.querySelector(".aichip")?.textContent?.includes("Claude conectado"), null, { timeout: 8000 }).catch(() => {});
 check("chip says Claude is connected", (await win.locator(".aichip").innerText()).includes("Claude conectado"));

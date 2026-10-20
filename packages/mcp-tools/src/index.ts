@@ -15,7 +15,7 @@
 import { z } from "zod";
 
 /** Bumped whenever a tool, its parameters or its meaning changes. The app refuses other bridges. */
-export const TOOLS_VERSION = 7;
+export const TOOLS_VERSION = 8;
 
 /**
  * Track colours by name (H3.2). The app's palette (desktop/src/shared/track-colors.ts) has the same
@@ -476,14 +476,30 @@ export const TOOLS: readonly ToolDefinition[] = [
     title: "Add a note in words",
     description:
       "Leave a short text annotation over some bars (and optionally some tracks), visible on the form ruler: an idea, a question, a reminder. " +
+      "With id, rewrite one of your annotations instead (text, and range or tracks if given): keep the score's notes true to the music " +
+      "rather than adding new ones on top of old ones. The user's annotations are theirs. " +
       `range: ${RANGE_HELP}`,
     inputSchema: {
       intervention_id: INTERVENTION,
-      range: z.string().describe(RANGE_HELP),
+      range: z.string().optional().describe(`${RANGE_HELP} Required for a new annotation`),
       tracks: TRACKS,
       text: z.string().describe("In the user's language"),
+      id: z.string().optional().describe("An annotation of yours to rewrite, e.g. 'a3'"),
     },
     annotations: write,
+  },
+  {
+    name: "remove_annotations",
+    title: "Remove annotations",
+    description:
+      "Remove annotations of yours that no longer describe the music (an earlier version, bars that moved). " +
+      "ids from get_song_overview, or a range: every annotation of yours that starts there. The user's annotations are never removed: ask them.",
+    inputSchema: {
+      intervention_id: INTERVENTION,
+      ids: z.array(z.string()).optional().describe("E.g. ['a1', 'a2']"),
+      range: z.string().optional().describe(RANGE_HELP),
+    },
+    annotations: destructive,
   },
 ];
 

@@ -382,6 +382,25 @@ describe("form, harmony, pedal, properties, tracks and annotations", () => {
     expect(JSON.stringify({ ...session.song, revision: 0, counters: null })).toBe(before);
   });
 
+  it("rewrites and removes its own annotations, never the user's (the Severance sessions, 20/10/2026)", () => {
+    session.document.transact({ actor: USER, label: "nota" }, (tx) => {
+      tx.set(["annotations", "a900"], { id: "a900", start: 0, end: 3840, trackIds: [], text: "mía", author: USER });
+    });
+    const id = begin("Notas");
+    const first = ok("annotate", { intervention_id: id, range: "1-4", text: "Versión 1" });
+    const a = /Annotation (a\d+)/.exec(first)![1]!;
+    ok("annotate", { intervention_id: id, range: "5-8", text: "Versión 1, otra" });
+    expect(ok("annotate", { intervention_id: id, id: a, text: "Versión 2", range: "1-2" })).toMatch(/rewritten on c\. 1–2: "Versión 2" \(was "Versión 1"\)/);
+    expect(session.song.annotations[a]!.text).toBe("Versión 2");
+    expect(fail("annotate", { intervention_id: id, id: "a900", text: "x" })).toMatch(/is the user's/);
+    expect(fail("remove_annotations", { intervention_id: id, ids: ["a900"] })).toMatch(/is the user's/);
+    expect(ok("remove_annotations", { intervention_id: id, range: "all" })).toMatch(/^Removed a\d+ a\d+\. The user's annotations stay/);
+    expect(Object.keys(session.song.annotations)).toEqual(["a900"]);
+    ok("end_intervention", { intervention_id: id });
+    session.handle({ type: "undo" });
+    expect(Object.keys(session.song.annotations).length).toBe(1);
+  });
+
   it("finds instruments and installed sounds by name", () => {
     const id = begin("Pistas");
     ok("add_track", { intervention_id: id, name: "Violas", instrument: "Violas" });

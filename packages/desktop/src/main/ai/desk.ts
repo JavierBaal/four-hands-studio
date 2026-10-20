@@ -31,6 +31,8 @@ import {
   addSection,
   addTrack,
   analysisText,
+  removeAnnotation,
+  updateAnnotation,
   ai,
   barStart,
   beatTicks,
@@ -451,6 +453,14 @@ export class AiDesk {
     if (parts.length === 0) return "no changes";
     const where = iv.start !== null && iv.end !== null ? ` (${spanText(this.song, iv.start, iv.end)}${iv.trackIds.size ? `, ${[...iv.trackIds].map((t) => this.song.tracks[t]?.name ?? t).join(", ")}` : ""})` : "";
     return parts.join(", ") + where;
+  }
+
+  /** An annotation the AI may rewrite or remove: one written by an AI. The user's notes in words are theirs. */
+  private ownAnnotation(id: string) {
+    const a = this.song.annotations[id];
+    if (!a) throw new MusicError(`There is no annotation ${id}. get_song_overview lists them`);
+    if (a.author.by === "user") throw new MusicError(`Annotation ${id} is the user's: ask them before changing it`);
+    return a;
   }
 
   private rev(): string {
@@ -1020,6 +1030,22 @@ export class AiDesk {
       const song = this.song;
       const text = this.str(args, "text")!.trim();
       if (!text) throw new MusicError("An annotation needs some text");
+      const editing = this.str(args, "id", false);
+      if (editing) {
+        // Rewrite an annotation instead of piling a new one on top (the Severance sessions, 20/10/2026).
+        const oldText = this.ownAnnotation(editing).text;
+        const rangeText = this.str(args, "range", false);
+        const range = rangeText ? resolveRange(song, rangeText, { allowBeyondEnd: true }) : null;
+        const tracks = this.tracks(args);
+        this.write(iv, (tx) =>
+          updateAnnotation(tx, editing, { text, ...(range ? { start: range.start, end: range.end } : {}), ...(tracks ? { trackIds: tracks } : {}) }),
+        );
+        const a = this.song.annotations[editing]!;
+        this.span(iv, a.start, a.end);
+        iv.other.push("an annotation");
+        this.emit();
+        return `Annotation ${editing} rewritten on ${spanText(this.song, a.start, a.end)}: "${text}" (was "${oldText}"). ${this.rev()}`;
+      }
       const range = resolveRange(song, this.str(args, "range")!, { allowBeyondEnd: true });
       const trackIds = this.tracks(args) ?? [];
       const id = this.write(iv, (tx) => addAnnotation(tx, { start: range.start, end: range.end, trackIds, text }));
@@ -1027,6 +1053,34 @@ export class AiDesk {
       iv.other.push("an annotation");
       this.emit();
       return `Annotation ${id} on ${range.label}: "${text}". ${this.rev()}`;
+    },
+
+    remove_annotations: (conn, args) => {
+      const iv = this.intervention(conn, args);
+      const song = this.song;
+      const ids = this.strings(args, "ids") ?? [];
+      const rangeText = this.str(args, "range", false);
+      if (ids.length === 0 && !rangeText) throw new MusicError("Say which annotations: ids (from get_song_overview), or a range");
+      let chosen: string[];
+      if (ids.length) {
+        for (const id of ids) this.ownAnnotation(id);
+        chosen = ids;
+      } else {
+        const range = resolveRange(song, rangeText!, { allowBeyondEnd: true });
+        chosen = Object.values(song.annotations)
+          .filter((a) => a.start >= range.start && a.start < range.end && a.author.by === "ai")
+          .map((a) => a.id);
+      }
+      const kept = rangeText && !ids.length
+        ? Object.values(song.annotations).filter((a) => a.author.by === "user").length
+        : 0;
+      if (chosen.length === 0) return `No annotations of yours there.${kept ? " The user's annotations are theirs: ask them." : ""}`;
+      this.write(iv, (tx) => {
+        for (const id of chosen) removeAnnotation(tx, id);
+      });
+      iv.other.push(plural(chosen.length, "annotation") + " removed");
+      this.emit();
+      return `Removed ${chosen.join(" ")}.${kept ? " The user's annotations stay: only they remove theirs." : ""} ${this.rev()}`;
     },
   };
 

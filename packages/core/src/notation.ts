@@ -58,11 +58,14 @@ export function parsePosition(meter: Meter, text: string): ParsedPosition {
   return { tick, bar };
 }
 
-/** "1/4", "1/8.", "1/8t", "1/2+1/8", "3/8" → ticks. */
+/**
+ * "1/4", "1/8.", "1/8t", "1/2+1/8", "3/8" → ticks. A whole number counts whole notes: "1", "2",
+ * "1+1+1" (Claude wrote that for three tied bars in the Severance session, 20/10/2026).
+ */
 export function parseDuration(text: string): number {
   let total = 0;
   for (const part of text.split("+")) {
-    const m = /^(\d+)\/(\d+)(\.{0,2})(t?)$/.exec(part);
+    const m = /^(\d+)(?:\/(\d+))?(\.{0,2})(t?)$/.exec(part.replace(/^(\d+)(?=\.{0,2}t?$)/, "$1/1"));
     if (!m || Number(m[2]) === 0) {
       throw new MusicError(`'${text}' is not a duration (fractions of a whole note: 1/4, 1/8., 1/8t, 1/2+1/8)`);
     }
@@ -108,7 +111,8 @@ export interface NoteTokens {
 const ID = /^n\d+$/;
 const PITCH = /^[A-Ga-g](##|#|x|bb|b)?-?\d{1,2}$/;
 const POSITION = /^\d+\.\d+(\+\d+\/\d+)?$/;
-const DURATION = /^\d+\/\d+/;
+// Fractions of a whole note, or whole numbers of whole notes ("1+1+1"); a position always has a dot and a beat.
+const DURATION = /^\d+(\/\d+)?\.{0,2}t?(\+|$)/;
 
 /**
  * Splits a line into its fields by their shape, in any order:

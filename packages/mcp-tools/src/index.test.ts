@@ -24,6 +24,7 @@ const NEED_INTERVENTION = [
   "move_track",
   "remove_track",
   "annotate",
+  "remove_annotations",
 ];
 
 describe("tool definitions", () => {
@@ -44,7 +45,7 @@ describe("tool definitions", () => {
   // The annotations decide the permission group the user sees (PRUEBA_S1.md, conclusion 2).
   it("reading tools are read-only, the rest are writes, and only deleting notes or tracks is destructive", () => {
     expect(TOOLS.filter((t) => t.annotations.readOnlyHint).map((t) => t.name).sort()).toEqual([...READ_ONLY].sort());
-    expect(TOOLS.filter((t) => t.annotations.destructiveHint).map((t) => t.name)).toEqual(["delete_notes", "remove_track"]);
+    expect(TOOLS.filter((t) => t.annotations.destructiveHint).map((t) => t.name)).toEqual(["delete_notes", "remove_track", "remove_annotations"]);
   });
 
   it("every write tool needs an intervention", () => {

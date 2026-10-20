@@ -76,11 +76,18 @@ describe("parseDuration", () => {
     ["1/2+1/8", 2.5 * PPQ],
     ["3/8", 1.5 * PPQ],
     ["1/4..", 1.75 * PPQ],
+    ["1", 4 * PPQ],
+    ["1+1+1", 12 * PPQ],
+    ["2+1/2", 10 * PPQ],
   ])("%s → %i ticks", (text, ticks) => expect(parseDuration(text)).toBe(ticks));
   it("refuses nonsense", () => expect(() => parseDuration("1/0")).toThrow(MusicError));
 });
 
 describe("parseNewNotes", () => {
+  it("takes whole numbers as whole notes, as the AI sometimes writes them (20/10/2026)", () => {
+    expect(parseNewNotes(m44, "D2 1.1 1+1+1 v55")).toEqual([{ pitch: 38, start: 0, duration: 12 * PPQ, velocity: 55 }]);
+  });
+
   it("reads one note per line with defaults and deviations", () => {
     const notes = parseNewNotes(m44, "E5 17.1 1/4 v72\nD5 17.2 1/8 ~s+0.25\n\nC5 17.2+1/2 1/8 ~d-0.25");
     expect(notes).toEqual([
