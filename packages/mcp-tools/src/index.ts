@@ -15,7 +15,7 @@
 import { z } from "zod";
 
 /** Bumped whenever a tool, its parameters or its meaning changes. The app refuses other bridges. */
-export const TOOLS_VERSION = 6;
+export const TOOLS_VERSION = 7;
 
 /**
  * Track colours by name (H3.2). The app's palette (desktop/src/shared/track-colors.ts) has the same
@@ -146,8 +146,9 @@ export const TOOLS: readonly ToolDefinition[] = [
     name: "analyze",
     title: "Analyze (your ears)",
     description:
-      "Your substitute for ears: you cannot hear what you write, so check it. Mechanical findings for a range, each with its bars, tracks and note ids: " +
-      "close intervals too low (mud), too many notes below C3, four or more parts crowded in one octave, bars or blocks repeated identically three or more times, " +
+      "Your substitute for ears: you cannot hear what you write, so check it. First the shape (notes per bar, tracks and loudness, section by section, and the busiest bar), then mechanical findings, each with its bars, tracks and note ids: " +
+      "chords, sections or annotations left after the last note and empty tracks (leftovers of earlier versions), " +
+      "close intervals too low (mud), too many notes below C3, four or more parts crowded in one octave, bars or blocks repeated identically three or more times, the same chord progression looped three or more times, " +
       "straight velocity ramps and long runs of one velocity, several tracks stopping at the same bar line or a sharp drop in loudness, " +
       "notes outside the instrument's usual range, notes outside the key, and long notes on the beat outside the written chord. " +
       "It describes, it does not judge: a finding can be exactly what the music wants. " +

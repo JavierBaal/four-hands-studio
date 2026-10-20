@@ -163,7 +163,49 @@ describe("analyze: ranges, key and chords", () => {
     expect([...chordPitchClasses("E7sus4")!].sort((a, b) => a - b)).toEqual([2, 4, 9, 11]);
     expect([...chordPitchClasses("D5")!].sort((a, b) => a - b)).toEqual([2, 9]);
     expect([...chordPitchClasses("Bbmaj7")!].sort((a, b) => a - b)).toEqual([2, 5, 9, 10]);
+    // Altered extensions (the Severance session, 20/10/2026): #11 is the raised fourth, not the natural one.
+    expect([...chordPitchClasses("Dmaj7#11")!].sort((a, b) => a - b)).toEqual([1, 2, 6, 8, 9]);
+    expect([...chordPitchClasses("Bbmaj7#11")!].sort((a, b) => a - b)).toEqual([2, 4, 5, 9, 10]);
+    expect([...chordPitchClasses("A7b9")!].sort((a, b) => a - b)).toEqual([1, 4, 7, 9, 10]);
+    expect([...chordPitchClasses("Cm9")!].sort((a, b) => a - b)).toEqual([0, 2, 3, 7, 10]);
+    expect([...chordPitchClasses("Cadd9")!].sort((a, b) => a - b)).toEqual([0, 2, 4, 7]);
+    expect([...chordPitchClasses("C7#5")!].sort((a, b) => a - b)).toEqual([0, 4, 8, 10]);
+    expect([...chordPitchClasses("Dmaj7sus4")!].sort((a, b) => a - b)).toEqual([1, 2, 7, 9]);
+    expect([...chordPitchClasses("C6")!].sort((a, b) => a - b)).toEqual([0, 4, 7, 9]);
     expect(chordPitchClasses("??")).toBeNull();
+  });
+});
+
+describe("analyze: leftovers, loops and shape (the Severance sessions, 20/10/2026)", () => {
+  it("finds chords and annotations past the music, and empty tracks", () => {
+    const s = song(["Piano", "Sin uso"], [["t1", 60, 0, 4]], { harmony: { "0": "C", [String(5 * 4 * PPQ)]: "G" } });
+    s.annotations.a1 = { id: "a1", start: 8 * 4 * PPQ, end: 10 * 4 * PPQ, trackIds: [], text: "versión vieja", author: USER };
+    const f = checks(s, 10).filter((x) => x.check === "leftovers");
+    expect(f[0]!.text).toMatch(/^c\. 2–10 · 1 chord, annotation a1 after the last note: the song reads 10 bars \(0:20\) but the music ends at c\. 1 \(0:02\)/);
+    expect(f[1]!.text).toBe("Sin uso · no notes");
+  });
+
+  it("finds a progression looped three or more times, but not a pedal of a few bars", () => {
+    const chords = ["Dmaj7#11", "Bbmaj7#11", "Gmaj7", "Fmaj7#11"];
+    const harmony: Record<string, string> = {};
+    const notes: [string, number, number, number][] = [];
+    for (let bar = 0; bar < 12; bar++) {
+      harmony[String(bar * 4 * PPQ)] = chords[bar % 4]!;
+      notes.push(["t1", 62, bar * 4, 4]);
+    }
+    const f = checks(song(["Pad"], notes, { harmony }), 12).filter((x) => x.check === "loops");
+    expect(f).toHaveLength(1);
+    expect(f[0]!.text).toBe("c. 1–12 · the same 4-bar progression 3 times in a row: Dmaj7#11 | Bbmaj7#11 | Gmaj7 | Fmaj7#11");
+    const pedal = song(["Pad"], [["t1", 62, 0, 16]], { harmony: { "0": "D" } });
+    expect(checks(pedal, 4).filter((x) => x.check === "loops")).toHaveLength(0);
+  });
+
+  it("describes the shape section by section, with the busiest bar", () => {
+    const s = song(["A", "B"], [["t1", 60, 0, 1], ["t1", 62, 4, 1], ["t2", 64, 4, 1], ["t1", 65, 5, 1]]);
+    s.sections.s1 = { id: "s1", name: "Intro", startBar: 1, endBar: 1 };
+    s.sections.s2 = { id: "s2", name: "Coro", startBar: 2, endBar: 2 };
+    const text = analysisText(s, { ...whole(s, 2), label: "c. 1–2" });
+    expect(text).toContain("Shape (notes per bar · tracks · average velocity): Intro 1·1·v80 → Coro 3·2·v80. Busiest bar: c. 2 (3 notes, 2 tracks).");
   });
 });
 
@@ -178,7 +220,7 @@ describe("analysisText", () => {
     const s = song(["Piano"], [["t1", 60, 0, 4]]);
     const text = analysisText(s, { ...whole(s, 1), label: "c. 1" });
     expect(text).toMatch(/^Analysis of c\. 1, all tracks \(r0\)/);
-    expect(text).toMatch(/Nothing found for: low register, crowded register, identical repeats/);
+    expect(text).toMatch(/Nothing found for: leftovers, low register, crowded register, identical repeats, harmonic loops/);
     expect(text).toMatch(/cannot hear sounds/);
   });
 

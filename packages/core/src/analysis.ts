@@ -19,7 +19,7 @@
  * pitch checks (1, 2, 6, 7, 8).
  */
 import { type Note, type Song, barAt, barStart, barTicks, beatTicks, notesOf } from "./model.js";
-import { pitchName } from "./compact.js";
+import { barHarmony, pitchName } from "./compact.js";
 import { PPQ } from "./time.js";
 import { tonicOf, keyText } from "./notation.js";
 
@@ -41,12 +41,14 @@ export interface Finding {
   text: string;
 }
 
-export type Check = "low" | "crowded" | "repeats" | "dynamics" | "abrupt" | "range" | "key" | "harmony";
+export type Check = "leftovers" | "low" | "crowded" | "repeats" | "loops" | "dynamics" | "abrupt" | "range" | "key" | "harmony";
 
 const HEADINGS: Record<Check, string> = {
+  leftovers: "Left over from earlier versions (the song reads longer or fuller than the music)",
   low: "Low register (intervals too close for their height blur into a buzz)",
   crowded: "Crowded register (parts in the same octave mask each other)",
   repeats: "Identical repeats (the same bars, note for note)",
+  loops: "Harmonic loops (the same chords over and over)",
   dynamics: "Formula dynamics",
   abrupt: "Abrupt changes at a bar line",
   range: "Outside the instrument's usual range",
@@ -54,7 +56,7 @@ const HEADINGS: Record<Check, string> = {
   harmony: "Long notes on the beat outside the written chord",
 };
 
-const CHECKS: readonly Check[] = ["low", "crowded", "repeats", "dynamics", "abrupt", "range", "key", "harmony"];
+const CHECKS: readonly Check[] = ["leftovers", "low", "crowded", "repeats", "loops", "dynamics", "abrupt", "range", "key", "harmony"];
 
 /**
  * Lowest comfortable bottom note (MIDI) for each interval in semitones, 1 to 11.
@@ -406,25 +408,37 @@ const NOTE_CLASS: Record<string, number> = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9,
 export function chordPitchClasses(symbol: string): Set<number> | null {
   const m = /^([A-G])([#b♯♭]?)([^/]*)(?:\/([A-G])([#b♯♭]?))?$/.exec(symbol.trim());
   if (!m) return null;
-  const acc = (s: string | undefined) => (s === "#" || s === "♯" ? 1 : s === "b" || s === "♭" ? -1 : 0);
+  const acc = (s: string | undefined) => (s === "#" || s === "♯" || s === "+" ? 1 : s === "b" || s === "♭" || s === "-" ? -1 : 0);
   const root = (NOTE_CLASS[m[1]!]! + acc(m[2]) + 12) % 12;
-  const q = m[3]!.toLowerCase();
+  // "M7" and "Δ" are major sevenths; everything else is read in lower case.
+  const q = m[3]!.replace(/M7|Δ7?/g, "maj7").toLowerCase();
   let iv: number[];
-  if (q.startsWith("5")) iv = [0, 7];
+  if (/^5/.test(q)) iv = [0, 7];
   else if (q.startsWith("dim") || q.startsWith("°")) iv = [0, 3, 6];
   else if (q.startsWith("aug") || q.startsWith("+")) iv = [0, 4, 8];
   else if (q.startsWith("m") && !q.startsWith("maj")) iv = [0, 3, 7];
   else iv = [0, 4, 7];
-  if (q.includes("sus4")) iv = iv.filter((x) => x !== 3 && x !== 4).concat(5);
+  if (q.includes("sus4") || /sus(?!2)/.test(q)) iv = iv.filter((x) => x !== 3 && x !== 4).concat(5);
   if (q.includes("sus2")) iv = iv.filter((x) => x !== 3 && x !== 4).concat(2);
-  if (q.includes("maj7")) iv.push(11);
-  else if (q.includes("dim7")) iv.push(9);
-  else if (/(^|[^a-z])7|m7|ø/.test(q) || q === "7") iv.push(10);
-  if (/9|add9/.test(q)) iv.push(2);
-  if (/6/.test(q) && !q.startsWith("5")) iv.push(9);
-  if (/11/.test(q)) iv.push(5);
-  if (/13/.test(q)) iv.push(9);
-  const out = new Set(iv.map((x) => (root + x) % 12));
+  // Sevenths.
+  let seventh = false;
+  if (q.includes("maj7") || q.includes("maj9") || q.includes("maj11") || q.includes("maj13")) (iv.push(11), (seventh = true));
+  else if (q.includes("dim7")) (iv.push(9), (seventh = true));
+  else if (/(^|[^#b♯♭+\-\d])7/.test(q) || q.includes("ø")) (iv.push(10), (seventh = true));
+  // Extensions with their alterations: 9, b9, #9, 11, #11, 13, b13, add9.
+  const rest = q.replace(/maj|dim|aug|sus[24]?|add/g, " ");
+  let extended = false;
+  for (const e of rest.matchAll(/([#b♯♭+\-]?)(13|11|9)/g)) {
+    iv.push(({ "9": 2, "11": 5, "13": 9 } as Record<string, number>)[e[2]!]! + acc(e[1]));
+    if (!q.includes("add")) extended = true;
+  }
+  // A plain 9, 11 or 13 chord implies its seventh.
+  if (extended && !seventh) iv.push(q.startsWith("maj") ? 11 : 10);
+  // Altered fifth: b5, #5.
+  const fifth = /([#b♯♭+\-])5/.exec(rest);
+  if (fifth && !/^5/.test(q)) iv = iv.filter((x) => x !== 7).concat(7 + acc(fifth[1]));
+  if (/(^|[^1#b♯♭+\-\d])6/.test(rest)) iv.push(9);
+  const out = new Set(iv.map((x) => (root + x + 12) % 12));
   if (m[4]) out.add((NOTE_CLASS[m[4]]! + acc(m[5]) + 12) % 12);
   return out;
 }
@@ -456,6 +470,110 @@ function harmony(ctx: Ctx): string[] {
 
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// 0. Leftovers: chords, sections and annotations past the music, empty tracks
+
+/** "1:15" for a number of bars at the song's tempo. */
+function duration(song: Song, bars: number): string {
+  const seconds = Math.round((bars * barTicks(song.meter) * song.tempo) / PPQ / 1_000_000);
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+function leftovers(ctx: Ctx): string[] {
+  const { song } = ctx;
+  const all = notesOf(song);
+  if (all.length === 0) return [];
+  const lastBar = barAt(song.meter, Math.max(...all.map((n) => n.start + n.duration)) - 1);
+  const after = barStart(song.meter, lastBar + 1);
+  const lines: string[] = [];
+  const chords = Object.keys(song.harmony).map(Number).filter((t) => t >= after);
+  const sections = Object.values(song.sections).filter((x) => x.endBar > lastBar);
+  const notes = Object.values(song.annotations).filter((x) => x.start >= after);
+  const total = Math.max(lastBar, ...chords.map((t) => barAt(song.meter, t)), ...sections.map((x) => x.endBar), ...notes.map((x) => barAt(song.meter, x.end - 1)));
+  if (total > lastBar) {
+    const what = [chords.length ? `${chords.length} chord${chords.length === 1 ? "" : "s"}` : "", sections.length ? `section${sections.length === 1 ? "" : "s"} ${sections.map((x) => x.name).join(", ")}` : "", notes.length ? `annotation${notes.length === 1 ? "" : "s"} ${notes.map((x) => x.id).join(" ")}` : ""].filter(Boolean);
+    lines.push(`c. ${lastBar + 1}–${total} · ${what.join(", ")} after the last note: the song reads ${total} bars (${duration(song, total)}) but the music ends at c. ${lastBar} (${duration(song, lastBar)})`);
+  }
+  const empty = song.trackOrder.filter((t) => !all.some((n) => n.trackId === t));
+  if (empty.length) lines.push(`${names(song, empty)} · no notes`);
+  return lines;
+}
+
+// ---------------------------------------------------------------------------
+// 3b. Harmonic loops
+
+function loops(ctx: Ctx): string[] {
+  const { song } = ctx;
+  if (Object.keys(song.harmony).length === 0) return [];
+  const fromBar = barAt(song.meter, ctx.start);
+  // Chords after the last note are leftovers (reported apart), not a loop that sounds.
+  const lastEnd = notesOf(song).reduce((m, n) => Math.max(m, n.start + n.duration), 0);
+  const toBar = Math.min(barAt(song.meter, ctx.end - 1), barAt(song.meter, Math.max(0, lastEnd - 1)));
+  const chord = new Map<number, string>();
+  for (let b = fromBar; b <= toBar; b++) chord.set(b, barHarmony(song, b));
+  const out: string[] = [];
+  const covered = new Set<number>();
+  for (const size of [1, 2, 3, 4, 8]) {
+    let bar = fromBar + size;
+    while (bar <= toBar) {
+      const same = (b: number) => !!chord.get(b) && chord.get(b) === chord.get(b - size);
+      if (!same(bar) || covered.has(bar)) {
+        bar++;
+        continue;
+      }
+      let last = bar;
+      while (last + 1 <= toBar && same(last + 1)) last++;
+      const run = last - bar + 1;
+      const times = Math.floor(run / size) + 1;
+      // A held chord (size 1) is a pedal, not a loop: report only from eight bars on.
+      if (times >= (size === 1 ? 8 : 3)) {
+        const from = bar - size;
+        const block = range(from, from + size - 1).map((b) => chord.get(b)).join(" | ");
+        out.push(`${barList(range(from, last))} · ${size === 1 ? `one chord held ${times} bars` : `the same ${size}-bar progression ${times} times in a row`}: ${block}`);
+        for (let b = from; b <= last; b++) covered.add(b);
+      }
+      bar = last + 1;
+    }
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// The shape: how much happens, section by section
+
+/** "Shape: Intro 6 notes/bar · 2 tracks · v50 → Lumon 55 · 8 · v62 → … Peak c. 27 (97 notes, 9 tracks)." */
+export function shapeText(song: Song, start: number, end: number): string {
+  const fromBar = barAt(song.meter, start);
+  const toBar = barAt(song.meter, end - 1);
+  const notes = notesOf(song).filter((n) => !song.tracks[n.trackId]?.mute);
+  const sections = Object.values(song.sections)
+    .filter((x) => x.endBar >= fromBar && x.startBar <= toBar)
+    .sort((a, b) => a.startBar - b.startBar);
+  const spans: { name: string; from: number; to: number }[] = sections.length
+    ? sections.map((x) => ({ name: x.name, from: Math.max(x.startBar, fromBar), to: Math.min(x.endBar, toBar) }))
+    : range(fromBar, toBar)
+        .filter((b) => (b - fromBar) % 4 === 0)
+        .map((b) => ({ name: `c. ${b}–${Math.min(b + 3, toBar)}`, from: b, to: Math.min(b + 3, toBar) }));
+  const stat = (from: number, to: number) => {
+    const s = barStart(song.meter, from);
+    const e = barStart(song.meter, to + 1);
+    const inside = notes.filter((n) => n.start >= s && n.start < e);
+    const bars = to - from + 1;
+    const vel = inside.length ? Math.round(inside.reduce((a, n) => a + n.velocity, 0) / inside.length) : 0;
+    return { perBar: Math.round(inside.length / bars), tracks: new Set(inside.map((n) => n.trackId)).size, vel };
+  };
+  const parts = spans.map((x) => {
+    const st = stat(x.from, x.to);
+    return `${x.name} ${st.perBar}·${st.tracks}·v${st.vel}`;
+  });
+  let peak = { bar: fromBar, count: -1, tracks: 0 };
+  for (let b = fromBar; b <= toBar; b++) {
+    const st = stat(b, b);
+    if (st.perBar > peak.count) peak = { bar: b, count: st.perBar, tracks: st.tracks };
+  }
+  return `Shape (notes per bar · tracks · average velocity): ${parts.join(" → ")}. Busiest bar: c. ${peak.bar} (${peak.count} notes, ${peak.tracks} tracks).`;
+}
+
 /** Findings, check by check, for the given range and tracks. */
 export function analyze(song: Song, options: AnalyzeOptions): Finding[] {
   const wanted = new Set(options.trackIds && options.trackIds.length ? options.trackIds : song.trackOrder);
@@ -470,9 +588,11 @@ export function analyze(song: Song, options: AnalyzeOptions): Finding[] {
     rangeOf: options.rangeOf,
   };
   const run: Record<Check, (c: Ctx) => string[]> = {
+    leftovers,
     low: lowRegister,
     crowded,
     repeats,
+    loops,
     dynamics,
     abrupt,
     range: instrumentRange,
@@ -489,7 +609,7 @@ export function analysisText(song: Song, options: AnalyzeOptions): string {
   const findings = analyze(song, options);
   const tracks = options.trackIds && options.trackIds.length ? names(song, options.trackIds) : "all tracks";
   const head = `Analysis of ${options.label ?? "the range"}, ${tracks} (r${song.revision}). It describes what is in the score; whether it is a problem is your call and the user's.`;
-  const lines = [head];
+  const lines = [head, shapeText(song, options.start, options.end)];
   const empty: Check[] = [];
   for (const check of CHECKS) {
     const mine = findings.filter((f) => f.check === check);
@@ -507,9 +627,11 @@ export function analysisText(song: Song, options: AnalyzeOptions): string {
 }
 
 const CHECK_NAMES: Record<Check, string> = {
+  leftovers: "leftovers",
   low: "low register",
   crowded: "crowded register",
   repeats: "identical repeats",
+  loops: "harmonic loops",
   dynamics: "formula dynamics",
   abrupt: "abrupt changes",
   range: "instrument ranges",
