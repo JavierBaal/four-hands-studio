@@ -1,6 +1,6 @@
-import { addNotes, addTrack, SongDocument, starterSong, updateTrack, USER, setPedal } from "@fourhands/core";
+import { addNotes, addTrack, SongDocument, starterSong, updateTrack, USER, setCurve, setPedal } from "@fourhands/core";
 import { describe, expect, it } from "vitest";
-import { audibleTracks, clickEvents, noteEvents, secondsPerTick, setupEvents, windowPieces } from "./schedule.js";
+import { audibleTracks, clickEvents, curveResetEvents, curveStateEvents, noteEvents, secondsPerTick, setupEvents, windowPieces } from "./schedule.js";
 
 function song() {
   const doc = new SongDocument(starterSong());
@@ -27,6 +27,24 @@ describe("schedule", () => {
     expect(ev.filter((e) => e.ev.kind === "on").map((e) => (e.ev as { note: number }).note).sort()).toEqual([48, 60]);
     expect(ev.find((e) => e.ev.kind === "off" && e.ev.note === 48)!.tick).toBe(3840);
     expect(ev.find((e) => e.ev.kind === "cc")).toMatchObject({ tick: 0, ev: { cc: 64, value: 127 } });
+  });
+
+  it("plays expression and modulation points in their window, and knows where they stand (H4)", () => {
+    const doc = song();
+    doc.transact({ actor: USER, label: "c" }, (tx) => {
+      setCurve(tx, "t2", "expression", 0, 3840, [{ tick: 0, value: 40 }, { tick: 960, value: 80 }, { tick: 1920, value: 110 }]);
+      setCurve(tx, "t2", "modulation", 0, 3840, [{ tick: 960, value: 30 }]);
+    });
+    const cc = noteEvents(doc.song, 900, 1920).filter((e) => e.ev.kind === "cc" && e.ev.cc !== 64).map((e) => [e.tick, (e.ev as { cc: number }).cc, (e.ev as { value: number }).value]);
+    expect(cc).toEqual([[960, 11, 80], [960, 1, 30]]);
+    expect(curveStateEvents(doc.song, 1500)).toEqual([
+      { kind: "cc", ch: 1, cc: 11, value: 80 },
+      { kind: "cc", ch: 1, cc: 1, value: 30 },
+    ]);
+    expect(curveResetEvents(doc.song)).toEqual([
+      { kind: "cc", ch: 1, cc: 11, value: 127 },
+      { kind: "cc", ch: 1, cc: 1, value: 0 },
+    ]);
   });
 
   it("cuts notes at the loop end", () => {

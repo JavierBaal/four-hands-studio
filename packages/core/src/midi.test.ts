@@ -163,6 +163,30 @@ describe("importMidi", () => {
     expect(eventsByTrack(exportMidi(song))).toEqual(eventsByTrack(bytes));
   });
 
+  it("turns CC11 and CC1 into expression and modulation curves and gives them back (H4)", () => {
+    const bytes = build([
+      conductor("Curvas", tempo(), end()),
+      [name("Chelos"), cc(0, 11, 40), cc(0, 1, 10), on(0, 48), cc(240, 11, 70), cc(240, 11, 100), cc(0, 7, 90), off(0, 48), end()],
+    ]);
+    const { song } = importMidi(bytes);
+    const track = orderedTracks(song)[0]!;
+    expect(track.curves?.expression).toEqual([
+      { tick: 0, value: 40 },
+      { tick: PPQ / 2, value: 70 },
+      { tick: PPQ, value: 100 },
+    ]);
+    expect(track.curves?.modulation).toEqual([{ tick: 0, value: 10 }]);
+    expect(track.extraEvents.map((e) => e.event.controllerType)).toEqual([7]); // other controllers stay raw
+    expect(eventsByTrack(exportMidi(song))).toEqual(eventsByTrack(bytes));
+  });
+
+  it("leaves CC11 raw when two events share a tick, so nothing is lost", () => {
+    const bytes = build([conductor("x", tempo(), end()), [name("Viola"), cc(0, 11, 40), cc(0, 11, 60), on(0, 60), off(480, 60), end()]]);
+    const { song } = importMidi(bytes);
+    expect(orderedTracks(song)[0]!.curves).toBeUndefined();
+    expect(eventsByTrack(exportMidi(song))).toEqual(eventsByTrack(bytes));
+  });
+
   it("keeps a half-pedal as raw controller events", () => {
     const bytes = build([conductor("x", tempo(), end()), [name("Piano"), cc(0, 64, 90), on(0, 60), off(480, 60), cc(0, 64, 0), end()]]);
     const { song } = importMidi(bytes);

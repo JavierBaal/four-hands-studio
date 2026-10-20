@@ -15,7 +15,7 @@
 import { z } from "zod";
 
 /** Bumped whenever a tool, its parameters or its meaning changes. The app refuses other bridges. */
-export const TOOLS_VERSION = 12;
+export const TOOLS_VERSION = 13;
 
 /**
  * Track colours by name (H3.2). The app's palette (desktop/src/shared/track-colors.ts) has the same
@@ -431,6 +431,24 @@ export const TOOLS: readonly ToolDefinition[] = [
       track: z.string().describe("Track id or name"),
       spans: z.string().describe("One span per line, e.g. '17.1-17.4+1/2'"),
       range: z.string().optional().describe(`Where the pedal is replaced. ${RANGE_HELP}`),
+    },
+    annotations: write,
+  },
+  {
+    name: "write_expression",
+    title: "Write expression curves",
+    description:
+      "Write a track's expression (CC11: loudness inside the notes, for crescendos and swells on long notes, especially strings and winds) or modulation (CC1: vibrato in the built-in sounds; dynamics or another control in many orchestral libraries). " +
+      "One line per span: '<range> <from>><to>' a straight ramp (e.g. '17-20 40>100', '33.3-34.4 100>55'), '<range> <value>' a level from the start of the span, or '<range> clear'. " +
+      "Each line replaces the curve inside its range; the value then holds until the next point. Values 0–127; expression is 127 and modulation 0 where nothing is written. " +
+      "step: the ramp's resolution, '1/16' by default ('1/8' or '1/32'). Expression multiplies the velocity: shape phrases with it instead of writing velocity ramps. " +
+      `range: ${RANGE_HELP}`,
+    inputSchema: {
+      intervention_id: INTERVENTION,
+      track: z.string().describe("Track id or name"),
+      curve: z.enum(["expression", "modulation"]).describe("expression = CC11, modulation = CC1"),
+      lines: z.string().describe("One per line: '17-20 40>100', '21 100', '25-26 clear'"),
+      step: z.string().optional().describe("Ramp resolution: '1/16' (default), '1/8', '1/32'"),
     },
     annotations: write,
   },

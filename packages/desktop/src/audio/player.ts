@@ -9,7 +9,7 @@
 import { type Song, barTicks, beatTicks, songEnd } from "@fourhands/core";
 import type { SynthEvent } from "../shared/messages.js";
 import type { Engine } from "./engine.js";
-import { type LoopRange, METRONOME_CHANNEL, type SoundResolver, clickEvents, noteEvents, secondsPerTick, setupEvents, windowPieces } from "./schedule.js";
+import { type LoopRange, METRONOME_CHANNEL, type SoundResolver, clickEvents, curveResetEvents, curveStateEvents, noteEvents, secondsPerTick, setupEvents, windowPieces } from "./schedule.js";
 
 const LOOKAHEAD = 0.2;
 const TICK_MS = 25;
@@ -56,6 +56,8 @@ export class Player {
   private listeners = new Set<() => void>();
   private held = new Map<number, { ch: number; pitch: number }>();
   private setupDone = false;
+  /** Send where the curves stand before the next piece: playback just started or jumped. */
+  private needCurveState = true;
   /** Which bank and preset each track plays with (set by the audio layer). */
   soundFor: SoundResolver = () => null;
 
@@ -115,6 +117,7 @@ export class Player {
     this.anchorLinear = 0;
     this.anchorSong = from;
     this.playing = true;
+    this.needCurveState = true;
     this.schedule();
     this.timer = setInterval(() => this.schedule(), TICK_MS);
     this.changed();
@@ -125,6 +128,7 @@ export class Player {
     this.stopTimer();
     this.playing = false;
     this.engine?.panic();
+    if (this.engine) for (const ev of curveResetEvents(this.song())) this.engine.now(ev);
     this.held.clear();
     this.changed();
     this.onStop?.();
@@ -212,9 +216,15 @@ export class Player {
       const length = horizon - this.done;
       for (const piece of windowPieces(this.doneSong, length, this.loop)) {
         const base = this.done + piece.offset - piece.from;
+        if (this.needCurveState) {
+          // Just before the piece, so the points at its very first tick still win.
+          for (const ev of curveStateEvents(song, piece.from)) events.push({ time: at(base + piece.from) - 0.001, ev });
+          this.needCurveState = false;
+        }
         for (const e of noteEvents(song, piece.from, piece.to, this.loop?.end)) events.push({ time: at(base + e.tick), ev: e.ev });
         if (this.metronome) for (const e of clickEvents(song, piece.from, piece.to)) events.push({ time: at(base + e.tick), ev: e.ev });
         this.doneSong = this.loop && piece.to >= this.loop.end ? this.loop.start : piece.to;
+        if (this.loop && piece.to >= this.loop.end) this.needCurveState = true;
       }
       this.done = horizon;
     }

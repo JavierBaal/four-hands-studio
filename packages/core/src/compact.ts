@@ -183,3 +183,53 @@ export function formatNotes(song: Song, options: ReadNotesOptions = {}): string 
   }
   return blocks.join("\n\n");
 }
+
+// ---------------------------------------------------------------------------
+// Curves (H4): expression (CC11) and modulation (CC1), read as ramps and holds
+
+/** Points of a ramp from v1 to v2 over [start, end), one per step; repeated values are dropped. */
+export function rampPoints(start: number, end: number, from: number, to: number, step: number): { tick: number; value: number }[] {
+  const n = Math.max(1, Math.floor((end - start) / step));
+  const out: { tick: number; value: number }[] = [];
+  for (let k = 0; k < n; k++) {
+    const value = Math.round(n === 1 ? to : from + ((to - from) * k) / (n - 1));
+    if (out.at(-1)?.value !== value) out.push({ tick: start + k * step, value });
+  }
+  return out;
+}
+
+/**
+ * A curve as the AI reads it: "17.1→20.4+3/4 40→100 · 21.1 100". Runs of points that follow a
+ * straight line (within 2) become one ramp; the rest are single points.
+ */
+export function curveText(song: Song, points: readonly { tick: number; value: number }[], start = 0, end = Infinity): string {
+  const ps = points.filter((p) => p.tick >= start && p.tick < end);
+  const parts: string[] = [];
+  let i = 0;
+  while (i < ps.length) {
+    let j = i + 1;
+    // Extend while every point between i and j sits on the line from i to j, and the run goes one way.
+    while (j < ps.length) {
+      const a = ps[i]!;
+      const b = ps[j]!;
+      const dir = Math.sign(b.value - a.value);
+      let fits = dir !== 0 && Math.sign(b.value - ps[j - 1]!.value) === dir;
+      for (let k = i + 1; fits && k < j; k++) {
+        const p = ps[k]!;
+        const expected = a.value + ((b.value - a.value) * (p.tick - a.tick)) / (b.tick - a.tick);
+        if (Math.abs(p.value - expected) > 2 || Math.sign(p.value - ps[k - 1]!.value) !== dir) fits = false;
+      }
+      if (!fits) break;
+      j++;
+    }
+    const last = j - 1;
+    if (last >= i + 2) {
+      parts.push(`${formatPosition(song.meter, ps[i]!.tick)}→${formatPosition(song.meter, ps[last]!.tick)} ${ps[i]!.value}→${ps[last]!.value}`);
+      i = last + 1;
+    } else {
+      parts.push(`${formatPosition(song.meter, ps[i]!.tick)} ${ps[i]!.value}`);
+      i++;
+    }
+  }
+  return parts.join(" · ");
+}

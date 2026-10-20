@@ -3,7 +3,7 @@
  * the next ~200 ms to the synth worklet. Reading the replica at every window means notes the AI
  * writes ahead of the playhead simply play when it gets there.
  */
-import { type Song, PPQ, beatTicks, barTicks, type Track } from "@fourhands/core";
+import { type Song, CURVE_CC, CURVE_DEFAULT, CURVE_KINDS, PPQ, beatTicks, barTicks, curveValueAt, type Track } from "@fourhands/core";
 import type { SynthEvent } from "../shared/messages.js";
 
 /** The metronome uses its own channel and a woodblock, so it never clashes with a track. */
@@ -46,8 +46,39 @@ export function noteEvents(song: Song, from: number, to: number, cutAt = Infinit
       if (p.start >= from && p.start < to) out.push({ tick: p.start, ev: { kind: "cc", ch: track.channel, cc: 64, value: 127 } });
       if (p.end >= from && p.end < to) out.push({ tick: Math.min(p.end, cutAt), ev: { kind: "cc", ch: track.channel, cc: 64, value: 0 } });
     }
+    // Expression (CC11) and modulation (CC1), H4: each point when playback reaches it.
+    for (const kind of CURVE_KINDS)
+      for (const p of track.curves?.[kind] ?? []) {
+        if (p.tick >= to) break;
+        if (p.tick >= from) out.push({ tick: p.tick, ev: { kind: "cc", ch: track.channel, cc: CURVE_CC[kind], value: p.value } });
+      }
   }
   return out.sort((a, b) => a.tick - b.tick || (a.ev.kind === "off" ? -1 : 0) - (b.ev.kind === "off" ? -1 : 0));
+}
+
+/**
+ * Where the curves stand at a tick, for every track that has one: sent when playback starts or
+ * jumps (the loop), so a crescendo heard from its middle starts at its middle value.
+ */
+export function curveStateEvents(song: Song, tick: number): SynthEvent[] {
+  const out: SynthEvent[] = [];
+  for (const id of song.trackOrder) {
+    const t = song.tracks[id];
+    if (!t?.curves) continue;
+    for (const kind of CURVE_KINDS) if (t.curves[kind]?.length) out.push({ kind: "cc", ch: t.channel, cc: CURVE_CC[kind], value: curveValueAt(t.curves[kind], kind, tick) });
+  }
+  return out;
+}
+
+/** Back to the defaults after playing, so what the user auditions is not stuck at a quiet value. */
+export function curveResetEvents(song: Song): SynthEvent[] {
+  const out: SynthEvent[] = [];
+  for (const id of song.trackOrder) {
+    const t = song.tracks[id];
+    if (!t?.curves) continue;
+    for (const kind of CURVE_KINDS) if (t.curves[kind]?.length) out.push({ kind: "cc", ch: t.channel, cc: CURVE_CC[kind], value: CURVE_DEFAULT[kind] });
+  }
+  return out;
 }
 
 /** Metronome clicks in [from, to): a higher one on the first beat of each bar. */

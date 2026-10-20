@@ -20,6 +20,7 @@ import {
   removeTrack,
   setChord,
   setPedal,
+  setCurve,
   setSongProperties,
   updateAnnotation,
   updateNotes,
@@ -27,7 +28,7 @@ import {
   updateTrack,
 } from "./commands.js";
 import { CommandError, type Transaction } from "./document.js";
-import type { Annotation, PedalSpan, Section } from "./model.js";
+import type { Annotation, CcPoint, CurveKind, PedalSpan, Section } from "./model.js";
 
 export type CommandData =
   | { type: "addNotes"; trackId: string; notes: NoteSpec[] }
@@ -39,6 +40,7 @@ export type CommandData =
   | { type: "removeTrack"; id: string }
   | { type: "moveTrack"; id: string; index: number }
   | { type: "setPedal"; trackId: string; spans: PedalSpan[] }
+  | { type: "setCurve"; trackId: string; kind: CurveKind; from: number; to: number; points: CcPoint[] }
   | { type: "addSection"; spec: Omit<Section, "id"> }
   | { type: "updateSection"; id: string; changes: Partial<Omit<Section, "id">> }
   | { type: "removeSection"; id: string }
@@ -78,6 +80,9 @@ export function runCommand(tx: Transaction, c: CommandData): CommandResult {
       return null;
     case "moveTrack":
       moveTrack(tx, c.id, c.index);
+      return null;
+    case "setCurve":
+      setCurve(tx, c.trackId, c.kind, c.from, c.to, c.points);
       return null;
     case "setPedal":
       setPedal(tx, c.trackId, c.spans);

@@ -55,6 +55,12 @@ const track = z.object({
   solo: z.boolean(),
   color: int.min(0),
   pedal: z.array(range),
+  curves: z
+    .object({
+      expression: z.array(z.object({ tick: int.min(0), value: int.min(0).max(127) })).optional(),
+      modulation: z.array(z.object({ tick: int.min(0), value: int.min(0).max(127) })).optional(),
+    })
+    .optional(),
   extraEvents: z.array(passthrough),
   sound: z.object({ bank: z.string().min(1).max(255), program: int.min(0).max(127), bankMSB: int.min(0).max(127), name: z.string().max(100) }).optional(),
 });

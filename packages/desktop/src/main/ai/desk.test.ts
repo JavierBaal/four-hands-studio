@@ -238,6 +238,26 @@ describe("reading (route 1: the AI reads the song without the user describing it
     expect(summary).toMatch(/: silent|· user/);
   });
 
+  it("writes expression ramps and modulation levels, reads them back as ramps, and undoes in one step (H4)", () => {
+    const cello = trackByName("cello").id;
+    const iv = begin("Crescendo del chelo");
+    const reply = ok("write_expression", { intervention_id: iv, track: cello, curve: "expression", lines: "17-20 40>100\n21 100" });
+    expect(reply).toMatch(/^Expression \(CC11\) of .* in c\. 17–21: 17\.1→20\.4\+3\/4 40→100 · 21\.1 100\./);
+    const points = session.song.tracks[cello]!.curves!.expression!;
+    expect(points[0]).toEqual({ tick: barStart(session.song.meter, 17), value: 40 });
+    expect(points.find((p) => p.tick === barStart(session.song.meter, 21))?.value).toBe(100);
+    ok("write_expression", { intervention_id: iv, track: cello, curve: "modulation", lines: "17-18 30", step: "1/8" });
+    ok("end_intervention", { intervention_id: iv });
+    const read = ok("read_notes", { range: "17-20", tracks: [cello] });
+    expect(read).toContain("expression CC11: 17.1→20.4+3/4 40→100");
+    expect(read).toContain("modulation CC1: 17.1 30");
+    expect(ok("get_song_overview")).toContain("expression curve (CC11)");
+    expect(fail("write_expression", { intervention_id: begin("x"), track: cello, curve: "expression", lines: "17-20 40>200" })).toMatch(/0 to 127/);
+    session.handle({ type: "undo" });
+    session.handle({ type: "undo" });
+    expect(session.song.tracks[cello]!.curves).toBeUndefined();
+  });
+
   it("lists instruments with their ranges and the installed banks", () => {
     const text = ok("list_instruments");
     expect(text).toContain("Cellos / Chelos · program 42 · C2–A5");

@@ -55,6 +55,33 @@ export interface PedalSpan {
   end: number;
 }
 
+/**
+ * A controller curve (H4, Fran 15/10/2026): CC11 expression and CC1 modulation. Points are MIDI
+ * events: each value holds until the next point. A ramp is many points (one per 16th by default).
+ */
+export interface CcPoint {
+  tick: number;
+  /** 0–127. */
+  value: number;
+}
+
+export type CurveKind = "expression" | "modulation";
+export const CURVE_KINDS: readonly CurveKind[] = ["expression", "modulation"];
+/** The MIDI controller of each curve. */
+export const CURVE_CC: Record<CurveKind, number> = { expression: 11, modulation: 1 };
+/** What a track plays with no point before: full expression, no modulation (General MIDI). */
+export const CURVE_DEFAULT: Record<CurveKind, number> = { expression: 127, modulation: 0 };
+
+/** The value of a curve at a tick: the last point at or before it, or the default. */
+export function curveValueAt(points: readonly CcPoint[] | undefined, kind: CurveKind, tick: number): number {
+  let value = CURVE_DEFAULT[kind];
+  for (const p of points ?? []) {
+    if (p.tick > tick) break;
+    value = p.value;
+  }
+  return value;
+}
+
 /** A MIDI event the model does not interpret, kept so that exporting gives the file back unchanged. */
 export interface PassthroughEvent {
   tick: number;
@@ -82,6 +109,8 @@ export interface Track {
   color: number;
   /** Sustain pedal. */
   pedal: PedalSpan[];
+  /** Expression (CC11) and modulation (CC1), sorted by tick, one point per tick. Absent: none. */
+  curves?: Partial<Record<CurveKind, CcPoint[]>>;
   /** Events of this track the model does not interpret (controllers, pitch bend, text…). */
   extraEvents: PassthroughEvent[];
   /**

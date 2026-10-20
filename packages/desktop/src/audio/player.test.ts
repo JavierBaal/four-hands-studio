@@ -1,4 +1,4 @@
-import { SongDocument, USER, addNotes, starterSong } from "@fourhands/core";
+import { SongDocument, USER, addNotes, setCurve, starterSong } from "@fourhands/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SynthEvent } from "../shared/messages.js";
 import type { Engine } from "./engine.js";
@@ -50,6 +50,19 @@ describe("Player", () => {
       [64, 12.08],
     ]);
     expect(player.position()).toBeGreaterThan(3840);
+  });
+
+  it("starts a crescendo from where it stands, again at each loop, and resets it on stop (H4)", () => {
+    const { doc, player, scheduled, immediate, advance } = setup();
+    doc.transact({ actor: USER, label: "c" }, (tx) => setCurve(tx, "t1", "expression", 0, 3840, [{ tick: 0, value: 30 }, { tick: 960, value: 90 }]));
+    doc.setContext({ loop: { start: 960, end: 1920 } });
+    player.play(960);
+    advance(1.2);
+    const cc11 = scheduled.filter((e) => e.ev.kind === "cc" && e.ev.cc === 11).map((e) => (e.ev as { value: number }).value);
+    expect(cc11.slice(0, 2)).toEqual([90, 90]); // the state at 960, then the point at 960
+    expect(cc11.length).toBeGreaterThanOrEqual(4); // and again after the jump
+    player.stop();
+    expect(immediate).toContainEqual({ kind: "cc", ch: 0, cc: 11, value: 127 });
   });
 
   it("starts from the cursor", () => {

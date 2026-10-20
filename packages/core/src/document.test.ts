@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { addNotes, addSection, addTrack, deleteNotes, moveNotes, removeTrack, setChord, setSongProperties, updateNotes, updateTrack } from "./commands.js";
+import { addNotes, addSection, addTrack, deleteNotes, moveNotes, removeTrack, setChord, setCurve, setSongProperties, updateNotes, updateTrack } from "./commands.js";
 import { CommandError, type Patch, SongDocument } from "./document.js";
-import { TRACK_COLOR_COUNT, USER, ai, barAt, barStart, beatTicks, emptySong, notesOf } from "./model.js";
+import { TRACK_COLOR_COUNT, USER, ai, barAt, barStart, beatTicks, curveValueAt, emptySong, notesOf } from "./model.js";
 import { EIGHTH_TRIPLET, PPQ, SIXTEENTH, nominalGridPosition } from "./time.js";
 
 const claude = ai("claude-ai");
@@ -172,6 +172,36 @@ describe("shared context", () => {
     expect(doc.song.context.selection).toEqual([b]);
     doc.transact({ actor: USER, label: "Borrar pista" }, (tx) => removeTrack(tx, t));
     expect(doc.song.context).toMatchObject({ selection: [], activeTrackId: null });
+  });
+});
+
+describe("curves: expression (CC11) and modulation (CC1), H4", () => {
+  it("replace the points of a span, keep the rest, and undo in one step", () => {
+    const { doc, t } = docWithTrack();
+    doc.transact({ actor: USER, label: "expresión" }, (tx) => setCurve(tx, t, "expression", 0, 4 * PPQ, [{ tick: 0, value: 40 }, { tick: PPQ, value: 60 }]));
+    doc.transact({ actor: USER, label: "más" }, (tx) => setCurve(tx, t, "expression", PPQ, 2 * PPQ, [{ tick: PPQ, value: 90 }, { tick: PPQ + 240, value: 100 }]));
+    expect(doc.song.tracks[t]!.curves?.expression).toEqual([
+      { tick: 0, value: 40 },
+      { tick: PPQ, value: 90 },
+      { tick: PPQ + 240, value: 100 },
+    ]);
+    expect(curveValueAt(doc.song.tracks[t]!.curves?.expression, "expression", PPQ + 300)).toBe(100);
+    expect(curveValueAt(undefined, "expression", 0)).toBe(127);
+    expect(curveValueAt(undefined, "modulation", 0)).toBe(0);
+    doc.undo(USER);
+    expect(doc.song.tracks[t]!.curves?.expression?.map((p) => p.value)).toEqual([40, 60]);
+    doc.transact({ actor: USER, label: "borrar" }, (tx) => setCurve(tx, t, "expression", 0, 8 * PPQ, []));
+    expect(doc.song.tracks[t]!.curves).toBeUndefined(); // nothing left: the field goes away
+    doc.undo(USER);
+    expect(doc.song.tracks[t]!.curves?.expression).toHaveLength(2);
+  });
+
+  it("refuse points outside the span, out of range or on the same tick", () => {
+    const { doc, t } = docWithTrack();
+    const run = (points: { tick: number; value: number }[]) => () => doc.transact({ actor: USER, label: "x" }, (tx) => setCurve(tx, t, "modulation", 0, PPQ, points));
+    expect(run([{ tick: PPQ, value: 10 }])).toThrow(/outside/);
+    expect(run([{ tick: 0, value: 128 }])).toThrow(/0-127/);
+    expect(run([{ tick: 0, value: 1 }, { tick: 0, value: 2 }])).toThrow(/Two curve points/);
   });
 });
 

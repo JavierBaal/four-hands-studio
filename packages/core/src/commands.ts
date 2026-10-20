@@ -15,6 +15,8 @@ import {
   type Meter,
   type Note,
   type PedalSpan,
+  type CcPoint,
+  type CurveKind,
   type Section,
   type Track,
   type TrackSound,
@@ -214,6 +216,32 @@ export function setPedal(tx: Transaction, trackId: string, spans: PedalSpan[]): 
     check(prev === undefined || prev.end <= span.start, "Pedal spans cannot overlap");
   }
   tx.set(["tracks", trackId, "pedal"], sorted.map(({ start, end }) => ({ start, end })));
+}
+
+/**
+ * Replaces the points of a curve inside [from, to) with `points` (H4). Points outside the span are
+ * kept. Empty `points` clears the span. One point per tick; values 0–127.
+ */
+export function setCurve(tx: Transaction, trackId: string, kind: CurveKind, from: number, to: number, points: readonly CcPoint[]): void {
+  const track = getTrack(tx, trackId);
+  check(kind === "expression" || kind === "modulation", `Unknown curve: ${String(kind)}`);
+  checkStart(from);
+  check(isInt(to) && to > from, `Invalid curve span: ${from}-${to}`);
+  const seen = new Set<number>();
+  for (const p of points) {
+    check(isInt(p.tick) && p.tick >= from && p.tick < to, `Curve point at ${p.tick} is outside ${from}-${to}`);
+    check(isInt(p.value) && p.value >= 0 && p.value <= 127, `Curve value must be 0-127, not ${p.value}`);
+    check(!seen.has(p.tick), `Two curve points at ${p.tick}`);
+    seen.add(p.tick);
+  }
+  const old = track.curves?.[kind] ?? [];
+  const next = [...old.filter((p) => p.tick < from || p.tick >= to), ...points.map(({ tick, value }) => ({ tick, value }))].sort((a, b) => a.tick - b.tick);
+  if (JSON.stringify(next) === JSON.stringify(old)) return;
+  const curves: Partial<Record<CurveKind, CcPoint[]>> = { ...(track.curves ?? {}) };
+  if (next.length) curves[kind] = next;
+  else delete curves[kind];
+  if (Object.keys(curves).length) tx.set(["tracks", trackId, "curves"], curves);
+  else tx.remove(["tracks", trackId, "curves"]);
 }
 
 // ---------------------------------------------------------------------------

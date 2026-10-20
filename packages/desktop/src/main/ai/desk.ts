@@ -23,6 +23,7 @@ import {
   type NoteSpec,
   type PedalSpan,
   type Song,
+  PPQ,
   type Transaction,
   type TrackSound,
   MusicError,
@@ -68,6 +69,11 @@ import {
   changesText,
   historyLine,
   summaryText,
+  curveText,
+  rampPoints,
+  setCurve,
+  type CurveKind,
+  CURVE_KINDS,
 } from "@fourhands/core";
 import { NAMED_PROGRAMS, PALETTE } from "../../shared/instruments.js";
 import type { AiClientInfo, AiMark, AiState, AiTone, AiWriting, PatchMessage, SoundBankInfo } from "../../shared/protocol.js";
@@ -327,6 +333,19 @@ export class AiDesk {
     const labels = others.slice(-3).map((h) => (h.kind === "edit" ? h.label : `${h.kind === "undo" ? "undid" : "redid"}: ${h.label}`));
     const by = others.every((h) => h.actor.by === "user") ? "the user" : "the user or another AI";
     return `Since your last call (r${seen.revision}): ${others.length} change${others.length === 1 ? "" : "s"} by ${by} (${labels.join("; ")}${others.length > 3 ? "; …" : ""}). Call get_changes_since before writing.`;
+  }
+
+  /** read_notes: the expression and modulation curves of the tracks shown, inside the range. */
+  private curvesFor(song: Song, start: number, end: number, trackIds: readonly string[] | undefined): string {
+    const out: string[] = [];
+    for (const id of trackIds ?? song.trackOrder) {
+      const t = song.tracks[id];
+      for (const kind of CURVE_KINDS) {
+        const text = curveText(song, t?.curves?.[kind] ?? [], start, end);
+        if (text) out.push(`${t!.name} (${id}) ${kind === "expression" ? "expression CC11" : "modulation CC1"}: ${text}`);
+      }
+    }
+    return out.length ? `\nCurves (each value holds until the next):\n${out.join("\n")}` : "";
   }
 
   /** History entries after a revision, oldest first. */
@@ -615,7 +634,7 @@ export class AiDesk {
         pages > 1
           ? `\nPage ${page} of ${pages} (${slice.length} of ${ids.length} notes in ${range.label}).${page < pages ? ` Next: read_notes with page ${page + 1}.` : ""}`
           : `\n${plural(ids.length, "note")} in ${range.label}.`;
-      return body + footer;
+      return body + (page === 1 ? this.curvesFor(song, range.start, range.end, trackIds) : "") + footer;
     },
 
     get_changes_since: (conn, args) => {
@@ -979,6 +998,46 @@ export class AiDesk {
       iv.other.push(`pedal of ${song.tracks[trackId]!.name}`);
       this.emit();
       return `Pedal of ${song.tracks[trackId]!.name} written in ${spanText(song, range.start, range.end)}: ${plural(spans.length, "span")}. ${this.rev()}`;
+    },
+
+    write_expression: (conn, args) => {
+      const iv = this.intervention(conn, args);
+      const song = this.song;
+      const trackId = this.track(this.str(args, "track")!);
+      const kind = this.str(args, "curve") as CurveKind;
+      if (kind !== "expression" && kind !== "modulation") throw new MusicError("curve is 'expression' (CC11) or 'modulation' (CC1)");
+      const stepText = this.str(args, "step", false) ?? "1/16";
+      const step = parseDuration(stepText);
+      if (step < PPQ / 8 || step > PPQ) throw new MusicError(`step '${stepText}' is too fine or too coarse: use 1/8, 1/16 or 1/32`);
+      const spans = lines(this.str(args, "lines")!).map(({ n, text }) => {
+        const m = /^(.+?)\s+(clear|\d{1,3}(?:\s*>\s*\d{1,3})?)$/i.exec(text);
+        if (!m) throw new MusicError(`Line ${n} ("${text}"): write '<range> <from>><to>', '<range> <value>' or '<range> clear', e.g. '17-20 40>100'`);
+        let range;
+        try {
+          range = resolveRange(song, m[1]!, { allowBeyondEnd: true });
+        } catch (error) {
+          throw new MusicError(`Line ${n} ("${text}"): ${(error as Error).message}`);
+        }
+        const spec = m[2]!.toLowerCase();
+        const values = spec === "clear" ? [] : spec.split(">").map((v) => Number(v.trim()));
+        if (values.some((v) => v > 127)) throw new MusicError(`Line ${n} ("${text}"): values go from 0 to 127`);
+        const points = values.length === 0 ? [] : values.length === 1 ? [{ tick: range.start, value: values[0]! }] : rampPoints(range.start, range.end, values[0]!, values[1]!, step);
+        return { range, points };
+      });
+      for (let i = 1; i < spans.length; i++)
+        for (let j = 0; j < i; j++)
+          if (spans[i]!.range.start < spans[j]!.range.end && spans[j]!.range.start < spans[i]!.range.end) throw new MusicError(`Lines ${j + 1} and ${i + 1} overlap: give each span its own bars`);
+      this.write(iv, (tx) => {
+        for (const s of spans) setCurve(tx, trackId, kind, s.range.start, s.range.end, s.points);
+      });
+      for (const s of spans) this.span(iv, s.range.start, s.range.end, trackId);
+      const name = song.tracks[trackId]!.name;
+      iv.other.push(`${kind} of ${name}`);
+      this.emit();
+      const start = Math.min(...spans.map((s) => s.range.start));
+      const end = Math.max(...spans.map((s) => s.range.end));
+      const now = curveText(song, song.tracks[trackId]!.curves?.[kind] ?? [], start, end);
+      return `${kind === "expression" ? "Expression (CC11)" : "Modulation (CC1)"} of ${name} in ${spanText(song, start, end)}: ${now || "cleared"}. ${this.rev()}`;
     },
 
     set_harmony: (conn, args) => {

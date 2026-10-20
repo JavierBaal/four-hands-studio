@@ -17,6 +17,8 @@ import {
   type Song,
   type Track,
   USER,
+  CURVE_CC,
+  CURVE_KINDS,
   barAt,
   barStart,
   barTicks,
@@ -247,6 +249,17 @@ export function importMidi(bytes: ArrayLike<number>, options: { title?: string }
       for (const t of sustain) used.add(t);
     }
 
+    // Expression (CC11) and modulation (CC1) curves (H4): each event is a point. Left as they are
+    // when two share a tick, since the model keeps one point per tick.
+    for (const kind of CURVE_KINDS) {
+      const cc = channelEvents.filter((t) => t.event.type === "controller" && t.event.controllerType === CURVE_CC[kind] && (t.event as { channel: number }).channel === channel);
+      if (!cc.length) continue;
+      const points = cc.map((t) => ({ tick: toTicks(t.tick), value: (t.event as { value: number }).value }));
+      if (new Set(points.map((p) => p.tick)).size !== points.length) continue;
+      track.curves = { ...(track.curves ?? {}), [kind]: points };
+      for (const t of cc) used.add(t);
+    }
+
     // Notes: note-ons pair with the oldest open note-off of the same pitch.
     const open = new Map<number, { start: number; velocity: number; seq: number }[]>();
     const notes: { note: Omit<Note, "id">; onSeq: number }[] = [];
@@ -359,6 +372,7 @@ function chooseResolution(song: Song): number {
   for (const n of Object.values(song.notes)) if (!fits(n.start) || !fits(n.duration)) return PPQ;
   for (const t of Object.values(song.tracks)) {
     if (!t.pedal.every((p) => fits(p.start) && fits(p.end))) return PPQ;
+    for (const kind of CURVE_KINDS) if (!(t.curves?.[kind] ?? []).every((p) => fits(p.tick))) return PPQ;
     if (!t.extraEvents.every((e) => fits(e.tick))) return PPQ;
   }
   if (!song.conductorEvents.every((e) => fits(e.tick))) return PPQ;
@@ -421,6 +435,12 @@ export function exportMidi(song: Song): Uint8Array {
       events.push({ tick: p.start, rank: RANK.channel, order: Number.MAX_SAFE_INTEGER, event: { type: "controller", channel: ch, controllerType: SUSTAIN, value: 127 } });
       events.push({ tick: p.end, rank: RANK.channel, order: -1, event: { type: "controller", channel: ch, controllerType: SUSTAIN, value: 0 } });
     });
+    // Curves: after a pedal lift and before the other controllers at the same tick.
+    CURVE_KINDS.forEach((kind, k) =>
+      (track.curves?.[kind] ?? []).forEach((p) =>
+        events.push({ tick: p.tick, rank: RANK.channel, order: -0.5 + k * 0.1, event: { type: "controller", channel: ch, controllerType: CURVE_CC[kind], value: p.value } }),
+      ),
+    );
     track.extraEvents.forEach((e, i) => {
       const ev = e.event;
       const rank =
