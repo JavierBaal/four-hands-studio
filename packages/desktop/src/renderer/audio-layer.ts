@@ -8,6 +8,7 @@ import type { Strings, Translate } from "../shared/i18n.js";
 import { Engine } from "../audio/engine.js";
 import { INITIAL_KEYBOARD, type KeyboardState, keyAction } from "../audio/keyboard.js";
 import { Player } from "../audio/player.js";
+import { type MidiPort, SoundRouter } from "../audio/router.js";
 import type { Bridge } from "./bridge.js";
 import type { SoundBankInfo } from "../shared/protocol.js";
 import { activeTrack } from "./context.js";
@@ -64,6 +65,15 @@ export class AudioLayer {
    */
   compare: "with" | "without" = "with";
   private before: { revision: number; song: Song } | null = null;
+  /**
+   * MIDI out (H4): tracks set to "Studio One" send their MIDI through this port instead of
+   * sounding here. `outPorts` lists what the system offers; `outName` is the user's choice.
+   */
+  outPorts: string[] = [];
+  outName: string | null = null;
+  private midiAccess: MIDIAccess | null = null;
+  private router: SoundRouter | null = null;
+  private outSides = new Map<string, boolean>();
 
   constructor(
     private readonly replica: Replica,
@@ -91,6 +101,13 @@ export class AudioLayer {
         this.trackSignature = sig;
         this.player.setup();
         this.ensureBanks();
+      }
+      // A track that changed sides stops sounding on the side it left.
+      for (const id of this.replica.song.trackOrder) {
+        const tr = this.replica.song.tracks[id]!;
+        const out = tr.output === "external";
+        if (this.outSides.has(id) && this.outSides.get(id) !== out) this.router?.silence(tr.channel);
+        this.outSides.set(id, out);
       }
     });
     // A track with a sound from another bank plays it once the bank is loaded; until then, and if
@@ -170,7 +187,13 @@ export class AudioLayer {
       };
       const info = await engine.init(sf, "worklet.js", false);
       this.engine = engine;
-      this.player.setEngine(engine);
+      this.router = new SoundRouter({
+        inner: engine,
+        external: () => this.externalChannels(),
+        port: () => this.outPort(),
+        delayMs: () => engine.outputLatencyMs,
+      });
+      this.player.setEngine(this.router);
       this.ensureBanks();
       this.status = "ready";
       this.bridge.log({ type: "sound_ready", ...info, baseLatencyMs: engine.baseLatencyMs, outputLatencyMs: engine.outputLatencyMs });
@@ -453,10 +476,51 @@ export class AudioLayer {
     if (had && this.keyGuide) this.changed();
   }
 
+  // -------------------------------------------------------------------------
+  // MIDI out (H4): to Studio One through a virtual port (loopMIDI on Windows)
+
+  /** Channels of the tracks that sound in the other program. */
+  externalChannels(): Set<number> {
+    const out = new Set<number>();
+    for (const id of this.replica.song.trackOrder) {
+      const t = this.replica.song.tracks[id];
+      if (t?.output === "external") out.add(t.channel);
+    }
+    return out;
+  }
+
+  /** The chosen port, if the system has it now. */
+  private outPort(): MidiPort | null {
+    if (!this.midiAccess || !this.outName) return null;
+    for (const o of this.midiAccess.outputs.values()) if (o.name === this.outName) return o as unknown as MidiPort;
+    return null;
+  }
+
+  /** "ready": sending; "none": no port chosen; "missing": the chosen one is not there (loopMIDI closed?). */
+  get outStatus(): "ready" | "none" | "missing" {
+    if (!this.outName) return "none";
+    return this.outPort() ? "ready" : "missing";
+  }
+
+  async chooseOutPort(name: string | null): Promise<void> {
+    this.player.stop();
+    this.outName = await this.bridge.setMidiOutPort(name);
+    this.bridge.log({ type: "midi_out_port", name: this.outName, found: this.outStatus === "ready" });
+    this.changed();
+  }
+
+  private refreshOutPorts(): void {
+    this.outPorts = this.midiAccess ? [...this.midiAccess.outputs.values()].map((o) => o.name ?? "").filter(Boolean) : [];
+    this.changed();
+  }
+
   private async attachMidi(): Promise<void> {
+    this.outName = await this.bridge.midiOutPort().catch(() => null);
     if (!("requestMIDIAccess" in navigator)) return;
     try {
       const access = await navigator.requestMIDIAccess();
+      this.midiAccess = access;
+      this.refreshOutPorts();
       const listen = () => {
         for (const input of access.inputs.values()) {
           input.onmidimessage = (m) => {
@@ -469,7 +533,10 @@ export class AudioLayer {
         }
       };
       listen();
-      access.onstatechange = listen;
+      access.onstatechange = () => {
+        listen();
+        this.refreshOutPorts();
+      };
     } catch (error) {
       this.bridge.log({ type: "midi_unavailable", error: String(error) });
     }

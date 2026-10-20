@@ -61,6 +61,7 @@ const track = z.object({
       modulation: z.array(z.object({ tick: int.min(0), value: int.min(0).max(127) })).optional(),
     })
     .optional(),
+  output: z.literal("external").optional(),
   extraEvents: z.array(passthrough),
   sound: z.object({ bank: z.string().min(1).max(255), program: int.min(0).max(127), bankMSB: int.min(0).max(127), name: z.string().max(100) }).optional(),
 });

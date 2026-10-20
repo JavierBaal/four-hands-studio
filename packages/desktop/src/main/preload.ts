@@ -38,6 +38,8 @@ const CH = {
   songBefore: "fh:song-before",
   aiTone: "fh:ai-tone",
   aiToneSet: "fh:ai-tone-set",
+  midiOut: "fh:midi-out",
+  midiOutSet: "fh:midi-out-set",
 } as const;
 
 function listen(channel: string, listener: (value: unknown) => void): () => void {
@@ -79,4 +81,6 @@ contextBridge.exposeInMainWorld("fh", {
   songBefore: () => ipcRenderer.invoke(CH.songBefore),
   aiTone: () => ipcRenderer.invoke(CH.aiTone),
   setAiTone: (tone: string) => ipcRenderer.invoke(CH.aiToneSet, tone),
+  midiOutPort: () => ipcRenderer.invoke(CH.midiOut),
+  setMidiOutPort: (name: string | null) => ipcRenderer.invoke(CH.midiOutSet, name),
 });

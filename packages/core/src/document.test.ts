@@ -205,6 +205,19 @@ describe("curves: expression (CC11) and modulation (CC1), H4", () => {
   });
 });
 
+describe("track output (H4): inside Four Hands or out to another program", () => {
+  it("is internal by default, goes external and back, and undoes", () => {
+    const { doc, t } = docWithTrack();
+    expect(doc.song.tracks[t]!.output).toBeUndefined();
+    doc.transact({ actor: USER, label: "fuera" }, (tx) => updateTrack(tx, t, { output: "external" }));
+    expect(doc.song.tracks[t]!.output).toBe("external");
+    doc.transact({ actor: USER, label: "dentro" }, (tx) => updateTrack(tx, t, { output: "internal" }));
+    expect("output" in doc.song.tracks[t]!).toBe(false);
+    doc.undo(USER);
+    expect(doc.song.tracks[t]!.output).toBe("external");
+  });
+});
+
 describe("commands", () => {
   it("validate their input with readable errors", () => {
     const { doc, t } = docWithTrack();

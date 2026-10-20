@@ -54,6 +54,8 @@ interface Settings {
   disabledSkills?: string[];
   /** Tu IA > Opiniones (H4): how the AI gives its opinions. */
   aiTone?: AiTone;
+  /** MIDI out (H4): the port for the tracks that sound in another program. */
+  midiOutPort?: string | null;
 }
 
 const aiTone = (): AiTone => (readSettings().aiTone === "gentle" ? "gentle" : DEFAULT_AI_TONE);
@@ -454,6 +456,13 @@ function registerIpc(): void {
     return skills?.catalog() ?? [];
   });
   ipcMain.handle(CH.skillsImport, (_e, files: string[]) => importSkills(files));
+  // MIDI out: the chosen port (the window opens it; the name is all the main process keeps).
+  ipcMain.handle(CH.midiOut, () => readSettings().midiOutPort ?? null);
+  ipcMain.handle(CH.midiOutSet, (_e, name: unknown) => {
+    const next = typeof name === "string" && name.trim() ? name.slice(0, 200) : null;
+    writeSettings({ midiOutPort: next });
+    return next;
+  });
   // Tu IA > Opiniones.
   ipcMain.handle(CH.aiTone, () => aiTone());
   ipcMain.handle(CH.aiToneSet, (_e, tone: string) => {

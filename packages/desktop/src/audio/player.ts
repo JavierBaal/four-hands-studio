@@ -8,7 +8,7 @@
  */
 import { type Song, barTicks, beatTicks, songEnd } from "@fourhands/core";
 import type { SynthEvent } from "../shared/messages.js";
-import type { Engine } from "./engine.js";
+import type { SoundOut } from "./router.js";
 import { type LoopRange, METRONOME_CHANNEL, type SoundResolver, clickEvents, curveResetEvents, curveStateEvents, noteEvents, secondsPerTick, setupEvents, windowPieces } from "./schedule.js";
 
 const LOOKAHEAD = 0.2;
@@ -63,10 +63,10 @@ export class Player {
 
   constructor(
     private readonly song: () => Song,
-    private engine: Engine | null = null,
+    private engine: SoundOut | null = null,
   ) {}
 
-  setEngine(engine: Engine): void {
+  setEngine(engine: SoundOut): void {
     this.engine = engine;
     this.setupDone = false;
     this.setup();

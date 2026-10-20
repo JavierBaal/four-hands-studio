@@ -176,6 +176,8 @@ export const CH = {
   songBefore: "fh:song-before",
   aiTone: "fh:ai-tone",
   aiToneSet: "fh:ai-tone-set",
+  midiOut: "fh:midi-out",
+  midiOutSet: "fh:midi-out-set",
 } as const;
 
 /**

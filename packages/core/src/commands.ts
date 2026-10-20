@@ -166,6 +166,8 @@ export function addTrack(tx: Transaction, spec: TrackSpec): string {
 export type TrackChanges = Partial<Pick<Track, "name" | "program" | "channel" | "volume" | "pan" | "mute" | "solo" | "color">> & {
   /** A preset of another sound bank, or null to go back to the default bank. */
   sound?: TrackSound | null;
+  /** "external": the track's MIDI goes out (Studio One); "internal": the built-in sound plays it. */
+  output?: "internal" | "external";
 };
 
 export function updateTrack(tx: Transaction, id: string, changes: TrackChanges): void {
@@ -178,7 +180,12 @@ export function updateTrack(tx: Transaction, id: string, changes: TrackChanges):
   if (changes.pan !== undefined) check(changes.pan >= -1 && changes.pan <= 1, "Pan must be between -1 and 1");
   if (changes.name !== undefined) check(changes.name.trim().length > 0, "A track needs a name");
   if (changes.color !== undefined) checkColor(changes.color);
-  const { sound, ...rest } = changes;
+  const { sound, output, ...rest } = changes;
+  if (output !== undefined) {
+    check(output === "internal" || output === "external", `Invalid output: ${String(output)}`);
+    if (output === "external" && track.output !== "external") tx.set(["tracks", id, "output"], "external");
+    if (output === "internal" && track.output) tx.remove(["tracks", id, "output"]);
+  }
   if (sound) {
     check(sound.bank.trim().length > 0, "A sound needs its bank");
     check(isInt(sound.program) && sound.program >= 0 && sound.program <= 127, `Invalid preset: ${sound.program}`);

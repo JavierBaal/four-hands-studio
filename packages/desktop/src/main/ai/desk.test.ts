@@ -275,6 +275,12 @@ describe("reading (route 1: the AI reads the song without the user describing it
     expect(desk.state().recent).toEqual([]);
   });
 
+  it("tells the AI which tracks sound outside Four Hands (H4, MIDI out)", () => {
+    const cello = trackByName("cello").id;
+    session.handle({ type: "run", label: "chelo a Studio One", commands: [{ type: "updateTrack", id: cello, changes: { output: "external" } }] });
+    expect(ok("get_song_overview")).toMatch(/sounds outside Four Hands \(MIDI out/);
+  });
+
   it("lists instruments with their ranges and the installed banks", () => {
     const text = ok("list_instruments");
     expect(text).toContain("Cellos / Chelos · program 42 · C2–A5");

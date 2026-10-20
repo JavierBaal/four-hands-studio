@@ -56,6 +56,9 @@ export interface Bridge {
   /** Tu IA > Opiniones: how the AI gives its opinions. */
   aiTone(): Promise<AiTone>;
   setAiTone(tone: AiTone): Promise<AiTone>;
+  /** MIDI out (H4): the port chosen for the tracks that sound in another program. */
+  midiOutPort(): Promise<string | null>;
+  setMidiOutPort(name: string | null): Promise<string | null>;
 }
 
 export function windowBridge(): Bridge | null {
@@ -94,6 +97,7 @@ export function memoryBridge(
   const closed: string[] = [];
   let skills: SkillCardInfo[] = structuredClone(options.skills ?? []);
   let tone: AiTone = DEFAULT_AI_TONE;
+  let outPort: string | null = null;
   const on = <T>(set: Set<T>, l: T) => {
     set.add(l);
     return () => void set.delete(l);
@@ -169,6 +173,8 @@ export function memoryBridge(
     songBefore: async () => (doc.lastAiStep ? doc.songBeforeLastStep() : null),
     aiTone: async () => tone,
     setAiTone: async (next) => (tone = next),
+    midiOutPort: async () => outPort,
+    setMidiOutPort: async (name) => (outPort = name),
     save: () => {
       file.savedAt = now();
       for (const l of fileListeners) l({ ...file });

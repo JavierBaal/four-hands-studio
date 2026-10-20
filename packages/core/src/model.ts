@@ -109,6 +109,11 @@ export interface Track {
   color: number;
   /** Sustain pedal. */
   pedal: PedalSpan[];
+  /**
+   * Where the track sounds (H4, Fran 20/10/2026): "external" sends its MIDI out (to Studio One
+   * through a virtual port) instead of playing the built-in sound. Absent: inside Four Hands.
+   */
+  output?: "external";
   /** Expression (CC11) and modulation (CC1), sorted by tick, one point per tick. Absent: none. */
   curves?: Partial<Record<CurveKind, CcPoint[]>>;
   /** Events of this track the model does not interpret (controllers, pitch bend, text…). */
