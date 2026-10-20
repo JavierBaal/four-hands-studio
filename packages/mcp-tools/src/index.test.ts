@@ -97,6 +97,12 @@ describe("tool definitions", () => {
     expect(SERVER_INSTRUCTIONS).toMatch(/does not compose/);
   });
 
+  it("the jury prompt loads the jury skill and changes nothing", () => {
+    const jury = PROMPTS.find((p) => p.name === "call_the_jury")!;
+    expect(jury.render({})).toMatch(/on the whole song: load_skill\("jury"\).*Do not change anything/);
+    expect(jury.render({ range: "section:Coro" })).toContain("on section:Coro");
+  });
+
   it("prompts render with their arguments", () => {
     expect(PROMPTS.find((p) => p.name === "compose_from_feelings")?.render({ feeling: "coming home" })).toContain("coming home");
   });

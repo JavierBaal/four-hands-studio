@@ -2,6 +2,8 @@
 
 **Desde el 20/10/2026 las sirve la app** (`list_skills` y `load_skill`, herramientas versión 9, extensión 0.3.6). Viajan dentro de Four Hands y Claude las carga solo: `four-hands-basics` al empezar cada conversación y las demás cuando encajan. Ya no hace falta instalarlas en Claude; si las tienes instaladas, bórralas de Customize > Skills para que no haya dos copias. Los ZIP siguen sirviendo para usarlas fuera de Four Hands.
 
+**El jurado (`jury`, 20/10/2026):** tres jueces (el oficio, el encargo, el destino) valoran una pieza terminada con notas del 1 al 10, lo mejor y lo que falla con sus compases, un veredicto («pasa», «pasa con cambios», «repetir») y los tres cambios que más importan. Solo cuando lo pides: «convoca al jurado», o el atajo *Call the jury* del menú «+» de Claude. No cambia nada hasta que se lo pidas.
+
 **Tus propias skills:** carpeta `Documentos/Four Hands/Skills`, una carpeta por skill con su `SKILL.md`. Aparecen al momento, sin reiniciar, y si una se llama como una de serie, manda la tuya.
 
 **Versión 2 (20/10/2026)**, tras la prueba de Severance con y sin skills:
@@ -26,6 +28,7 @@ Primer paso del plan de `ESTUDIO_SKILLS_COMPOSICION.md`. Son cinco skills en ing
 | `four-hands-basics` | Cómo trabajar en Four Hands: el ciclo, el concepto de la canción con sus límites, intervenciones pequeñas, respetar lo tocado, revisar y contar |
 | `feelings-to-music` | Entender a cualquier usuario: reflejar en una frase, preguntar por contraste, tabla de traducción de sensaciones, de la referencia a la técnica y tópicos del género vecino |
 | `styles` | Atlas: cabecera experimental, cinematográfico e híbrido, oscuro electrónico y *cyberpunk* |
+| `jury` | El jurado: valorar una pieza terminada, solo a petición (desde el 20/10/2026) |
 
 ## Cómo instalarlas
 

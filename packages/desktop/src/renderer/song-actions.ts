@@ -492,7 +492,7 @@ export class SongActions {
   }
 
   // -------------------------------------------------------------------------
-  // Annotations: flags on the form ruler
+  // Annotations: on the Notes ruler, in lanes (roll/annotation-lanes.ts)
 
   saveAnnotation(id: string | null, tick: number, text: string): void {
     const clean = text.trim();

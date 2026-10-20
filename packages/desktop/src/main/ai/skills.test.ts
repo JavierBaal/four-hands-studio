@@ -29,7 +29,7 @@ describe("SKILL.md front matter", () => {
   // The app serves exactly what the repo ships: every built-in skill must have a name and a description.
   it("every built-in skill has a name matching its folder and a description", () => {
     const skills = new SkillLibrary({ builtIn: REPO_SKILLS }).list();
-    expect(skills.map((s) => s.name)).toEqual(["four-hands-basics", "feelings-to-music", "listening-review", "orchestration-register", "styles"]);
+    expect(skills.map((s) => s.name)).toEqual(["four-hands-basics", "feelings-to-music", "jury", "listening-review", "orchestration-register", "styles"]);
     for (const s of skills) {
       expect(path.basename(s.dir)).toBe(s.name);
       expect(s.description.length, s.name).toBeGreaterThan(80);

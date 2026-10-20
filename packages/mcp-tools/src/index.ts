@@ -502,7 +502,7 @@ export const TOOLS: readonly ToolDefinition[] = [
     name: "annotate",
     title: "Add a note in words",
     description:
-      "Leave a short text annotation over some bars (and optionally some tracks), visible on the form ruler: an idea, a question, a reminder. " +
+      "Leave a short text annotation over some bars (and optionally some tracks), visible on the Notes ruler above the score: an idea, a question, a reminder. " +
       "With id, rewrite one of your annotations instead (text, and range or tracks if given): keep the score's notes true to the music " +
       "rather than adding new ones on top of old ones. The user's annotations are theirs. " +
       `range: ${RANGE_HELP}`,
@@ -565,6 +565,15 @@ export const PROMPTS: readonly PromptDefinition[] = [
     render: () =>
       "In Four Hands Studio, read my selection (get_user_context, then read_notes with range 'selection') and continue the phrase " +
       "right after it, in the same style, inside one intervention. Keep my notes as they are.",
+  },
+  {
+    name: "call_the_jury",
+    title: "Call the jury",
+    description: "Three judges (craft, brief, destination) assess the piece with scores, a verdict and the three changes that matter most. Nothing changes unless you ask.",
+    argsSchema: { range: z.string().optional().describe("What to judge, e.g. 'section:Coro' or '1-24'; the whole song if empty") },
+    render: ({ range }) =>
+      `In Four Hands Studio, call the jury on ${range?.trim() ? range.trim() : "the whole song"}: load_skill("jury") and follow it. ` +
+      "Do not change anything until I ask.",
   },
 ];
 export * from "./config.js";
