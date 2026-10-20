@@ -97,6 +97,15 @@ input.inline.mixval { height: 16px; padding: 0 2px; font-size: 10px; text-align:
 .rlab { font-size: 11px; color: var(--text-2); text-transform: uppercase; letter-spacing: .04em; padding: 0 8px; display: flex; align-items: center; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line-soft); height: 24px; box-sizing: border-box; overflow: hidden; }
 .rrow { position: relative; height: 24px; border-bottom: 1px solid var(--line-soft); box-sizing: border-box; overflow: hidden; }
 .sec { position: absolute; top: 2px; bottom: 2px; border-radius: 4px; background: var(--bg-section); border: 1px solid var(--line-control); padding: 0 8px; font-size: 12px; line-height: 18px; white-space: nowrap; overflow: hidden; box-sizing: border-box; }
+/* Annotations in lanes (20/10/2026): never on top of each other or of the section names. */
+.rrow.notes { cursor: text; }
+.anote { position: absolute; height: 17px; box-sizing: border-box; border-left: 3px solid var(--author-ai); border-radius: 2px 4px 4px 2px; background: var(--bg-section); cursor: pointer; overflow: hidden; }
+.anote.u { border-left-color: var(--author-user); }
+.anote.cut { border-left-style: dashed; }
+.anote .atext { display: block; padding: 0 6px; font-size: 11px; line-height: 15px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.anote .aspan { position: absolute; left: 0; bottom: 0; height: 2px; background: var(--line-on); opacity: .55; }
+.anote:hover { background: var(--bg-control); }
+.amore { position: absolute; right: 4px; height: 17px; line-height: 17px; padding: 0 6px; border-radius: 8px; font-size: 11px; color: var(--text-2); background: var(--bg-control); }
 .flag { position: absolute; top: 2px; height: 18px; line-height: 18px; font-size: 11px; color: var(--text-on-light); background: var(--flag); border-radius: 3px 9px 9px 3px; padding: 0 8px; white-space: nowrap; }
 .chord { position: absolute; top: 0; bottom: 0; border-left: 1px solid var(--line-control); padding-left: 6px; font-size: 12px; line-height: 23px; color: var(--text); white-space: nowrap; overflow: hidden; box-sizing: border-box; }
 .barn { position: absolute; top: 0; bottom: 0; border-left: 1px solid var(--line-strong); padding-left: 4px; font-size: 11px; line-height: 23px; color: var(--text-2); }

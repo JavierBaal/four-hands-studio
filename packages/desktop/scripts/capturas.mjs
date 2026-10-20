@@ -60,6 +60,16 @@ export const SHOTS = [
     await page.locator(".thdr").nth(1).click({ button: "right", position: { x: 120, y: 12 } });
     await page.getByRole("menuitem", { name: /Volumen/ }).click();
   } },
+  { name: "notas_en_carriles", q: `?song=boceto&view=${sketchView(1440 - 288 - 72, 12)}`, act: async (page) => {
+    await page.evaluate((bar) => window.fhTest.replica.run("x", [
+      { type: "addAnnotation", spec: { start: 0, end: 40 * bar, trackIds: [], text: "Concepto: dos mitades que no se conocen; dura 1:20" } },
+      { type: "addAnnotation", spec: { start: 17 * bar, end: 21 * bar, trackIds: [], text: "Lumon: el ostinato cojea contra el compás" } },
+      { type: "addAnnotation", spec: { start: 18 * bar, end: 19 * bar, trackIds: [], text: "Hueco antes del bajo" } },
+      { type: "addAnnotation", spec: { start: 18 * bar + 1920, end: 19 * bar, trackIds: [], text: "aquí entra el innie" } },
+      { type: "addAnnotation", spec: { start: 24 * bar, end: 28 * bar, trackIds: [], text: "Disolución" } },
+    ]), BAR);
+    await page.waitForTimeout(300);
+  } },
   { name: "linea_reproduccion_arreglo", q: `?song=boceto&view=${sketchView(1440 - 288 - 72, 12)}`, act: async (page) => {
     await page.keyboard.press("Space");
     await page.waitForTimeout(2500);

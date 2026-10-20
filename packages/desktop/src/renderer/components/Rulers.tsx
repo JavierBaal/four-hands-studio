@@ -1,6 +1,6 @@
 /**
- * The rulers above the piano roll, at its zoom (DIRECCION_ARTISTICA.md, 6.1 item 4): form with
- * annotation flags, harmony, bar numbers with the loop band. Empty states as in capture 08.
+ * The rulers above the piano roll, at its zoom (DIRECCION_ARTISTICA.md, 6.1 item 4): form,
+ * annotations in lanes of their own (20/10/2026), harmony, bar numbers with the loop band. Empty states as in capture 08.
  * DOM rather than canvas: a few dozen elements, crisp text, and chords are typed in place.
  *
  * Form: drag across empty space to create a section (whole bars); drag a section's edge to resize
@@ -13,6 +13,7 @@ import type { Translate } from "../../shared/i18n.js";
 import { useActions, useApp } from "../context.js";
 import { type RollView, endTick, tickToX, xToTick } from "../roll/geometry.js";
 import { InlineEdit } from "./InlineEdit.js";
+import { layoutAnnotations } from "../roll/annotation-lanes.js";
 
 interface RulerProps {
   song: Song;
@@ -111,20 +112,14 @@ export function FormRuler({ song, v, t }: RulerProps) {
     e.preventDefault();
     const target = e.target as HTMLElement;
     const sec = target.closest<HTMLElement>(".sec");
-    const flag = target.closest<HTMLElement>(".flag");
-    if (flag) actions.annotationMenu(flag.dataset.id!, e.clientX, e.clientY);
-    else if (sec) actions.sectionMenu(sec.dataset.id!, e.clientX, e.clientY);
+    if (sec) actions.sectionMenu(sec.dataset.id!, e.clientX, e.clientY);
     else actions.formMenu(xToTick(v, localX(e)), e.clientX, e.clientY);
   };
 
   const rowDouble = (e: React.MouseEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
-    const flag = target.closest<HTMLElement>(".flag");
     const sec = target.closest<HTMLElement>(".sec");
-    if (flag) {
-      const a = song.annotations[flag.dataset.id!];
-      if (a) actions.type({ kind: "annotation", id: a.id, tick: a.start });
-    } else if (sec && !target.closest(".sedge")) actions.type({ kind: "section", id: sec.dataset.id! });
+    if (sec && !target.closest(".sedge")) actions.type({ kind: "section", id: sec.dataset.id! });
   };
 
   const span = (a: number, b: number) => {
@@ -165,32 +160,6 @@ export function FormRuler({ song, v, t }: RulerProps) {
     const r = createRange(drag);
     items.push(<span key="new" className="sec ghost" style={span(r.start, r.end)} />);
   }
-  for (const a of Object.values(song.annotations)) {
-    if (a.start < v.startTick || a.start >= end) continue;
-    if (typing?.kind === "annotation" && typing.id === a.id) continue;
-    items.push(
-      <span key={a.id} data-id={a.id} className="flag" style={{ left: tickToX(v, a.start) }} title={a.text}>
-        {a.text}
-      </span>,
-    );
-  }
-  if (typing?.kind === "annotation") {
-    const a = typing.id ? song.annotations[typing.id] : undefined;
-    items.push(
-      <InlineEdit
-        key={`note-${typing.id ?? typing.tick}`}
-        className="ruler"
-        style={{ left: Math.max(0, tickToX(v, typing.tick)), width: 200 }}
-        value={a?.text ?? ""}
-        placeholder={t("addAnnotation")}
-        title={t("addAnnotation")}
-        maxLength={120}
-        onCommit={(text) => (actions.saveAnnotation(typing.id, typing.tick, text), actions.type(null))}
-        onCancel={() => actions.type(null)}
-      />,
-    );
-  }
-
   return (
     <div className={drag?.kind === "resize" ? "rfill resizing" : "rfill"} onPointerDown={rowDown} onPointerMove={rowMove} onPointerUp={rowUp} onContextMenu={rowMenu} onDoubleClick={rowDouble}>
       {sections.length === 0 && !(drag?.kind === "create" && Math.abs(drag.x - drag.x0) > 4) && (
@@ -202,6 +171,90 @@ export function FormRuler({ song, v, t }: RulerProps) {
         </div>
       )}
       {items}
+    </div>
+  );
+}
+
+/** Height of one annotation lane, in pixels. */
+export const NOTE_LANE = 20;
+
+/** Whether the annotation ruler shows: there are annotations, or one is being typed. */
+export function hasAnnotationRuler(song: Song, typingAnnotation: boolean): boolean {
+  return typingAnnotation || Object.keys(song.annotations).length > 0;
+}
+
+/** Lanes the annotation ruler needs at this view (at least one). */
+export function annotationLanes(song: Song, v: RollView): number {
+  const items = Object.values(song.annotations).map((a) => ({ id: a.id, x0: tickToX(v, a.start), x1: tickToX(v, a.end), text: a.text }));
+  return Math.max(1, layoutAnnotations(items, v.width).lanes);
+}
+
+/**
+ * Annotations in lanes that never overlap each other or the section names (Fran, 20/10/2026).
+ * Each one spans its bars, with its words as a label; the left edge carries its author's colour.
+ * Double click edits; right click opens its menu; on empty space, "Add annotation".
+ */
+export function AnnotationRuler({ song, v, t }: RulerProps) {
+  const actions = useActions();
+  const typing = actions.typing?.kind === "annotation" ? actions.typing : null;
+  const items = Object.values(song.annotations)
+    .filter((a) => !(typing && typing.id === a.id))
+    .map((a) => ({ id: a.id, x0: tickToX(v, a.start), x1: tickToX(v, a.end), text: a.text }));
+  const layout = layoutAnnotations(items, v.width);
+
+  const rowMenu = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const box = (e.target as HTMLElement).closest<HTMLElement>(".anote");
+    if (box) actions.annotationMenu(box.dataset.id!, e.clientX, e.clientY);
+    else actions.formMenu(xToTick(v, localX(e)), e.clientX, e.clientY);
+  };
+  const rowDouble = (e: React.MouseEvent<HTMLDivElement>) => {
+    const box = (e.target as HTMLElement).closest<HTMLElement>(".anote");
+    const a = box ? song.annotations[box.dataset.id!] : undefined;
+    if (a) actions.type({ kind: "annotation", id: a.id, tick: a.start });
+    else if (!box) actions.type({ kind: "annotation", id: null, tick: barStart(song.meter, barAt(song.meter, xToTick(v, localX(e)))) });
+  };
+
+  return (
+    <div className="rfill" onContextMenu={rowMenu} onDoubleClick={rowDouble}>
+      {layout.boxes.map((b) => {
+        const a = song.annotations[b.id]!;
+        const by = a.author.by === "ai" ? "ai" : "u";
+        return (
+          <span
+            key={b.id}
+            data-id={b.id}
+            className={`anote ${by}${b.cutLeft ? " cut" : ""}`}
+            style={{ left: b.left, width: b.width, top: 3 + b.lane * NOTE_LANE }}
+            title={`${a.text} · ${t(by === "ai" ? "annotationByAi" : "annotationByYou")}`}
+          >
+            <span className="atext">{a.text}</span>
+            {b.spanWidth > 0 && <span className="aspan" style={{ width: b.spanWidth }} />}
+          </span>
+        );
+      })}
+      {layout.hidden.length > 0 && (
+        <span
+          className="amore"
+          style={{ top: 3 + (layout.lanes - 1) * NOTE_LANE }}
+          title={layout.hidden.map((h) => song.annotations[h.id]?.text ?? "").join("\n")}
+        >
+          +{layout.hidden.length}
+        </span>
+      )}
+      {typing && (
+        <InlineEdit
+          key={`note-${typing.id ?? typing.tick}`}
+          className="ruler"
+          style={{ left: Math.max(0, tickToX(v, typing.tick)), width: 220 }}
+          value={typing.id ? (song.annotations[typing.id]?.text ?? "") : ""}
+          placeholder={t("addAnnotation")}
+          title={t("addAnnotation")}
+          maxLength={120}
+          onCommit={(text) => (actions.saveAnnotation(typing.id, typing.tick, text), actions.type(null))}
+          onCancel={() => actions.type(null)}
+        />
+      )}
     </div>
   );
 }
