@@ -59,6 +59,8 @@ export interface Bridge {
   /** MIDI out (H4): the port chosen for the tracks that sound in another program. */
   midiOutPort(): Promise<string | null>;
   setMidiOutPort(name: string | null): Promise<string | null>;
+  /** File > Export MIDI (to drag into the DAW and get its tracks with their names). */
+  exportMidi(): void;
 }
 
 export function windowBridge(): Bridge | null {
@@ -175,6 +177,7 @@ export function memoryBridge(
     setAiTone: async (next) => (tone = next),
     midiOutPort: async () => outPort,
     setMidiOutPort: async (name) => (outPort = name),
+    exportMidi: () => console.log("[fh] export MIDI"),
     save: () => {
       file.savedAt = now();
       for (const l of fileListeners) l({ ...file });

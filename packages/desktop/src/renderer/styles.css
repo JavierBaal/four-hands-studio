@@ -371,3 +371,26 @@ input.inline.mixval { height: 16px; padding: 0 2px; font-size: 10px; text-align:
   .vtabb .lfull { display: none; }
   .vtabb .lshort { display: inline; }
 }
+
+/* H4: MIDI out to the user's DAW. */
+.tout { flex: none; font-family: 'IBM Plex Mono', monospace; font-size: 10px; line-height: 14px; padding: 0 5px; border-radius: 4px; border: 1px solid var(--line-on); color: var(--text-2); }
+@container app (max-width: 1000px) { .tout { display: none; } }
+.midiout { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(500px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow-y: auto; font-size: 13px; line-height: 1.45; }
+.midiout p, .midiout ol { margin: 4px 12px 8px; }
+.midiout .mointro { color: var(--text-2); }
+.midiout .moport { display: flex; align-items: center; gap: 10px; margin: 6px 12px; }
+.midiout .moport label { color: var(--text-2); }
+.midiout .moport select { flex: 1; height: 32px; background: var(--bg-control); color: var(--text); border: 1px solid var(--line-control); border-radius: 8px; padding: 0 8px; font: inherit; }
+.midiout .mostatus { display: flex; align-items: center; gap: 8px; }
+.midiout .mostatus .dot { background: var(--ai-off); }
+.midiout .mostatus.ready .dot { background: var(--loop); }
+.midiout .mostatus.missing .dot { background: var(--rec); }
+.midiout .mochans { list-style: none; margin: 0 8px 6px; padding: 0; }
+.midiout .mochans li { display: grid; grid-template-columns: 72px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 5px 4px; border-top: 1px solid var(--line-soft); }
+.midiout .mochans li:first-child { border-top: 0; }
+.midiout .moch { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-2); }
+.midiout .moname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.midiout .mosteps { padding-left: 20px; }
+.midiout .mosteps li { margin: 3px 0; }
+.midiout .hint { color: var(--text-2); font-size: 12px; }
+.seg.small .segb { height: 26px; padding: 0 10px; font-size: 12px; }

@@ -279,6 +279,7 @@ function buildMenu(): void {
         { type: "separator" },
         { label: t("menuConnectClaude"), click: () => void connectWithClaude() },
         { label: t("menuSkills"), click: () => sendMenu("skills") },
+        { label: t("menuMidiOut"), click: () => sendMenu("midiOut") },
         { type: "separator" },
         { label: t("menuSoundTest"), click: () => void openSoundTest() },
         { label: t("menuBlind"), click: () => void openBlindListening() },
@@ -456,6 +457,7 @@ function registerIpc(): void {
     return skills?.catalog() ?? [];
   });
   ipcMain.handle(CH.skillsImport, (_e, files: string[]) => importSkills(files));
+  ipcMain.on(CH.exportMidi, () => void exportMidi());
   // MIDI out: the chosen port (the window opens it; the name is all the main process keeps).
   ipcMain.handle(CH.midiOut, () => readSettings().midiOutPort ?? null);
   ipcMain.handle(CH.midiOutSet, (_e, name: unknown) => {
