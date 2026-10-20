@@ -76,7 +76,7 @@ import {
   CURVE_KINDS,
 } from "@fourhands/core";
 import { NAMED_PROGRAMS, PALETTE } from "../../shared/instruments.js";
-import type { AiClientInfo, AiMark, AiState, AiTone, AiWriting, PatchMessage, SoundBankInfo } from "../../shared/protocol.js";
+import type { AiClientInfo, AiMark, AiRecent, AiState, AiTone, AiWriting, PatchMessage, SoundBankInfo } from "../../shared/protocol.js";
 import type { SongSession } from "../session.js";
 import type { BankPreset } from "../../shared/soundbank-info.js";
 import { SkillError, type SkillSource, skillText, skillsFooter, skillsListText } from "./skills.js";
@@ -111,6 +111,7 @@ const PAGE_NOTES = 800;
 const SNAPSHOTS_MAX = 12;
 /** Calls after which the AI has seen everything that changed. */
 const SEES_EVERYTHING = new Set(["get_changes_since", "get_song_overview"]);
+const RECENT_MAX = 6;
 
 interface Intervention {
   id: string;
@@ -202,6 +203,7 @@ export class AiDesk {
     for (const iv of this.interventions.values()) if (!iv.closed) this.close(iv, "song");
     this.seen.clear();
     this.snapshots.clear();
+    this.recent = [];
     this.interventions.clear();
     this.userTouched.clear();
     this.mark = null;
@@ -245,7 +247,7 @@ export class AiDesk {
         end: iv.end,
       });
     }
-    return { clients: [...clients.values()], reading: this.reading?.name ?? null, writing, mark: this.mark, skillsUsed: [...this.skillsUsed] };
+    return { clients: [...clients.values()], reading: this.reading?.name ?? null, writing, mark: this.mark, skillsUsed: [...this.skillsUsed], recent: [...this.recent] };
   }
 
   private nameOf(client: string): string {
@@ -365,6 +367,8 @@ export class AiDesk {
   /** The song as each AI client last saw it, and recent copies by revision (get_changes_since). */
   private readonly seen = new Map<string, Song>();
   private readonly snapshots = new Map<number, Song>();
+  /** Interventions finished on this song, newest first (the activity panel lists them). */
+  private recent: AiRecent[] = [];
 
   /** Skills loaded since the app opened (shown in the skills panel). */
   private readonly skillsUsed = new Set<string>();
@@ -524,6 +528,23 @@ export class AiDesk {
     this.clearTimer(iv.timer);
     if (how !== "song") this.session.document.closeGroup(iv.id);
     iv.closed = { how, revision: this.song.revision };
+    if (how !== "song" && iv.added + iv.changed + iv.removed + iv.other.length > 0) {
+      this.recent = [
+        {
+          id: iv.id,
+          name: this.nameOf(iv.owner),
+          description: iv.description,
+          added: iv.added,
+          changed: iv.changed,
+          removed: iv.removed,
+          trackIds: [...iv.trackIds],
+          start: iv.start,
+          end: iv.end,
+          at: this.now(),
+        },
+        ...this.recent,
+      ].slice(0, RECENT_MAX);
+    }
     this.options.log?.({ type: "ai_intervention_closed", id: iv.id, how, added: iv.added, changed: iv.changed, removed: iv.removed });
     this.emit();
   }
