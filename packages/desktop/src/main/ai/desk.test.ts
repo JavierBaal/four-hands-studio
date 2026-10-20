@@ -238,6 +238,23 @@ describe("reading (route 1: the AI reads the song without the user describing it
     expect(summary).toMatch(/: silent|· user/);
   });
 
+  it("lists the interventions it finished on this song for the activity panel, newest first (H4)", () => {
+    const cello = trackByName("cello").id;
+    const a = begin("Primera");
+    ok("add_notes", { intervention_id: a, track: cello, notes: "C3 1.1 1/4\nD3 1.2 1/4" });
+    ok("end_intervention", { intervention_id: a });
+    const b = begin("Vacía");
+    ok("end_intervention", { intervention_id: b });
+    const c = begin("Segunda");
+    ok("add_notes", { intervention_id: c, track: cello, notes: "E3 3.1 1/2" });
+    ok("end_intervention", { intervention_id: c });
+    const recent = desk.state().recent!;
+    expect(recent.map((r) => r.description)).toEqual(["Segunda", "Primera"]); // the empty one is not listed
+    expect(recent[1]).toMatchObject({ name: "Claude", added: 2, changed: 0, removed: 0, trackIds: [cello], start: 0 });
+    desk.songChanged();
+    expect(desk.state().recent).toEqual([]);
+  });
+
   it("lists instruments with their ranges and the installed banks", () => {
     const text = ok("list_instruments");
     expect(text).toContain("Cellos / Chelos · program 42 · C2–A5");

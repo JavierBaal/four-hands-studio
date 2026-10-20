@@ -100,6 +100,21 @@ export interface AiMark {
   at: number;
 }
 
+/** An intervention the AI finished (H4): what the activity panel lists, newest first. */
+export interface AiRecent {
+  id: string;
+  name: string;
+  description: string;
+  added: number;
+  changed: number;
+  removed: number;
+  trackIds: string[];
+  start: number | null;
+  end: number | null;
+  /** When it closed (ms since the epoch). */
+  at: number;
+}
+
 export interface AiState {
   clients: AiClientInfo[];
   /** An AI read the song in the last seconds. */
@@ -108,6 +123,8 @@ export interface AiState {
   mark: AiMark | null;
   /** Skills an AI loaded since the app opened (the skills panel marks them). */
   skillsUsed?: string[];
+  /** The last interventions finished on this song since the app opened it (H4). */
+  recent?: AiRecent[];
 }
 
 /** What "Con / Sin" can compare, as the window receives it. */

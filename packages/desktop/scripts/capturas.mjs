@@ -124,6 +124,20 @@ export const SHOTS = [
     await page.keyboard.press("b");
     await page.waitForTimeout(300);
   } },
+  { name: "lo_que_ha_escrito_la_ia", q: `?song=boceto&ai=conectada&view=${sketchView(1440 - 288 - 72, 12)}`, act: async (page) => {
+    await aiIntervention(page);
+    await page.evaluate((bar) => {
+      const now = Date.now();
+      const s = window.fhTest.replica.song;
+      const id = (re) => s.trackOrder.find((t) => re.test(s.tracks[t].name));
+      window.fhTest.ai.setAi({ clients: [{ client: "claude-ai", name: "Claude" }], reading: null, writing: [], mark: null, recent: [
+        { id: "i7", name: "Claude", description: "Contracanto del chelo, c. 21–22", added: 4, changed: 0, removed: 0, trackIds: [id(/chelo/i)], start: 20 * bar, end: 22 * bar, at: now - 20_000 },
+        { id: "i6", name: "Claude", description: "Respiro antes del coro: quito el bajo", added: 0, changed: 2, removed: 6, trackIds: [id(/contrabajo/i)], start: 31 * bar, end: 33 * bar, at: now - 6 * 60_000 },
+        { id: "i5", name: "Claude", description: "Coro: cuerdas más abiertas", added: 18, changed: 9, removed: 4, trackIds: [id(/melod/i), id(/chelo/i), id(/órgano/i)], start: 36 * bar, end: 44 * bar, at: now - 14 * 60_000 },
+      ] });
+    }, BAR);
+    await page.waitForTimeout(300);
+  } },
   { name: "con_sin_compacta_880", w: 880, h: 800, q: `?song=boceto&ai=conectada&view=${sketchView(880 - 48 - 56, 8)}`, act: aiIntervention },
   // H4 (20/10/2026): Tu IA > Sus opiniones, direct by default; honesty is never optional.
   { name: "tu_ia_opiniones", q: `?song=boceto&ai=conectada&view=${sketchView(1440 - 288 - 72, 12)}`, act: async (page) => {
