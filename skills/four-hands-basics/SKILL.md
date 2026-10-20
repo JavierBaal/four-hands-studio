@@ -1,6 +1,6 @@
 ---
 name: four-hands-basics
-description: How to compose well inside Four Hands Studio, the shared MIDI score where the user and their AI write side by side through MCP tools (get_song_overview, read_notes, begin_intervention, add_notes…). Use it at the start of any Four Hands session and whenever you are about to write, rearrange or review music there - it covers the working loop, the song concept and its limits, interventions, respecting what the user played, and reviewing before handing back.
+description: Load this first in every Four Hands Studio session, before writing a single note - whenever the Four Hands tools are available (get_song_overview, read_notes, begin_intervention, add_notes, analyze…) or the user asks to compose, arrange, rework, continue, review or polish a piece, a theme, an opening or a section there. It covers the working loop, short sketches before whole pieces, iterating instead of rewriting, keeping the score's annotations and chords true, reviewing with analyze before handing back, and respecting what the user played.
 ---
 
 # Composing four-handed in Four Hands Studio
@@ -12,10 +12,28 @@ Four Hands is a shared score. The user sees every note you write appear live, in
 1. **Situate.** `get_user_context` every turn ("this", "here" = their selection, loop or cursor). `get_song_overview` the first time and whenever they may have changed things.
 2. **Re-read the concept.** Find the song concept (an annotation over the whole song that starts with "Concepto:", or the concept field if the overview shows one). It holds the intention and the limits. If there is none and the request is bigger than a few bars, write one (step 4).
 3. **Understand before writing.** For anything bigger than a small edit, say in one sentence what you understood, with the concrete musical decisions in brackets, and wait for a yes if the request is open or ambiguous (see `feelings-to-music`). Load the matching style from the `styles` skill when the user names or implies a style.
-4. **Plan the parts.** Give each part a job and a register (`orchestration-register`, section 1). For a new piece, write the concept annotation: intention in one line, then the limits the user gave you: duration, tempo or meter constraints, where the sound will end up (exported to Vital, Kontakt…), what to avoid.
-5. **Write in small interventions.** One intervention per section or per idea, named for what it does in the user's language ("Gancho: motivo completo y armonía, c. 13-20"). The user can then keep one and undo another.
-6. **Review before handing back.** Run the `listening-review` checklist on what you wrote and fix what is clearly wrong in its own small intervention.
-7. **Report briefly.** What you did in a few lines, the intention behind it, and the one or two things only their ears can judge. Then ask one question that helps them react ("¿cojea de forma inquietante o de forma torpe?") rather than "¿te gusta?".
+4. **Sketch before building.** For a new piece or a new direction, write the smallest thing that can be heard: the motif, or two contrasting 2–4 bar sketches of the main idea. A reading in words can be agreed and still be wrong ("melancholic" read well on paper and sounded wrong); a few bars reveal it in minutes. Build the whole piece only once the user recognises the sketch as theirs.
+5. **Plan the parts.** Give each part a job and a register (`orchestration-register`, section 1). For a new piece, write the concept annotation: intention in one line, then the limits the user gave you: duration, tempo or meter constraints, where the sound will end up (exported to Vital, Kontakt…), what to avoid.
+6. **Write in small interventions.** One intervention per section or per idea, named for what it does in the user's language ("Gancho: motivo completo y armonía, c. 13-20"). The user can then keep one and undo another.
+7. **Review before handing back.** After anything bigger than a few notes, load `listening-review`, run `analyze` on what you touched and fix what is clearly unintended in its own small intervention. Do it every time, not only when the user asks for an analysis.
+8. **Report briefly.** What you did in a few lines, the intention behind it, and the one or two things only their ears can judge. Then ask one question that helps them react ("¿cojea de forma inquietante o de forma torpe?") rather than "¿te gusta?".
+
+## Iterate, don't rewrite
+
+When the user gives feedback, change what the feedback is about and keep the rest. Rewriting the whole piece each round throws away what already worked, makes it impossible to compare, and hides the cause of each improvement. In practice:
+
+- **Name what stays.** Before changing anything, say in a line what works and will be kept ("me quedo con la armonía sobre el Re fijo, el corte antes del título y el acorde final").
+- **Touch only the bars and tracks the feedback is about**, each change in its own intervention.
+- **A full rewrite is the exception:** only when the user asks for a new direction, or when you both agree the base does not work. Then suggest they keep the current version first ("guárdala como copia antes de que la rehaga"), and start from a short sketch again.
+- **Don't carry devices from earlier pieces.** A limping 3+3+3+3+4 ostinato or a 5-step loop that worked in another song is not a style; each piece takes its vocabulary from its own brief.
+
+## Keep the score true
+
+The annotations, chords and sections are what the user and the next turn read. Leftovers of earlier versions mislead both.
+
+- When you change a passage, rewrite your annotation about it (`annotate` with its `id`) or remove it (`remove_annotations`); don't pile a new one on top.
+- After structural changes (tempo, cutting or adding bars, a rewrite), clear chords and sections past the music (`set_harmony` with `clear_range`, `set_sections`) and check the duration in `get_song_overview`. `analyze` lists leftovers first.
+- Never remove or rewrite the user's annotations: ask them.
 
 ## Working with the score
 

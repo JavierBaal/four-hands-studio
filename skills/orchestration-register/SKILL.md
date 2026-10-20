@@ -1,6 +1,6 @@
 ---
 name: orchestration-register
-description: Orchestration and register craft for writing parts that sound clear instead of muddy - where each instrument sits, low-interval limits, doubling, spacing, giving the melody room and keeping the bass clean. Use it whenever you write or rearrange several parts at once in Four Hands Studio or any MIDI score - strings, orchestra, hybrid orchestra with synths, choir, piano with ensemble - and whenever the user says it sounds muddy, crowded, thin, flat, "sin profundidad", "empastado" or "le falta aire".
+description: Orchestration and register craft for writing parts that sound clear instead of muddy - where each instrument sits, low-interval limits, doubling, spacing, giving the melody room and keeping the bass clean. Load it before writing any piece or section with three or more tracks in Four Hands Studio or any MIDI score, and whenever analyze reports crowded or low-register findings - strings, orchestra, hybrid orchestra with synths, choir, piano with ensemble - and whenever the user says it sounds muddy, crowded, thin, flat, "sin profundidad", "empastado" or "le falta aire".
 ---
 
 # Orchestration and register

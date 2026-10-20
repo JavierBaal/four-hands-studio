@@ -8,7 +8,7 @@ Openings and title sequences that feel strange rather than grand: unsettling, si
 - **Non-musical sounds as music.** Breaths, gasps, vocal fragments, clicks, objects, detuned toys. They carry rhythm, not decoration.
 - **Rhythm that limps.** Groupings that fight the bar (3+3+3+3+4 sixteenths in 4/4), polymeters (a 5- or 7-step loop phasing against 4/4), displaced accents, silences in uncomfortable places. The repetition is mechanical, but never square.
 - **Minimal harmony.** Drones and pedals, semitone rubs (tonic against flat 2nd), tritones, Phrygian or Locrian colour. Few or no chord progressions.
-- **Contrast of innocence and threat.** Childlike timbres (celesta, music box, glockenspiel, high pizzicato) over something wrong underneath.
+- **Contrast of innocence and threat.** Childlike timbres (celesta, music box, glockenspiel, high pizzicato) over something wrong underneath. Careful: on their own they read as a creepy circus or "freak show". They suit a grotesque, sick brief; for an unsettling but clean, orderly world, use clean sounds that are too perfect instead.
 - **Degradation.** The material gets "infected" as it goes: notes drop out, shift, detune by a semitone, noise takes over.
 - **Hard cuts.** Sudden silence, a breath, then a final hit on the title card.
 
@@ -32,6 +32,7 @@ Intro (2–4 bars: breaths, the motif alone) → infection (the limping base ent
 - **Horror stings:** constant violin screeches and jump-scare hits. Unease here comes from obsession and wrongness, not shocks.
 - **Trailer build:** braams and huge risers. Keep it small and strange.
 - **Copy-paste loops:** identical repeats make it static. It must mutate.
+- **Creepy circus:** celesta plus harpsichord plus music box plus a waltz-like lilt, unless grotesque is the brief.
 
 ## How users ask for it
 

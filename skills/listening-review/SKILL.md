@@ -1,6 +1,6 @@
 ---
 name: listening-review
-description: Review your own music before handing it back to the user, as a critic with fresh ears, because you cannot hear what you wrote. Use this after every substantial write in Four Hands Studio (a new section, an arrangement pass, several tracks at once, a structural change like tempo or cutting bars) and whenever the user asks for feedback, an honest opinion, "analiza", "qué te parece" or "revísalo". Catches mud in the low register, crowded middle, copy-pasted blocks, formula dynamics, genre clichés, broken limits and side effects of your own fixes.
+description: Review your own music before handing it back, as a critic with fresh ears, because you cannot hear what you wrote. Load it automatically right after every substantial write in Four Hands Studio - a whole piece or draft, a new section, an arrangement pass, several tracks at once, a structural change like tempo or cutting bars - without waiting to be asked, and whenever the user asks for feedback, an honest opinion, "analiza", "qué te parece" or "revísalo". Catches mud in the low register, crowded middle, copy-pasted blocks, formula dynamics, genre clichés, broken limits and side effects of your own fixes.
 ---
 
 # Listening review
@@ -17,10 +17,11 @@ Small, surgical edits (one note, one velocity) don't need a full review, but sti
 
 ## How
 
-1. **Read what you touched and its surroundings.** `read_notes` over the bars you wrote plus one bar before and after, all tracks. If `analyze` exists in the tool list, run it on the same range first and use its findings as a checklist; it measures what you would otherwise estimate.
-2. **Go through the checklist below.** For each item, look at the actual notes.
-3. **Fix what is clearly wrong** in a new, small intervention named for what it fixes ("Limpiar el grave, c. 29-36"). Don't silently rewrite the music; fix mechanics.
-4. **Tell the user in two or three short lines** what you checked, what you fixed, and the one or two things only their ears can judge (a sound you don't know, a balance you can't hear). Don't list everything that was fine.
+1. **Start with `analyze`** on the range you touched (or `all` after a whole draft). Read its shape line first: if notes per bar and tracks stay the same for most of the piece, it has no arc, whatever else is right. Then its leftovers: clean them before anything else.
+2. **Read what you touched and its surroundings.** `read_notes` over the bars you wrote plus one bar before and after, all tracks. If `analyze` exists in the tool list, run it on the same range first and use its findings as a checklist; it measures what you would otherwise estimate.
+3. **Go through the checklist below.** For each item, look at the actual notes.
+4. **Fix what is clearly wrong** in a new, small intervention named for what it fixes ("Limpiar el grave, c. 29-36"). Don't silently rewrite the music; fix mechanics.
+5. **Tell the user in two or three short lines** what you checked, what you fixed, and the one or two things only their ears can judge (a sound you don't know, a balance you can't hear). Don't list everything that was fine.
 
 ## Checklist
 
@@ -50,7 +51,7 @@ Small, surgical edits (one note, one velocity) don't need a full review, but sti
 - Re-read the song concept and its limits (the concept annotation or field in `get_song_overview`: intention, target duration, where the sound will go). After a tempo or structural change, compute the new duration and compare it with the target.
 
 ### 7. Style and clichés
-- Ask: does this sound like the style the user asked for, or like its neighbour? Each style in the `styles` skill lists the clichés that pull it towards the wrong genre (Latin percussion and octave-jumping bass turn an unsettling title into a 70s spy theme). Check yours against that list.
+- Ask: does this sound like the style the user asked for, or like its neighbour? Check the neighbours listed in `feelings-to-music`, section 5 (spy theme, creepy circus, romantic sadness, Spanish colour from a flat 2nd over a major triad, trailer). Each style in the `styles` skill lists the clichés that pull it towards the wrong genre (Latin percussion and octave-jumping bass turn an unsettling title into a 70s spy theme). Check yours against that list.
 - If you used a sound for its name, check that its nature fits the gesture (a slow-attack choir cannot do short hits; an electric piano is not a piano).
 
 ### 8. Ranges and sounds

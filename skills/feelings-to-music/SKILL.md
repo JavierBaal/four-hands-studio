@@ -45,7 +45,14 @@ When the user names a work, a series or a composer:
 
 ## 5. Watch the neighbouring cliché
 
-Every intention has a neighbour that is easy to fall into and wrong: "unsettling" slides into a 70s spy theme (Latin percussion, octave-jumping bass, horn-like hits), "epic" into generic trailer, "sad" into a I–V–vi–IV ballad, "mysterious" into a horror sting. Before handing back a first draft, ask yourself which neighbour you might have written and check it against the clichés listed for the style in the `styles` skill. When the user says "esto me recuerda a X", find the concrete elements that cause it and remove those, not everything.
+Every intention has a neighbour that is easy to fall into and wrong. The ones that have actually happened:
+
+- **"Unsettling", "uncanny"** → a 70s spy theme (Latin percussion, octave-jumping bass, horn-like hits) or a **creepy circus** (celesta, music box, harpsichord, fairground waltz). Childlike timbres read as "freak show" unless the brief is grotesque on purpose.
+- **"Mysterious", "melancholic"** → **romantic sadness** (maj7 and add9 chords, the Neapolitan, a broken cadence, a cello with vibrato). Melancholy can be the undertone; it should rarely be the surface.
+- **A flat 2nd over a major triad** (Eb and F natural over D major) → **Spanish or Arabic colour** (Phrygian dominant). Use it only if that is the point.
+- **"Epic"** → generic trailer. **"Sad"** → a I–V–vi–IV ballad. **"Mysterious"** → a horror sting.
+
+ Before handing back a first draft, ask yourself which neighbour you might have written and check it against the clichés listed for the style in the `styles` skill. When the user says "esto me recuerda a X", find the concrete elements that cause it and remove those, not everything.
 
 ## 6. Relative feedback
 

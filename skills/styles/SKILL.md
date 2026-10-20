@@ -15,6 +15,13 @@ Load only the file for the style you need. Each file has the same sections: what
 
 More families will come (neoclassical and minimal piano, ambient and drone, suspense). If the user's style is not here, use the closest file for its method and say what you are borrowing.
 
+## A style is a vocabulary, not a recipe
+
+The files describe families, not the piece in front of you. The user's brief and the world of their reference decide; a style file only offers moves. Two things to watch:
+
+- **Don't apply a file because the format matches.** "TV opening" does not mean "experimental title music": a sick, grotesque opening and a clean, unsettling one need opposite palettes. Read what the user wants to feel first, then take only the moves that serve it, from one or several files.
+- **Don't reuse the devices of the last piece.** If a figure worked in another song, it is not part of this one's identity.
+
 ## How to use a style
 
 1. **Name the style back** in one line with the 3–4 techniques you will use. If the user gave a reference, list what you take from it (techniques), never its melodies.

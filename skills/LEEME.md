@@ -1,4 +1,17 @@
-# Skills de Four Hands: primeras versiones (19/10/2026)
+# Skills de Four Hands
+
+**Versión 2 (20/10/2026)**, tras la prueba de Severance con y sin skills:
+- Descripciones más directas para que se carguen solas: `four-hands-basics` al empezar cualquier sesión, `listening-review` después de cada escritura grande y `orchestration-register` antes de escribir con tres o más pistas.
+- Esbozos cortos antes de construir la pieza entera.
+- Iterar en vez de rehacer.
+- Mantener la partitura al día con `annotate` (id) y `remove_annotations`.
+- No arrastrar recursos de piezas anteriores.
+- Tópicos vecinos: circo siniestro, tristeza romántica y color andaluz o árabe.
+- El atlas de estilos es vocabulario, no receta.
+
+Para actualizar: en Customize > Skills, borra cada skill y sube su ZIP nuevo.
+
+**Versión 1 (19/10/2026).**
 
 Primer paso del plan de `ESTUDIO_SKILLS_COMPOSICION.md`. Son cinco skills en inglés, el idioma que mejor siguen los modelos, con ejemplos en español porque los usuarios piden en su idioma.
 
