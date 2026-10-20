@@ -34,6 +34,23 @@ async function aiIntervention(page) {
   await page.waitForTimeout(400);
 }
 
+/** The active track gets a crescendo over c. 17–20 and a swell on the long note of c. 23–24. */
+async function expressionCurve(page) {
+  await page.evaluate((bar) => {
+    const r = window.fhTest.replica;
+    const t = r.song.context.activeTrackId ?? r.song.trackOrder[0];
+    const ramp = (from, to, a, b) => {
+      const n = (to - from) / 240;
+      return Array.from({ length: n }, (_, k) => ({ tick: from + k * 240, value: Math.round(a + ((b - a) * k) / (n - 1)) }));
+    };
+    return r.run("x", [
+      { type: "setCurve", trackId: t, kind: "expression", from: 16 * bar, to: 20 * bar, points: ramp(16 * bar, 20 * bar, 45, 110) },
+      { type: "setCurve", trackId: t, kind: "expression", from: 22 * bar, to: 24 * bar, points: [...ramp(22 * bar, 23 * bar, 70, 118), ...ramp(23 * bar, 24 * bar, 118, 60)] },
+    ]);
+  }, BAR);
+  await page.waitForTimeout(300);
+}
+
 export const SHOTS = [
   { name: "01_pantalla_completa", q: `?song=boceto&view=${sketchView(1440 - 288 - 72, 12)}` },
   { name: "04_panel_plegado", q: `?song=boceto&view=${view({ panelOpen: false, startTick: 16 * BAR, pxPerTick: (1440 - 48 - 72) / 12 / BAR, scrollY: (127 - 86) * 15 })}` },
@@ -137,6 +154,17 @@ export const SHOTS = [
     await page.locator('.skillspanel [data-tone="gentle"]').click();
     await page.waitForTimeout(200);
   } },
+  // H4 (20/10/2026): expression and modulation lanes next to Velocidad and Pedal.
+  { name: "curvas_expresion", q: `?song=boceto&view=${view({ lane: "expression", startTick: 16 * BAR, pxPerTick: (1440 - 288 - 72) / 12 / BAR, scrollY: (127 - 86) * 15 })}`, act: expressionCurve },
+  { name: "curvas_dibujando", q: `?song=boceto&view=${view({ lane: "expression", startTick: 16 * BAR, pxPerTick: (1440 - 288 - 72) / 12 / BAR, scrollY: (127 - 86) * 15 })}`, act: async (page) => {
+    await expressionCurve(page);
+    const lane = await page.locator(".vlane canvas").boundingBox();
+    await page.mouse.move(lane.x + 560, lane.y + lane.height - 12);
+    await page.mouse.down();
+    for (let i = 1; i <= 12; i++) await page.mouse.move(lane.x + 560 + i * 18, lane.y + lane.height - 12 - Math.sin((i / 12) * Math.PI) * 50);
+  } },
+  { name: "curvas_modulacion_vacia", q: `?song=boceto&view=${view({ lane: "modulation", startTick: 16 * BAR, pxPerTick: (1440 - 288 - 72) / 12 / BAR, scrollY: (127 - 86) * 15 })}` },
+  { name: "curvas_compacta_880", w: 880, h: 800, q: `?song=boceto&view=${view({ lane: "expression", startTick: 16 * BAR, pxPerTick: (880 - 48 - 56) / 8 / BAR, scrollY: (127 - 86) * 15 })}`, act: expressionCurve },
   { name: "linea_reproduccion_arreglo", q: `?song=boceto&view=${sketchView(1440 - 288 - 72, 12)}`, act: async (page) => {
     await page.keyboard.press("Space");
     await page.waitForTimeout(2500);

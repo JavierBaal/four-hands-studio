@@ -6,7 +6,7 @@ import { type Meter, type Note, type Song, type Track, barAt, barStart, barTicks
 import { type NoteNames, isBlack, noteName } from "../music.js";
 import { FONT, SIZE, T, velocityOpacity } from "../theme.js";
 import { type RollView, endTick, pitchToY, rowH, rowMetrics, tickToX } from "./geometry.js";
-import type { NoteDrift } from "./edit.js";
+import { type NoteDrift, curveY } from "./edit.js";
 
 export interface Surface {
   ctx: CanvasRenderingContext2D;
@@ -393,4 +393,68 @@ function trackBlocks(song: Song, notes: readonly Note[]): Array<[number, number]
     if (notes.some((n) => n.start < b && n.start + n.duration > a)) out.push([a, b]);
   }
   return out;
+}
+
+/**
+ * Expression or modulation curve (H4): a step line (each value holds until the next point) over a
+ * soft fill, neutral like the pedal (curves have no author). Without points, a dashed line at the
+ * value the track plays with.
+ */
+export function drawCurve(s: Surface, v: RollView, points: readonly { tick: number; value: number }[], defaultValue: number): void {
+  const { ctx, width, height } = s;
+  const y = (value: number) => Math.round(curveY(value, height)) + 0.5;
+  ctx.save();
+  ctx.strokeStyle = T.authorOff;
+  ctx.fillStyle = T.authorOff;
+  if (!points.length) {
+    ctx.globalAlpha = 0.5;
+    ctx.setLineDash([3, 4]);
+    ctx.beginPath();
+    ctx.moveTo(0, y(defaultValue));
+    ctx.lineTo(width, y(defaultValue));
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
+  // From the left edge with the value in force there, then each point.
+  let value = defaultValue;
+  for (const p of points) {
+    if (p.tick > v.startTick) break;
+    value = p.value;
+  }
+  const path: [number, number][] = [[0, y(value)]];
+  for (const p of points) {
+    const x = tickToX(v, p.tick);
+    if (x < 0) continue;
+    if (x > width) break;
+    path.push([x, path.at(-1)![1]], [x, y(p.value)]);
+  }
+  path.push([width, path.at(-1)![1]]);
+  ctx.globalAlpha = 0.16;
+  ctx.beginPath();
+  ctx.moveTo(0, height);
+  for (const [px, py] of path) ctx.lineTo(px, py);
+  ctx.lineTo(width, height);
+  ctx.closePath();
+  ctx.fill();
+  ctx.globalAlpha = 0.9;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  path.forEach(([px, py], i) => (i ? ctx.lineTo(px, py) : ctx.moveTo(px, py)));
+  ctx.stroke();
+  // The points themselves, when there is room to see them.
+  // A dot where the curve starts or turns; inside a ramp the points are too close to tell apart.
+  ctx.globalAlpha = 1;
+  points.forEach((p, i) => {
+    const x = tickToX(v, p.tick);
+    if (x < 0 || x > width) return;
+    const prev = points[i - 1];
+    const next = points[i + 1];
+    const near = (q: { tick: number } | undefined) => q !== undefined && Math.abs(tickToX(v, q.tick) - x) < 12;
+    if (near(prev) && near(next)) return;
+    ctx.beginPath();
+    ctx.arc(x, y(p.value), 2.5, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.restore();
 }

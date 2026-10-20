@@ -272,3 +272,42 @@ export function changeCommands(before: readonly Note[], after: readonly Note[]):
 export function pointAt(v: RollView, x: number, y: number): { tick: number; pitch: number } {
   return { tick: Math.max(0, xToTick(v, x)), pitch: yToPitch(v, y) };
 }
+
+// ---------------------------------------------------------------------------
+// Curve lanes (H4): expression (CC11) and modulation (CC1)
+
+/** Room above and below the curve in its lane, in px. */
+export const CURVE_PAD = { top: 8, bottom: 6 };
+
+/** Lane y of a curve value (0–127): 127 at the top, 0 at the bottom. */
+export function curveY(value: number, height: number): number {
+  return CURVE_PAD.top + (1 - value / 127) * (height - CURVE_PAD.top - CURVE_PAD.bottom);
+}
+
+export function curveValueFromY(y: number, height: number): number {
+  const h = height - CURVE_PAD.top - CURVE_PAD.bottom;
+  return Math.max(0, Math.min(127, Math.round((1 - (y - CURVE_PAD.top) / h) * 127)));
+}
+
+/**
+ * The points a stroke leaves over [from, to): one per step, the value of the stroke column under
+ * each one (the nearest drawn column), repeated values dropped so a level stays one point.
+ */
+export function strokeCurve(columns: ReadonlyMap<number, number>, toX: (tick: number) => number, from: number, to: number, step: number, height: number): { tick: number; value: number }[] {
+  const xs = [...columns.keys()].sort((a, b) => a - b);
+  if (!xs.length) return [];
+  const out: { tick: number; value: number }[] = [];
+  for (let tick = from; tick < to; tick += step) {
+    const x = Math.round(toX(tick));
+    let best = xs[0]!;
+    for (const c of xs) if (Math.abs(c - x) < Math.abs(best - x)) best = c;
+    const value = curveValueFromY(columns.get(best)!, height);
+    if (out.at(-1)?.value !== value) out.push({ tick, value });
+  }
+  return out;
+}
+
+/** A curve with [from, to) replaced by `points`, as setCurve will leave it. */
+export function mergeCurve(original: readonly { tick: number; value: number }[], from: number, to: number, points: readonly { tick: number; value: number }[]): { tick: number; value: number }[] {
+  return [...original.filter((p) => p.tick < from || p.tick >= to), ...points].sort((a, b) => a.tick - b.tick);
+}

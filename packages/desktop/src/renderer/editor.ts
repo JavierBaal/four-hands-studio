@@ -3,7 +3,7 @@
  * and the clipboard. A gesture draws a local preview while it lasts and sends one command list
  * when it ends: one gesture, one undo step (ESPEC, 1.4).
  */
-import { type CommandData, type Note, type PedalSpan, type Song, barAt, barStart, barTicks } from "@fourhands/core";
+import { type CcPoint, type CommandData, type CurveKind, type Note, type PedalSpan, PPQ, type Song, barAt, barStart, barTicks } from "@fourhands/core";
 import type { Strings, Translate } from "../shared/i18n.js";
 import { activeTrack } from "./context.js";
 import { barRange } from "./music.js";
@@ -35,6 +35,8 @@ import {
   cutPedal,
   DEFAULT_VELOCITY,
   strokeColumns,
+  mergeCurve,
+  strokeCurve,
 } from "./roll/edit.js";
 import { type GridValue, type RollView, fitRect, rowH, zoomClick, gridTicks, snapFloor, snapNearest, tickToX, xToTick, yToPitch } from "./roll/geometry.js";
 import type { Replica } from "./replica.js";
@@ -65,6 +67,8 @@ export interface Overlay {
   stroke: { x: number; y: number }[] | null;
   /** Pedal spans as the current gesture would leave them. */
   pedalPreview: PedalSpan[] | null;
+  /** The curve being drawn in the expression or modulation lane (H4). */
+  curvePreview: CcPoint[] | null;
   /**
    * Notes drawn away from their snapped place: they follow the mouse while the snapped place
    * shows as a target, and slide into it on release (H2.9, all movement fluid).
@@ -89,6 +93,7 @@ type Gesture =
   | { kind: "erase"; ids: Set<string> }
   | { kind: "velocity"; x0: number; y0: number; originals: Note[]; bar: Note | null; height: number; path: { x: number; y: number }[]; columns: Map<number, number>; erase: boolean }
   | { kind: "pedal"; mode: "draw" | "start" | "end" | "move" | "erase"; x0: number; tick0: number; original: PedalSpan[]; index: number }
+  | { kind: "curve"; curve: CurveKind; tick0: number; height: number; path: { x: number; y: number }[]; columns: Map<number, number>; erase: boolean; original: CcPoint[]; span: { from: number; to: number; points: CcPoint[] } | null }
   | { kind: "loop"; tick0: number; tick1: number }
   | { kind: "zoom"; x0: number; y0: number; out: boolean };
 
@@ -110,7 +115,7 @@ function loadQuantize(): QuantizeSettings {
 }
 
 export class Editor {
-  overlay: Overlay = { preview: null, hidden: null, creating: [], marquee: null, menu: null, quantizeDialog: null, cursor: "default", stroke: null, pedalPreview: null, drift: null };
+  overlay: Overlay = { preview: null, hidden: null, creating: [], marquee: null, menu: null, quantizeDialog: null, cursor: "default", stroke: null, pedalPreview: null, curvePreview: null, drift: null };
   version = 0;
   v: RollView = { startTick: 0, pxPerTick: 0.02, scrollY: 0, width: 0, height: 0 };
   quantizeSettings: QuantizeSettings = loadQuantize();
@@ -412,6 +417,15 @@ export class Editor {
         }
         break;
       }
+      case "curve": {
+        const trackId = this.trackId();
+        if (trackId && g.span && JSON.stringify(mergeCurve(g.original, g.span.from, g.span.to, g.span.points)) !== JSON.stringify(g.original)) {
+          const name = this.song.tracks[trackId]?.name ?? "";
+          const label = this.t(g.curve === "expression" ? "hExpression" : "hModulation", { name, bars: this.t("bars", { range: barRange(this.song.meter, g.span.from, g.span.to) }) });
+          pending = this.run(label, [{ type: "setCurve", trackId, kind: g.curve, from: g.span.from, to: g.span.to, points: g.span.points }]);
+        }
+        break;
+      }
       case "loop":
         break;
     }
@@ -420,7 +434,7 @@ export class Editor {
     this.set({ marquee: null, stroke: null });
     this.settleDrift();
     const clear = () => {
-      if (!this.gesture) this.set({ preview: null, hidden: null, creating: [], pedalPreview: null });
+      if (!this.gesture) this.set({ preview: null, hidden: null, creating: [], pedalPreview: null, curvePreview: null });
     };
     if (pending) void pending.then(() => requestAnimationFrame(clear));
     else clear();
@@ -464,7 +478,7 @@ export class Editor {
     }
     if (this.gesture) {
       this.gesture = null;
-      this.set({ preview: null, hidden: null, creating: [], marquee: null, stroke: null, pedalPreview: null, drift: null });
+      this.set({ preview: null, hidden: null, creating: [], marquee: null, stroke: null, pedalPreview: null, curvePreview: null, drift: null });
       return;
     }
     this.select([]);
@@ -653,14 +667,64 @@ export class Editor {
     this.set({ pedalPreview: others.reduce((acc, p) => addPedalSpan(acc, p), [span]) });
   }
 
+  // -------------------------------------------------------------------------
+  // Expression and modulation lanes (H4): the pencil draws the curve freehand (Shift: a straight
+  // line from where it started), one point per grid step; the eraser clears what it passes over.
+
+  private curvePoints(kind: CurveKind): CcPoint[] {
+    const id = this.trackId();
+    return id ? (this.song.tracks[id]?.curves?.[kind] ?? []).map((p) => ({ ...p })) : [];
+  }
+
+  curveDown(kind: CurveKind, x: number, y: number, height: number, mods: Mods): void {
+    if (!this.trackId()) return;
+    const tick0 = Math.max(0, xToTick(this.v, x));
+    this.gesture = { kind: "curve", curve: kind, tick0, height, path: [{ x, y }], columns: new Map(), erase: this.tool(mods) === "eraser", original: this.curvePoints(kind), span: null };
+    this.curveMove(x, y, mods);
+  }
+
+  curveMove(x: number, y: number, mods: Mods): void {
+    const g = this.gesture;
+    if (!g || g.kind !== "curve") return;
+    const grid = this.grid();
+    // One point per grid step (a 32nd with the grid off): fine enough to sound smooth, few enough to edit.
+    const step = grid.on ? Math.max(PPQ / 8, grid.step) : PPQ / 8;
+    let path: { x: number; y: number }[];
+    let columns: Map<number, number>;
+    if (mods.shift) {
+      path = [g.path[0]!, { x, y }];
+      columns = strokeColumns(path);
+    } else {
+      g.path.push({ x, y });
+      strokeColumns(g.path, g.columns, g.path.length - 1);
+      path = g.path;
+      columns = g.columns;
+    }
+    const tick = Math.max(0, xToTick(this.v, x));
+    const from = Math.floor(Math.min(g.tick0, tick) / step) * step;
+    const to = Math.floor(Math.max(g.tick0, tick) / step) * step + step;
+    const points = g.erase ? [] : strokeCurve(columns, (t) => tickToX(this.v, t), from, to, step, g.height);
+    g.span = { from, to, points };
+    this.set({ curvePreview: mergeCurve(g.original, from, to, points), stroke: g.erase ? null : [...path] });
+  }
+
   /** Right click in the lanes: erase what was drawn there (also possible with the eraser, 3). */
-  laneMenu(lane: "velocity" | "pedal", x: number, clientX: number, clientY: number): void {
+  laneMenu(lane: "velocity" | "pedal" | CurveKind, x: number, clientX: number, clientY: number): void {
     const trackId = this.trackId();
     if (!trackId) return;
     const name = this.song.tracks[trackId]?.name ?? "";
     const close = (fn: () => void) => () => (this.closeMenus(), fn());
     const items: MenuItem[] = [];
-    if (lane === "pedal") {
+    if (lane === "expression" || lane === "modulation") {
+      const points = this.curvePoints(lane);
+      const label = this.t("hCurveCleared", { curve: this.t(lane).toLowerCase(), name });
+      const clear = (from: number, to: number) => void this.run(label, [{ type: "setCurve", trackId, kind: lane, from, to, points: [] }]);
+      const loop = this.song.context.loop;
+      items.push({ label: this.t("curveDeleteLoop"), disabled: !loop || !points.some((p) => p.tick >= loop.start && p.tick < loop.end), run: close(() => loop && clear(loop.start, loop.end)) });
+      items.push({ separator: true });
+      items.push({ label: this.t("curveDeleteAll"), disabled: points.length === 0, run: close(() => clear(0, Math.max(...points.map((p) => p.tick)) + 1)) });
+      items.push({ label: this.t("curveHint"), disabled: true });
+    } else if (lane === "pedal") {
       const spans = this.pedalSpans();
       const hit = this.pedalHit(x);
       const setPedal = (next: PedalSpan[]) => void this.run(this.t("hPedal", { name }), [{ type: "setPedal", trackId, spans: next }]);

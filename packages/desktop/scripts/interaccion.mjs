@@ -757,6 +757,46 @@ await settle();
 await page.waitForTimeout(200);
 check("a dropped ZIP becomes a skill and the window says so", (await activeNames()).includes("mi-cuarteto") && /Skill añadida: mi-cuarteto/.test(await page.locator(".notice").innerText()));
 
+// H4 (20/10/2026): expression and modulation lanes: draw a crescendo, a straight line with Shift, erase.
+await page.locator('.vtab [role="tab"]', { hasText: "Expresión" }).click();
+await settle();
+const lane = await page.locator(".vlane canvas").boundingBox();
+const activeId = (await song()).context.activeTrackId;
+await page.mouse.move(lane.x + 100, lane.y + lane.height - 10);
+await page.mouse.down();
+for (let i = 1; i <= 10; i++) await page.mouse.move(lane.x + 100 + i * 20, lane.y + lane.height - 10 - i * 5);
+await page.mouse.up();
+await settle();
+let curve = (await song()).tracks[activeId].curves?.expression ?? [];
+check("drawing in the Expresión lane writes a rising curve", curve.length >= 4 && curve[0].value < curve.at(-1).value, JSON.stringify(curve.slice(0, 3)));
+check("the curve's history label", /^dibujaste la expresión de .* \(c\. \d/.test(await lastLabel()), await lastLabel());
+await page.keyboard.down("Shift");
+await page.mouse.move(lane.x + 500, lane.y + 10);
+await page.mouse.down();
+await page.mouse.move(lane.x + 650, lane.y + lane.height - 10);
+await page.mouse.up();
+await page.keyboard.up("Shift");
+await settle();
+curve = (await song()).tracks[activeId].curves?.expression ?? [];
+const lineFrom = await page.evaluate((x) => window.fhTest.view.state.startTick + x / window.fhTest.view.state.pxPerTick, 500 - 2);
+const line = curve.filter((p) => p.tick >= lineFrom);
+check("Shift draws a straight falling line", line.length >= 4 && line[0].value > line.at(-1).value, JSON.stringify(line.map((p) => p.value)));
+await page.keyboard.press("3");
+await page.mouse.move(lane.x + 60, lane.y + 30);
+await page.mouse.down();
+await page.mouse.move(lane.x + 720, lane.y + 30);
+await page.mouse.up();
+await page.keyboard.press("1");
+await settle();
+check("the eraser clears the curve it passes over", !(await song()).tracks[activeId].curves, JSON.stringify((await song()).tracks[activeId].curves));
+await page.evaluate(() => window.fhTest.replica.undoLast());
+await settle();
+await page.locator(".vlane canvas").click({ button: "right", position: { x: 200, y: 30 } });
+await page.getByRole("menuitem", { name: "Borrar toda la curva de la pista" }).click();
+await settle();
+check("the lane menu deletes the whole curve", !(await song()).tracks[activeId].curves);
+await page.locator('.vtab [role="tab"]', { hasText: "Velocidad" }).click();
+
 // H4 (20/10/2026): Tu IA > Sus opiniones, direct by default and remembered.
 await page.locator(".askmanage").click();
 await page.waitForSelector(".skillspanel .skill");

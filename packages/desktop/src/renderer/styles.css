@@ -115,9 +115,9 @@ input.inline.mixval { height: 16px; padding: 0 2px; font-size: 10px; text-align:
 .keys, .pgrid, .vlane { position: relative; overflow: hidden; }
 .keys { border-right: 1px solid var(--line); }
 .keys canvas, .pgrid canvas, .vlane canvas { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
-.vtab { display: flex; flex-direction: column; gap: 4px; padding: 8px; border-right: 1px solid var(--line); border-top: 1px solid var(--line); font-size: 11px; color: var(--text-2); box-sizing: border-box; }
+.vtab { display: flex; flex-direction: column; gap: 1px; padding: 4px 8px; border-right: 1px solid var(--line); border-top: 1px solid var(--line); font-size: 11px; color: var(--text-2); box-sizing: border-box; }
 .vtab b { color: var(--text); font-weight: 500; }
-.vtabb { all: unset; cursor: pointer; color: var(--text-2); font-size: 11px; line-height: 1.35; }
+.vtabb { all: unset; cursor: pointer; color: var(--text-2); font-size: 11px; line-height: 1.3; }
 .vtabb.on { color: var(--text); font-weight: 500; }
 .vtabb:focus-visible { outline: 2px solid var(--proposal-line); outline-offset: 1px; }
 .vlane { border-top: 1px solid var(--line); background: var(--bg-lane); }
@@ -355,3 +355,11 @@ input.inline.mixval { height: 16px; padding: 0 2px; font-size: 10px; text-align:
 .skillspanel .tonebox .skdesc { margin: 0; color: var(--ai-text-2); }
 .skillspanel .tonebox .toneall { margin-top: 4px; color: var(--ai-text); }
 .skillspanel .tonebox .segb { height: 30px; padding: 0 12px; }
+
+/* H4: a curve lane with nothing drawn says what it does. */
+.lanehint { position: absolute; left: 10px; top: 8px; font-size: 11px; color: var(--text-2); pointer-events: none; }
+.vtabb .lshort { display: none; }
+@container app (max-width: 1000px) {
+  .vtabb .lfull { display: none; }
+  .vtabb .lshort { display: inline; }
+}

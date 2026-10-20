@@ -22,6 +22,10 @@ import {
   resizeRight,
   toClipboard,
   velocityAt,
+  curveY,
+  curveValueFromY,
+  mergeCurve,
+  strokeCurve,
 } from "./edit.js";
 
 const PPQ = 960;
@@ -176,5 +180,25 @@ describe("erasing the pedal", () => {
     expect(cutPedal(spans, 2500, 900)).toEqual([{ start: 0, end: 900 }, { start: 2500, end: 3000 }]);
     expect(cutPedal(spans, -10, 5000)).toEqual([]);
     expect(cutPedal(spans, 1200, 1800)).toEqual(spans);
+  });
+});
+
+describe("curve lanes (H4)", () => {
+  it("map values to the lane and back", () => {
+    expect(curveValueFromY(curveY(100, 76), 76)).toBe(100);
+    expect(curveValueFromY(0, 76)).toBe(127);
+    expect(curveValueFromY(76, 76)).toBe(0);
+  });
+
+  it("turn a stroke into one point per step, keep levels as one point, and merge into the curve", () => {
+    const toX = (tick: number) => tick / 10; // 10 ticks per px
+    const columns = strokeColumns([{ x: 0, y: curveY(40, 76) }, { x: 96, y: curveY(100, 76) }, { x: 192, y: curveY(100, 76) }]);
+    const points = strokeCurve(columns, toX, 0, 1920, 240, 76);
+    expect(points[0]).toEqual({ tick: 0, value: 40 });
+    expect(points.at(-1)!.value).toBe(100);
+    expect(points.filter((p) => p.value === 100)).toHaveLength(1);
+    const merged = mergeCurve([{ tick: 0, value: 10 }, { tick: 3000, value: 20 }], 0, 1920, points);
+    expect(merged[0]).toEqual({ tick: 0, value: 40 });
+    expect(merged.at(-1)).toEqual({ tick: 3000, value: 20 });
   });
 });
