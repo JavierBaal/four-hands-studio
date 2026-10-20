@@ -757,6 +757,54 @@ await settle();
 await page.waitForTimeout(200);
 check("a dropped ZIP becomes a skill and the window says so", (await activeNames()).includes("mi-cuarteto") && /Skill añadida: mi-cuarteto/.test(await page.locator(".notice").innerText()));
 
+// H4 (20/10/2026): Tu IA > Sus opiniones, direct by default and remembered.
+await page.locator(".askmanage").click();
+await page.waitForSelector(".skillspanel .skill");
+await settle();
+check("opinions are direct by default", (await page.locator('.skillspanel [data-tone="direct"][aria-checked="true"]').count()) === 1);
+await page.locator('.skillspanel [data-tone="gentle"]').click();
+await settle();
+check("with tact is chosen and kept", (await page.evaluate(() => window.fhTest.ai.aiTone())) === "gentle" && /empieza por lo que funciona/.test(await page.locator(".skillspanel .tonebox").innerText()));
+await page.locator('.skillspanel [data-tone="direct"]').click();
+await page.keyboard.press("Escape");
+await settle();
+
+// H4 (20/10/2026): Con / Sin of the last AI intervention, applied straight into the song.
+const aiWrites = (label, group) =>
+  page.evaluate(([label, group, bar]) => {
+    const doc = window.fhTest.ai.doc;
+    const claude = { by: "ai", client: "claude-ai" };
+    doc.transact({ actor: claude, label, group }, (tx) => {
+      const id = `n${8000 + Math.floor(Math.random() * 900)}`;
+      tx.set(["notes", id], { id, trackId: doc.song.trackOrder[0], pitch: 72, start: 6 * bar, duration: 960, velocity: 80, createdBy: claude, shapedBy: claude });
+    });
+  }, [label, group, BAR]);
+await aiWrites("Una nota de prueba", "i90");
+await settle();
+check("no Con / Sin bar while the intervention is open", (await page.locator(".cmpbar").count()) === 0);
+await page.evaluate(() => window.fhTest.ai.doc.closeGroup("i90"));
+await settle();
+check("the bar appears when the intervention ends", (await page.locator(".cmpbar").count()) === 1 && /Una nota de prueba/.test(await page.locator(".cmpbar").innerText()));
+await page.keyboard.press("b");
+await page.waitForTimeout(150);
+const heardWithout = await page.evaluate(() => window.fhTest.audio.compare);
+check("B plays the song without it", heardWithout === "without" && (await page.locator(".cmpbar.sin").count()) === 1, heardWithout);
+check("the song itself keeps the AI's note", Object.values((await song()).notes).some((n) => n.createdBy.by === "ai" && n.pitch === 72 && n.start === 6 * BAR));
+await page.keyboard.press("b");
+await page.waitForTimeout(150);
+check("B again plays it with it", (await page.evaluate(() => window.fhTest.audio.compare)) === "with");
+await page.keyboard.press("b");
+await page.waitForTimeout(150);
+await page.evaluate(() => window.fhTest.replica.run("tu cambio", [{ type: "setSongProperties", props: { title: "Prueba Con Sin" } }]));
+await settle();
+check("anything else on top hides the bar and plays the song as it is", (await page.locator(".cmpbar").count()) === 0 && (await page.evaluate(() => window.fhTest.audio.compare)) === "with");
+await page.evaluate(() => window.fhTest.replica.undoLast());
+await settle();
+check("undoing the user's change brings the bar back", (await page.locator(".cmpbar").count()) === 1);
+await page.locator(".cmpbar .btn.aibtn").click();
+await settle();
+check("Deshacer undoes the intervention", (await page.locator(".cmpbar").count()) === 0 && !Object.values((await song()).notes).some((n) => n.createdBy.by === "ai" && n.pitch === 72 && n.start === 6 * BAR));
+
 console.log(`${passed} passed, ${failures.length} failed`);
 for (const f of failures) console.log("FAIL", f);
 if (errors.length) console.log("page errors", errors);

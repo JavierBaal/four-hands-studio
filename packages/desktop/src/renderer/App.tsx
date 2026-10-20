@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { Note } from "@fourhands/core";
 import { ActivityPanel, Rail } from "./components/ActivityPanel.js";
-import { AiWritingBar } from "./components/AiPresence.js";
+import { AiCompareBar, AiWritingBar } from "./components/AiPresence.js";
 import { Arrangement } from "./components/Arrangement.js";
 import { ContextMenu, QuantizeDialog } from "./components/Menus.js";
 import { RollArea } from "./components/RollArea.js";
@@ -124,6 +124,10 @@ export function App({ audio, onEditor }: AppProps) {
           return true;
         case "record":
           audio.toggleRecord();
+          return true;
+        case "compare":
+          if (!replica.undo.lastAi) return false;
+          audio.toggleCompare();
           return true;
         case "pianoMode":
           audio.togglePiano();
@@ -385,6 +389,7 @@ export function App({ audio, onEditor }: AppProps) {
         <Rail />
       </div>
       <AiWritingBar />
+      <AiCompareBar audio={audio} />
       {overlayMenus.menu && <ContextMenu {...overlayMenus.menu} onClose={() => editor.closeMenus()} />}
       {overlayMenus.quantizeDialog && <QuantizeDialog editor={editor} {...overlayMenus.quantizeDialog} />}
       <Mixer />

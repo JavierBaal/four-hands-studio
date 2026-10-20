@@ -17,6 +17,23 @@ fs.mkdirSync(outDir, { recursive: true });
 const BAR = 3840;
 const view = (o) => encodeURIComponent(JSON.stringify(o));
 const sketchView = (width, bars) => view({ startTick: 16 * BAR, pxPerTick: width / bars / BAR, scrollY: (127 - 86) * 15 });
+/** Claude writes four cello notes in c. 21–22 as one intervention, and ends it. */
+async function aiIntervention(page) {
+  await page.evaluate((bar) => {
+    const doc = window.fhTest.ai.doc;
+    const claude = { by: "ai", client: "claude-ai" };
+    const cello = doc.song.trackOrder.find((id) => /chelo|cello/i.test(doc.song.tracks[id].name)) ?? doc.song.trackOrder[0];
+    doc.transact({ actor: claude, label: "Contracanto del chelo, c. 21–22", group: "i7" }, (tx) => {
+      [50, 52, 53, 55].forEach((pitch, i) => {
+        const id = `n${9000 + i}`;
+        tx.set(["notes", id], { id, trackId: cello, pitch, start: 20 * bar + i * 1920, duration: 1800, velocity: 76, createdBy: claude, shapedBy: claude });
+      });
+    });
+    doc.closeGroup("i7");
+  }, BAR);
+  await page.waitForTimeout(400);
+}
+
 export const SHOTS = [
   { name: "01_pantalla_completa", q: `?song=boceto&view=${sketchView(1440 - 288 - 72, 12)}` },
   { name: "04_panel_plegado", q: `?song=boceto&view=${view({ panelOpen: false, startTick: 16 * BAR, pxPerTick: (1440 - 48 - 72) / 12 / BAR, scrollY: (127 - 86) * 15 })}` },
@@ -100,6 +117,26 @@ export const SHOTS = [
     await page.waitForSelector(".skillspanel .skill");
     await page.waitForTimeout(200);
   } },
+  // H4 (20/10/2026): the AI's changes go straight in; Con / Sin to hear the last intervention without it.
+  { name: "con_sin_barra", q: `?song=boceto&ai=conectada&view=${sketchView(1440 - 288 - 72, 12)}`, act: aiIntervention },
+  { name: "con_sin_escuchando_sin", q: `?song=boceto&ai=conectada&view=${sketchView(1440 - 288 - 72, 12)}`, act: async (page) => {
+    await aiIntervention(page);
+    await page.keyboard.press("b");
+    await page.waitForTimeout(300);
+  } },
+  { name: "con_sin_compacta_880", w: 880, h: 800, q: `?song=boceto&ai=conectada&view=${sketchView(880 - 48 - 56, 8)}`, act: aiIntervention },
+  // H4 (20/10/2026): Tu IA > Sus opiniones, direct by default; honesty is never optional.
+  { name: "tu_ia_opiniones", q: `?song=boceto&ai=conectada&view=${sketchView(1440 - 288 - 72, 12)}`, act: async (page) => {
+    await page.locator(".askmanage").click();
+    await page.waitForSelector(".skillspanel .skill");
+    await page.waitForTimeout(200);
+  } },
+  { name: "tu_ia_con_tacto", q: `?song=boceto&ai=conectada&view=${sketchView(1440 - 288 - 72, 12)}`, act: async (page) => {
+    await page.locator(".askmanage").click();
+    await page.waitForSelector(".skillspanel .skill");
+    await page.locator('.skillspanel [data-tone="gentle"]').click();
+    await page.waitForTimeout(200);
+  } },
   { name: "linea_reproduccion_arreglo", q: `?song=boceto&view=${sketchView(1440 - 288 - 72, 12)}`, act: async (page) => {
     await page.keyboard.press("Space");
     await page.waitForTimeout(2500);
@@ -126,7 +163,9 @@ const server = http
 const port = server.address().port;
 const browser = await chromium.launch(executablePath ? { executablePath } : {});
 let failed = false;
-for (const s of SHOTS) {
+// FH_SHOTS=name1,name2 takes only those shots (names start with the given text).
+const only = process.env.FH_SHOTS?.split(",").filter(Boolean);
+for (const s of SHOTS.filter((x) => !only || only.some((o) => x.name.startsWith(o)))) {
   const page = await browser.newPage({ viewport: { width: s.w ?? 1440, height: s.h ?? 900 }, deviceScaleFactor: 2 });
   const errors = [];
   page.on("pageerror", (e) => errors.push(String(e)));

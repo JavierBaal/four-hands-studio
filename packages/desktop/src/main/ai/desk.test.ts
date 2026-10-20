@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { PPQ, USER, barStart, formatNotes, notesOf, orderedTracks } from "@fourhands/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { AiState, SoundBankInfo } from "../../shared/protocol.js";
+import type { AiState, PatchMessage, SoundBankInfo } from "../../shared/protocol.js";
 import { SongSession } from "../session.js";
 import { AiDesk, type ToolReply } from "./desk.js";
 import { SkillLibrary } from "./skills.js";
@@ -35,6 +35,8 @@ const BANKS: SoundBankInfo[] = [
   },
 ];
 
+let tone: "direct" | "gentle" = "direct";
+
 async function open(file = DILATACION): Promise<void> {
   session = await SongSession.open(
     { songsDir: path.join(root, "Four Hands"), backupsDir: path.join(root, "copias"), untitledName: "Sin título", autosaveDelayMs: 5, now: () => clock },
@@ -56,6 +58,7 @@ async function open(file = DILATACION): Promise<void> {
     },
     clearTimer: (t) => ((t as { done: boolean }).done = true),
     onState: (s) => states.push(s),
+    tone: () => tone,
     log: (e) => logs.push(e),
   });
   desk.connect("c1", "claude-ai");
@@ -166,6 +169,31 @@ describe("reading (route 1: the AI reads the song without the user describing it
     expect(text).toContain("Do Re Mi");
     expect(text).toContain("middle C = Do4");
     expect(ok("read_notes", { range: "selection" }).split("\n").filter((l) => /^n\d+ /.test(l))).toHaveLength(3);
+  });
+
+  it("tells the AI how the user wants opinions, and that only the delivery changes (H4)", () => {
+    expect(ok("get_user_context")).toMatch(/Opinions: direct \(the user's setting\)\. Lead with the problem/);
+    tone = "gentle";
+    const text = ok("get_user_context");
+    tone = "direct";
+    expect(text).toMatch(/Opinions: with tact/);
+    expect(text).toContain("every problem still said");
+    expect(text).toContain("Never soften what is wrong");
+  });
+
+  it("Con / Sin: after an intervention ends, the window can hear the song without it (H4)", () => {
+    const messages: PatchMessage[] = [];
+    const off = session.onPatch((m) => messages.push(m));
+    const before = Object.keys(session.song.notes).length;
+    const iv = begin("Dos notas de chelo");
+    ok("add_notes", { intervention_id: iv, track: trackByName("cello").id, notes: "C3 1.1 1/4\nD3 1.2 1/4" });
+    expect(messages.at(-1)?.lastAi).toBeNull(); // still writing
+    expect(session.songBefore()).toBeNull();
+    ok("end_intervention", { intervention_id: iv });
+    off();
+    expect(messages.at(-1)?.lastAi).toMatchObject({ label: "Dos notas de chelo", client: "claude-ai" });
+    expect(Object.keys(session.songBefore()!.notes)).toHaveLength(before);
+    expect(Object.keys(session.song.notes)).toHaveLength(before + 2);
   });
 
   it("lists instruments with their ranges and the installed banks", () => {

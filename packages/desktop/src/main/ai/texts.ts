@@ -21,7 +21,7 @@ import {
 } from "@fourhands/core";
 import { GM_NOTES, PALETTE, type PaletteItem, instrumentName } from "../../shared/instruments.js";
 import type { BankPreset, SoundProfile } from "../../shared/soundbank-info.js";
-import type { SoundBankInfo } from "../../shared/protocol.js";
+import type { AiTone, SoundBankInfo } from "../../shared/protocol.js";
 
 /** What the window tells the main process about what the user sees (not part of the song). */
 export interface WindowInfo {
@@ -137,6 +137,18 @@ export interface ContextExtras {
   mine: { id: string; description: string } | null;
   /** Other AI clients connected. */
   others: string[];
+  /** How the user wants opinions given (Tu IA > Opiniones). */
+  tone?: AiTone;
+}
+
+/**
+ * The tone line of get_user_context. Only the delivery changes: the honesty rules of the server
+ * instructions and four-hands-basics hold in both.
+ */
+export function toneText(tone: AiTone): string {
+  return tone === "gentle"
+    ? "Opinions: with tact (the user's setting). Same diagnosis and every problem still said, with its bars; start with what works and give a bit more context. Never soften what is wrong, only how you say it."
+    : "Opinions: direct (the user's setting). Lead with the problem, plainly and briefly, with its bars; say what works when it is true. No cushioning, no flattery.";
 }
 
 export function userContextText(song: Song, win: WindowInfo, extras: ContextExtras): string {
@@ -168,6 +180,7 @@ export function userContextText(song: Song, win: WindowInfo, extras: ContextExtr
   lines.push("Your changes go straight into the song as you write them; the user sees them live and undoes a whole intervention in one step.");
   lines.push(extras.mine ? `Your open intervention: ${extras.mine.id} "${extras.mine.description}"` : "Your open intervention: none");
   if (extras.others.length) lines.push(`Other AI connected: ${extras.others.join(", ")}`);
+  lines.push(toneText(extras.tone ?? "direct"));
   return lines.join("\n");
 }
 

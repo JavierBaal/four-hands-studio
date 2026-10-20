@@ -35,6 +35,9 @@ const CH = {
   skillsImport: "fh:skills-import",
   skillsPick: "fh:skills-pick",
   skillsFolder: "fh:skills-folder",
+  songBefore: "fh:song-before",
+  aiTone: "fh:ai-tone",
+  aiToneSet: "fh:ai-tone-set",
 } as const;
 
 function listen(channel: string, listener: (value: unknown) => void): () => void {
@@ -73,4 +76,7 @@ contextBridge.exposeInMainWorld("fh", {
   importSkills: (files: File[]) => ipcRenderer.invoke(CH.skillsImport, files.map((f) => webUtils.getPathForFile(f))),
   pickSkills: () => ipcRenderer.invoke(CH.skillsPick),
   openSkillsFolder: () => ipcRenderer.send(CH.skillsFolder),
+  songBefore: () => ipcRenderer.invoke(CH.songBefore),
+  aiTone: () => ipcRenderer.invoke(CH.aiTone),
+  setAiTone: (tone: string) => ipcRenderer.invoke(CH.aiToneSet, tone),
 });

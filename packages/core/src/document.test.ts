@@ -376,6 +376,53 @@ describe("groups: one AI intervention = one undo step", () => {
   });
 });
 
+describe("Con / Sin: the last AI intervention, heard with and without it", () => {
+  const note = (start: number) => ({ pitch: 60, start, duration: PPQ, velocity: 80 });
+
+  it("is offered only once the intervention has ended, and gives the song as it was before it", () => {
+    const { doc, t } = docWithTrack();
+    doc.transact({ actor: USER, label: "Tu nota" }, (tx) => addNotes(tx, t, [note(0)]));
+    const before = snapshot(doc);
+    const meta = { actor: claude, label: "Contramelodía", group: "i1" };
+    doc.transact(meta, (tx) => addNotes(tx, t, [note(PPQ)]));
+    doc.transact(meta, (tx) => addNotes(tx, t, [note(2 * PPQ)]));
+    expect(doc.lastAiStep).toBeNull(); // still writing
+    const patches: Patch[] = [];
+    doc.subscribe((p) => patches.push(p));
+    doc.closeGroup("i1");
+    expect(patches).toEqual([{ revision: doc.song.revision, ops: [] }]); // the window learns it can compare
+    expect(doc.lastAiStep).toMatchObject({ label: "Contramelodía", author: claude, revision: doc.song.revision });
+    const without = doc.songBeforeLastStep()!;
+    const { revision: _r, counters: _c, ...rest } = without;
+    expect(rest).toEqual(before);
+    expect(Object.keys(doc.song.notes)).toHaveLength(3); // the song itself is untouched
+  });
+
+  it("is gone as soon as the user changes something, undoes it, or the last step is the user's", () => {
+    const { doc, t } = docWithTrack();
+    const meta = { actor: claude, label: "Bajo", group: "i1" };
+    doc.transact(meta, (tx) => addNotes(tx, t, [note(0)]));
+    doc.closeGroup("i1");
+    expect(doc.lastAiStep).not.toBeNull();
+    doc.transact({ actor: USER, label: "Tu nota" }, (tx) => addNotes(tx, t, [note(PPQ)]));
+    expect(doc.lastAiStep).toBeNull();
+    doc.undo(USER);
+    expect(doc.lastAiStep).not.toBeNull(); // the AI's step is on top again
+    doc.undo(USER);
+    expect(doc.lastAiStep).toBeNull();
+    doc.redo(USER);
+    expect(doc.lastAiStep?.label).toBe("Bajo");
+  });
+
+  it("closing a group that is not open changes nothing and tells nobody", () => {
+    const { doc } = docWithTrack();
+    const patches: Patch[] = [];
+    doc.subscribe((p) => patches.push(p));
+    doc.closeGroup("nope");
+    expect(patches).toEqual([]);
+  });
+});
+
 describe("track colours (H3.2)", () => {
   it("give a new track the first colour nobody uses, and keep it when tracks are removed or reordered", () => {
     const doc = new SongDocument(emptySong("Colores"), { now: () => 1000 });
