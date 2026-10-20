@@ -26,7 +26,7 @@ async function windowBundle(dir) {
 }
 
 await Promise.all([
-  build({ ...common, entryPoints: [path.join(src, "main", "main.ts")], outfile: path.join(out, "main.mjs"), platform: "node", format: "esm", target: "node22", external: ["electron"], banner: { js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);" } }),
+  build({ ...common, entryPoints: [path.join(src, "main", "main.ts")], outfile: path.join(out, "main.mjs"), platform: "node", format: "esm", target: "node22", external: ["electron"], banner: { js: "import { createRequire as __fhCreateRequire } from 'node:module'; const require = __fhCreateRequire(import.meta.url);" } }),
   build({ ...common, entryPoints: [path.join(src, "main", "preload.ts")], outfile: path.join(out, "preload.cjs"), platform: "node", format: "cjs", target: "node22", external: ["electron"] }),
   windowBundle(path.join(out, "renderer")),
   // Blind listening of SoundFonts (Ayuda > Escucha a ciegas de sonidos).

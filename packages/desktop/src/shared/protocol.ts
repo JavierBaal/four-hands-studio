@@ -101,6 +101,8 @@ export interface AiState {
   reading: string | null;
   writing: AiWriting[];
   mark: AiMark | null;
+  /** Skills an AI loaded since the app opened (the skills panel marks them). */
+  skillsUsed?: string[];
 }
 
 export const NO_AI: AiState = { clients: [], reading: null, writing: [], mark: null };
@@ -138,7 +140,28 @@ export const CH = {
   viewInfo: "fh:view-info",
   connectClaude: "fh:connect-claude",
   save: "fh:save",
+  skills: "fh:skills",
+  skillsEnable: "fh:skills-enable",
+  skillsImport: "fh:skills-import",
+  skillsPick: "fh:skills-pick",
+  skillsFolder: "fh:skills-folder",
 } as const;
 
+/** A skill as the window shows it (Skills de la IA). */
+export interface SkillCardInfo {
+  name: string;
+  description: string;
+  origin: "built-in" | "user";
+  enabled: boolean;
+  replacesBuiltIn: boolean;
+  files: number;
+}
+
+/** The result of importing ZIPs: the skills added, and the files that were not skills (with why). */
+export interface SkillImportResult {
+  added: { name: string; replaced: boolean }[];
+  failed: { file: string; problem: "badZip" | "noSkill" | "noName" | "tooBig" | "unreadable" }[];
+}
+
 /** Menu commands handled by the window (edit and view actions live there). */
-export type MenuAction = "undo" | "redo" | "cut" | "copy" | "paste" | "duplicate" | "delete" | "selectAll" | "toggleAuthorship" | "togglePanel" | "zoomIn" | "zoomOut" | "zoomRowsIn" | "zoomRowsOut" | "resetLayout";
+export type MenuAction = "undo" | "redo" | "cut" | "copy" | "paste" | "duplicate" | "delete" | "selectAll" | "toggleAuthorship" | "togglePanel" | "zoomIn" | "zoomOut" | "zoomRowsIn" | "zoomRowsOut" | "resetLayout" | "skills";

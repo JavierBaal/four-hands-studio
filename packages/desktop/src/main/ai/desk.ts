@@ -226,7 +226,7 @@ export class AiDesk {
         end: iv.end,
       });
     }
-    return { clients: [...clients.values()], reading: this.reading?.name ?? null, writing, mark: this.mark };
+    return { clients: [...clients.values()], reading: this.reading?.name ?? null, writing, mark: this.mark, skillsUsed: [...this.skillsUsed] };
   }
 
   private nameOf(client: string): string {
@@ -291,6 +291,9 @@ export class AiDesk {
 
   // -------------------------------------------------------------------------
   // Helpers shared by the tools
+
+  /** Skills loaded since the app opened (shown in the skills panel). */
+  private readonly skillsUsed = new Set<string>();
 
   private skillList() {
     try {
@@ -573,6 +576,10 @@ export class AiDesk {
       if (!this.options.skills) throw new MusicError("This copy of Four Hands has no skills");
       try {
         const { skill, text } = this.options.skills.load(name, file);
+        if (!this.skillsUsed.has(skill.name)) {
+          this.skillsUsed.add(skill.name);
+          this.emit();
+        }
         return skillText(skill, text, file);
       } catch (error) {
         if (error instanceof SkillError) throw new MusicError(error.message);

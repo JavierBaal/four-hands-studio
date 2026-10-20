@@ -3,7 +3,7 @@
  * stand-in that runs the core directly, for the browser harness and the interface tests.
  */
 import { SongDocument, USER, runCommands, type Song } from "@fourhands/core";
-import { type AiState, type FileState, type MenuAction, NO_AI, type PatchMessage, type Reply, type Request, type Snapshot, type SoundBankInfo, type ViewInfo } from "../shared/protocol.js";
+import { type AiState, type FileState, type MenuAction, NO_AI, type PatchMessage, type Reply, type Request, type SkillCardInfo, type SkillImportResult, type Snapshot, type SoundBankInfo, type ViewInfo } from "../shared/protocol.js";
 
 export interface AppInfo {
   soundFont: string | null;
@@ -43,6 +43,14 @@ export interface Bridge {
   connectClaude(): void;
   /** Ctrl+S: saves now, or asks where if the song still has its provisional name. */
   save(): void;
+  /** Skills de la IA: every skill, on or off. */
+  skills(): Promise<SkillCardInfo[]>;
+  setSkillEnabled(name: string, on: boolean): Promise<SkillCardInfo[]>;
+  /** Unpacks dropped skill ZIPs into the user's skills folder. */
+  importSkills(files: File[]): Promise<SkillImportResult>;
+  /** "Importar ZIP…": the system's open dialog, then the same import. */
+  pickSkills(): Promise<SkillImportResult>;
+  openSkillsFolder(): void;
 }
 
 export function windowBridge(): Bridge | null {
@@ -59,6 +67,7 @@ export function memoryBridge(
     soundFont?: () => Promise<ArrayBuffer | null>;
     sounds?: SoundBankInfo[];
     soundBank?: (id: string) => Promise<ArrayBuffer | null>;
+    skills?: SkillCardInfo[];
   } = {},
 ): Bridge & { doc: SongDocument; setAi(state: AiState): void; closed: string[] } {
   const now = options.now ?? Date.now;
@@ -78,6 +87,7 @@ export function memoryBridge(
   let aiState: AiState = NO_AI;
   const aiListeners = new Set<(s: AiState) => void>();
   const closed: string[] = [];
+  let skills: SkillCardInfo[] = structuredClone(options.skills ?? []);
   const on = <T>(set: Set<T>, l: T) => {
     set.add(l);
     return () => void set.delete(l);
@@ -130,6 +140,26 @@ export function memoryBridge(
     },
     viewInfo: () => {},
     connectClaude: () => console.log("[fh] connect claude"),
+    skills: async () => structuredClone(skills),
+    setSkillEnabled: async (name, on) => {
+      skills = skills.map((k) => (k.name === name ? { ...k, enabled: on } : k));
+      return structuredClone(skills);
+    },
+    importSkills: async (files) => {
+      const result: SkillImportResult = { added: [], failed: [] };
+      for (const f of files) {
+        const name = f.name.replace(/\.zip$/i, "").toLowerCase();
+        if (!/\.zip$/i.test(f.name)) result.failed.push({ file: f.name, problem: "badZip" });
+        else {
+          const replaced = skills.some((k) => k.name === name && k.origin === "user");
+          skills = [...skills.filter((k) => !(k.name === name && k.origin === "user")), { name, description: "Imported in the harness.", origin: "user", enabled: true, replacesBuiltIn: false, files: 0 }];
+          result.added.push({ name, replaced });
+        }
+      }
+      return result;
+    },
+    pickSkills: async () => ({ added: [], failed: [] }),
+    openSkillsFolder: () => console.log("[fh] open skills folder"),
     save: () => {
       file.savedAt = now();
       for (const l of fileListeners) l({ ...file });

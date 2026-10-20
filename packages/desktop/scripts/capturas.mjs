@@ -70,6 +70,24 @@ export const SHOTS = [
     ]), BAR);
     await page.waitForTimeout(300);
   } },
+  // 20/10/2026: Skills de la IA, from the link next to the AI chip; Claude has used two of them.
+  // 20/10/2026: Skills activas in the activity panel (sketch 01) and the card from "Gestionar skills…".
+  { name: "skills_activas", q: `?song=boceto&ai=conectada&view=${sketchView(1440 - 288 - 72, 12)}`, act: async (page) => {
+    await page.evaluate(() => window.fhTest.ai.setAi({ clients: [{ client: "claude-ai", name: "Claude" }], reading: null, writing: [], mark: null, skillsUsed: ["four-hands-basics", "jury"] }));
+    await page.waitForTimeout(200);
+  } },
+  { name: "skills_panel", q: `?song=boceto&ai=conectada&view=${sketchView(1440 - 288 - 72, 12)}`, act: async (page) => {
+    await page.evaluate(() => window.fhTest.ai.setAi({ clients: [{ client: "claude-ai", name: "Claude" }], reading: null, writing: [], mark: null, skillsUsed: ["four-hands-basics", "jury"] }));
+    await page.locator(".askmanage").click();
+    await page.waitForSelector(".skillspanel .skill");
+    await page.locator('.skillspanel [data-skill="orchestration-register"] input').click();
+    await page.waitForTimeout(300);
+  } },
+  { name: "skills_panel_ingles", q: `?song=boceto&lang=en&ai=conectada&view=${sketchView(1440 - 288 - 72, 12)}`, act: async (page) => {
+    await page.locator(".askmanage").click();
+    await page.waitForSelector(".skillspanel .skill");
+    await page.waitForTimeout(200);
+  } },
   { name: "linea_reproduccion_arreglo", q: `?song=boceto&view=${sketchView(1440 - 288 - 72, 12)}`, act: async (page) => {
     await page.keyboard.press("Space");
     await page.waitForTimeout(2500);

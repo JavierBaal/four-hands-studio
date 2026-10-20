@@ -713,6 +713,29 @@ const az = await page.evaluate(() => window.fhTest.view.state.arrZoom);
 check("zoom tool on the arrangement", !!az && az.span > 0, JSON.stringify(az));
 await page.keyboard.press("1");
 
+// Skills de la IA (20/10/2026): the active list in the panel, the card, turning one off, a dropped ZIP.
+const activeNames = () => page.locator(".actskills .askill .askname").allInnerTexts();
+check("Skills activas lists the skills that are on, with their origin", (await activeNames()).length === 7 && (await page.locator(".actskills .src").allInnerTexts()).includes("mía"));
+await page.locator(".askmanage").click();
+await page.waitForSelector(".skillspanel .skill");
+check("Gestionar skills opens the card with every skill", (await page.locator(".skillspanel .skill").count()) === 7);
+await page.locator('.skillspanel [data-skill="styles"] input').click();
+await settle();
+check("turning a skill off takes it out of Skills activas", !(await activeNames()).some((n) => n.includes("Atlas")) && (await page.locator('.skillspanel [data-skill="styles"].off').count()) === 1);
+await page.locator('.skillspanel [data-skill="styles"] input').click();
+await settle();
+await page.keyboard.press("Escape");
+await settle();
+check("Esc closes the card", (await page.locator(".skillspanel").count()) === 0);
+await page.evaluate(() => {
+  const dt = new DataTransfer();
+  dt.items.add(new File(["zip"], "mi-cuarteto.zip"));
+  document.querySelector(".app").dispatchEvent(new DragEvent("drop", { dataTransfer: dt, bubbles: true, cancelable: true }));
+});
+await settle();
+await page.waitForTimeout(200);
+check("a dropped ZIP becomes a skill and the window says so", (await activeNames()).includes("mi-cuarteto") && /Skill añadida: mi-cuarteto/.test(await page.locator(".notice").innerText()));
+
 console.log(`${passed} passed, ${failures.length} failed`);
 for (const f of failures) console.log("FAIL", f);
 if (errors.length) console.log("page errors", errors);

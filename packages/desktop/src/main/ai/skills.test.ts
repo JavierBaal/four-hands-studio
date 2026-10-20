@@ -2,7 +2,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { SkillError, SkillLibrary, parseSkillFile, skillsFooter } from "./skills.js";
+import { strToU8, zipSync } from "fflate";
+import { SkillError, SkillImportError, SkillLibrary, importSkillZip, parseSkillFile, skillsFooter } from "./skills.js";
 
 const REPO_SKILLS = path.resolve(__dirname, "../../../../../skills");
 let root: string;
@@ -61,5 +62,64 @@ describe("the library", () => {
     expect(lib.list()).toEqual([]);
     expect(skillsFooter([])).toBe("");
     expect(() => lib.load("x")).toThrow(/Skills: none/);
+  });
+});
+
+describe("turning skills off (Skills de la IA)", () => {
+  it("a skill that is off is not listed to the AI and cannot be loaded, but the window still shows it", () => {
+    write("b/a/SKILL.md", "---\nname: a\ndescription: A.\n---\nHola");
+    write("b/b/SKILL.md", "---\nname: b\ndescription: B.\n---\nAdiós");
+    write("u/b/SKILL.md", "---\nname: b\ndescription: Mi B.\n---\nLa mía");
+    const off = ["a"];
+    const lib = new SkillLibrary({ builtIn: path.join(root, "b"), user: path.join(root, "u") }, () => off);
+    expect(lib.list().map((s) => s.name)).toEqual(["b"]);
+    expect(() => lib.load("a")).toThrow(/The user turned off the skill 'a'/);
+    expect(lib.catalog()).toEqual([
+      { name: "a", description: "A.", origin: "built-in", enabled: false, replacesBuiltIn: false, files: 0 },
+      { name: "b", description: "Mi B.", origin: "user", enabled: true, replacesBuiltIn: true, files: 0 },
+    ]);
+    off.length = 0;
+    expect(lib.load("a").text).toBe("Hola");
+  });
+});
+
+describe("importing a skill ZIP", () => {
+  const skill = (name: string, extra: Record<string, Uint8Array> = {}) => ({ [`${name}/SKILL.md`]: strToU8(`---\nname: ${name}\ndescription: Una skill.\n---\n# ${name}\n`), ...extra });
+
+  it("unpacks the skill folder under its name, references included, and replaces an older copy", () => {
+    const user = path.join(root, "Skills");
+    const zip = zipSync(skill("mi-armonia", { "mi-armonia/references/pedales.md": strToU8("Pedales"), "__MACOSX/mi-armonia/._SKILL.md": strToU8("x") }));
+    expect(importSkillZip(zip, user)).toEqual({ name: "mi-armonia", replaced: false });
+    expect(fs.readFileSync(path.join(user, "mi-armonia", "references", "pedales.md"), "utf8")).toBe("Pedales");
+    expect(fs.existsSync(path.join(user, "__MACOSX"))).toBe(false);
+    expect(importSkillZip(zipSync(skill("mi-armonia")), user)).toEqual({ name: "mi-armonia", replaced: true });
+    expect(fs.existsSync(path.join(user, "mi-armonia", "references"))).toBe(false);
+    expect(new SkillLibrary({ user }).load("mi-armonia").text).toBe("# mi-armonia");
+    expect(fs.readdirSync(user)).toEqual(["mi-armonia"]);
+  });
+
+  it("takes a SKILL.md at the top of the ZIP and names the folder after the skill", () => {
+    const user = path.join(root, "Skills");
+    const zip = zipSync({ "SKILL.md": strToU8("---\nname: Mi Cuarteto\ndescription: Plantilla.\n---\nCuerpo"), "notas.md": strToU8("n") });
+    expect(importSkillZip(zip, user).name).toBe("mi-cuarteto");
+    expect(fs.readdirSync(path.join(user, "mi-cuarteto")).sort()).toEqual(["SKILL.md", "notas.md"]);
+  });
+
+  it("refuses what is not a skill, and never writes outside the skill folder", () => {
+    const user = path.join(root, "Skills");
+    const problem = (zip: Uint8Array) => {
+      try {
+        importSkillZip(zip, user);
+        return "ok";
+      } catch (e) {
+        return e instanceof SkillImportError ? e.problem : String(e);
+      }
+    };
+    expect(problem(strToU8("no es un zip"))).toBe("badZip");
+    expect(problem(zipSync({ "leeme.md": strToU8("hola") }))).toBe("noSkill");
+    expect(problem(zipSync({ "x/SKILL.md": strToU8("---\nname: x\n---\nsin descripción") }))).toBe("noName");
+    expect(problem(zipSync(skill("evil", { "evil/../../fuera.md": strToU8("no") })))).toBe("ok");
+    expect(fs.existsSync(path.join(root, "fuera.md"))).toBe(false);
+    expect(fs.readdirSync(user)).toEqual(["evil"]);
   });
 });

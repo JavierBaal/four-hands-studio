@@ -579,6 +579,12 @@ describe("skills served by the app (ESTUDIO_SKILLS.md, 3)", () => {
     expect(ok("load_skill", { name: "styles" })).toMatch(/Solo los míos\.$/);
   });
 
+  it("the window learns which skills an AI loaded", () => {
+    ok("load_skill", { name: "jury" });
+    ok("load_skill", { name: "styles", file: "references/dark-synth.md" });
+    expect(desk.state().skillsUsed).toEqual(["jury", "styles"]);
+  });
+
   it("need no intervention and don't show the AI reading the song", () => {
     states.length = 0;
     ok("list_skills");

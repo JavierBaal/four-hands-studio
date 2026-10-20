@@ -15,6 +15,7 @@ import { ActionsCtx, activeTrack, notesByTrack, useApp, useSize, useSong, useVie
 import { Mixer } from "./components/Mixer.js";
 import { KeyGuide } from "./components/KeyGuide.js";
 import { Notice, SoundsHelp } from "./components/SoundsHelp.js";
+import { SkillsPanel } from "./components/SkillsPanel.js";
 import { SongActions } from "./song-actions.js";
 import { Editor } from "./editor.js";
 import { type RollView, centerOnPitches, clampScrollY, stepRow, zoomAt, zoomRowsAt } from "./roll/geometry.js";
@@ -39,7 +40,7 @@ const MAC = /Mac|iPhone|iPad/.test(navigator.platform);
 export function App({ audio, onEditor }: AppProps) {
   const { replica, view, t, bridge, lang } = useApp();
   const editor = useMemo(() => new Editor(replica, view, t), []);
-  const actions = useMemo(() => new SongActions(replica, editor, t, lang, audio), []);
+  const actions = useMemo(() => new SongActions(replica, editor, t, lang, audio, bridge), []);
   useSyncExternalStore(audio.subscribe, audio.getVersion);
   const pianoMode = audio.pianoMode;
   useEffect(() => {
@@ -259,6 +260,7 @@ export function App({ audio, onEditor }: AppProps) {
         if (a === "toggleAuthorship") view.set({ authorship: !view.state.authorship });
         else if (a === "togglePanel") view.set({ panelOpen: !view.state.panelOpen });
         else if (a === "resetLayout") view.set({ ...LAYOUT_DEFAULTS, arrZoom: null });
+        else if (a === "skills") actions.openSkills(true);
         else perform(a);
       }),
     [perform],
@@ -337,7 +339,7 @@ export function App({ audio, onEditor }: AppProps) {
         const files = [...e.dataTransfer.files];
         if (!files.length) return;
         e.preventDefault();
-        void actions.dropSounds(files);
+        void actions.dropFiles(files);
       }}
     >
       <TopBar audio={audio} />
@@ -387,6 +389,7 @@ export function App({ audio, onEditor }: AppProps) {
       {overlayMenus.quantizeDialog && <QuantizeDialog editor={editor} {...overlayMenus.quantizeDialog} />}
       <Mixer />
       <SoundsHelp audio={audio} />
+      <SkillsPanel />
       <Notice />
     </div>
     </ActionsCtx.Provider>

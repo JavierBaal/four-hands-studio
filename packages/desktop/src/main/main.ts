@@ -11,9 +11,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { BRIDGE_CONFIG_FILE, TOOLS_VERSION, bridgeConfigDir } from "@fourhands/mcp-tools";
 import { type Lang, langFrom, translator } from "../shared/i18n.js";
-import { CH, NO_AI, type MenuAction, type Request, type ViewInfo } from "../shared/protocol.js";
+import { CH, NO_AI, type MenuAction, type Request, type SkillImportResult, type ViewInfo } from "../shared/protocol.js";
 import { AiDesk } from "./ai/desk.js";
-import { SkillLibrary } from "./ai/skills.js";
+import { SkillImportError, SkillLibrary, importSkillZip } from "./ai/skills.js";
 import { AiServer } from "./ai/server.js";
 import { connectClaude, findMcpb } from "./ai/connect.js";
 import { type SessionOptions, SongSession } from "./session.js";
@@ -38,6 +38,7 @@ let soundFontPath: string | null = null;
 let library: SoundLibrary | null = null;
 let desk: AiDesk | null = null;
 let aiServer: AiServer | null = null;
+let skills: SkillLibrary | null = null;
 
 // ---------------------------------------------------------------------------
 // Places on disk
@@ -49,6 +50,8 @@ const settingsFile = () => path.join(dataDir(), "ajustes.json");
 interface Settings {
   lastFile?: string;
   firstRunDone?: boolean;
+  /** Skills the user turned off in Skills de la IA. */
+  disabledSkills?: string[];
 }
 
 function readSettings(): Settings {
@@ -269,6 +272,7 @@ function buildMenu(): void {
         { label: t("menuBackups"), click: () => void shell.openPath(path.join(dataDir(), "copias")) },
         { type: "separator" },
         { label: t("menuConnectClaude"), click: () => void connectWithClaude() },
+        { label: t("menuSkills"), click: () => sendMenu("skills") },
         { type: "separator" },
         { label: t("menuSoundTest"), click: () => void openSoundTest() },
         { label: t("menuBlind"), click: () => void openBlindListening() },
@@ -283,6 +287,7 @@ function buildMenu(): void {
 // The AI (H3): the desk answers the tools, the server carries them from the bridges.
 
 async function startAi(): Promise<void> {
+  skills = new SkillLibrary({ builtIn: path.join(here, "skills"), user: userSkillsDir() }, () => readSettings().disabledSkills ?? []);
   try {
     fs.mkdirSync(userSkillsDir(), { recursive: true });
   } catch (error) {
@@ -291,7 +296,7 @@ async function startAi(): Promise<void> {
   desk = new AiDesk({
     session: () => songs!,
     banks: () => library?.list() ?? [],
-    skills: new SkillLibrary({ builtIn: path.join(here, "skills"), user: userSkillsDir() }),
+    skills: skills!,
     onState: (state) => win?.webContents.send(CH.aiState, state),
     log: appendLog,
   });
@@ -306,6 +311,25 @@ async function startAi(): Promise<void> {
   } catch (error) {
     appendLog({ type: "ai_server_failed", error: (error as Error).message });
   }
+}
+
+/** Unpacks skill ZIPs into the user's folder and turns each one on. */
+function importSkills(files: string[]): SkillImportResult {
+  const result: SkillImportResult = { added: [], failed: [] };
+  for (const file of files) {
+    try {
+      const done = importSkillZip(fs.readFileSync(file), userSkillsDir());
+      result.added.push(done);
+    } catch (error) {
+      result.failed.push({ file: path.basename(file), problem: error instanceof SkillImportError ? error.problem : "unreadable" });
+    }
+  }
+  if (result.added.length) {
+    const added = new Set(result.added.map((a) => a.name));
+    writeSettings({ disabledSkills: (readSettings().disabledSkills ?? []).filter((n) => !added.has(n)) });
+  }
+  appendLog({ type: "skills_imported", ...result });
+  return result;
 }
 
 /** Help > Connect with Claude: opens the extension in Claude Desktop (PRUEBA_MCPB.md). */
@@ -413,6 +437,26 @@ function registerIpc(): void {
     if (/^https:\/\/[^\s]+$/.test(url)) void shell.openExternal(url);
   });
   ipcMain.handle(CH.ai, () => desk?.state() ?? NO_AI);
+  // Skills de la IA: on and off, import a ZIP, the folder.
+  ipcMain.handle(CH.skills, () => skills?.catalog() ?? []);
+  ipcMain.handle(CH.skillsEnable, (_e, name: string, on: boolean) => {
+    const off = new Set(readSettings().disabledSkills ?? []);
+    if (on) off.delete(String(name));
+    else off.add(String(name));
+    writeSettings({ disabledSkills: [...off] });
+    appendLog({ type: "skill_toggled", skill: name, on: !!on });
+    return skills?.catalog() ?? [];
+  });
+  ipcMain.handle(CH.skillsImport, (_e, files: string[]) => importSkills(files));
+  ipcMain.handle(CH.skillsPick, async () => {
+    if (!win) return { added: [], failed: [] };
+    const pick = await dialog.showOpenDialog(win, { filters: [{ name: "ZIP", extensions: ["zip"] }], properties: ["openFile", "multiSelections"] });
+    return pick.canceled ? { added: [], failed: [] } : importSkills(pick.filePaths);
+  });
+  ipcMain.on(CH.skillsFolder, () => {
+    fs.mkdirSync(userSkillsDir(), { recursive: true });
+    void shell.openPath(userSkillsDir());
+  });
   ipcMain.on(CH.connectClaude, () => void connectWithClaude());
   ipcMain.on(CH.save, () => void save());
   ipcMain.on(CH.aiClose, (_e, id: string) => desk?.closeByUser(String(id)));

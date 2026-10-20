@@ -61,9 +61,12 @@ check("the app serves its built-in skills", skillList.ok && /^- four-hands-basic
 const prompts = (await client.listPrompts()).prompts.map((p) => p.name);
 const juryPrompt = await client.getPrompt({ name: "call_the_jury", arguments: {} });
 check("the jury is in Claude's + menu and loads its skill", prompts.includes("call_the_jury") && /load_skill\("jury"\)/.test(juryPrompt.messages[0]?.content?.text ?? "") && /^- jury \(built in\)/m.test(skillList.text), prompts.join(", "));
+check("the window lists the app's skills in Skills activas", (await win.locator(".actskills .askill").count()) === 6, await win.locator(".actskills").innerText());
 const basics = await call("load_skill", { name: "four-hands-basics" });
 const darkSynth = await call("load_skill", { name: "styles", file: "references/dark-synth.md" });
 check("load_skill gives the instructions and the references", basics.ok && /^Skill four-hands-basics \(built in\)\. Follow it\./.test(basics.text) && darkSynth.ok, `${basics.text.slice(0, 120)} / ${darkSynth.text.slice(0, 120)}`);
+await win.waitForTimeout(300);
+check("the window marks the skills Claude loaded", (await win.locator(".actskills .askill .dot.ai").count()) === 2);
 
 // --- Route 1: "lee la canción y dime qué le falta al puente"
 const overview = await call("get_song_overview");

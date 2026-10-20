@@ -5,7 +5,8 @@
  */
 import { type CommandData, type Song, type Track, type TrackSound, barAt, barStart, barTicks, beatTicks, orderedSections, orderedTracks } from "@fourhands/core";
 import type { AudioLayer } from "./audio-layer.js";
-import type { SoundBankInfo } from "../shared/protocol.js";
+import type { SkillImportResult, SoundBankInfo } from "../shared/protocol.js";
+import type { Bridge } from "./bridge.js";
 import type { BankPreset } from "../shared/soundbank-info.js";
 import type { Lang, Strings, Translate } from "../shared/i18n.js";
 import { activeTrack } from "./context.js";
@@ -50,6 +51,8 @@ export class SongActions {
   mixer: { trackId: string; x: number; y: number } | null = null;
   /** The "Get more sounds" card is open. */
   soundsHelp = false;
+  /** The "Skills de la IA" card is open. */
+  skillsPanel = false;
   /** A short message at the bottom of the window, gone after a few seconds. */
   notice: string | null = null;
   private noticeTimer: ReturnType<typeof setTimeout> | null = null;
@@ -80,7 +83,54 @@ export class SongActions {
     private readonly t: Translate,
     private readonly lang: Lang,
     private readonly audio: AudioLayer | null = null,
+    private readonly bridge: Bridge | null = null,
   ) {}
+
+  openSkills(open: boolean): void {
+    this.skillsPanel = open;
+    if (open) {
+      this.soundsHelp = false;
+      this.editor.closeMenus();
+    }
+    this.changed();
+  }
+
+  /** Files dropped onto the window: ZIPs are skills, the rest go to the sound banks. */
+  async dropFiles(files: File[]): Promise<void> {
+    const zips = files.filter((f) => /\.zip$/i.test(f.name));
+    const rest = files.filter((f) => !/\.zip$/i.test(f.name));
+    if (zips.length) await this.importSkills(() => this.bridge!.importSkills(zips));
+    if (rest.length) await this.dropSounds(rest);
+  }
+
+  /** Imports skills and says what happened; the panel reloads its list when it sees the new version. */
+  async importSkills(run: () => Promise<SkillImportResult>): Promise<void> {
+    if (!this.bridge) return;
+    const result = await run();
+    const added = result.added.filter((a) => !a.replaced).map((a) => a.name);
+    const updated = result.added.filter((a) => a.replaced).map((a) => a.name);
+    const why: Record<SkillImportResult["failed"][number]["problem"], Parameters<Translate>[0]> = {
+      badZip: "skillsBadZip",
+      noSkill: "skillsNoSkill",
+      noName: "skillsNoName",
+      tooBig: "skillsTooBig",
+      unreadable: "skillsUnreadable",
+    };
+    const lines = [
+      ...(added.length ? [this.t("skillsAdded", { names: added.join(", ") })] : []),
+      ...(updated.length ? [this.t("skillsUpdated", { names: updated.join(", ") })] : []),
+      ...result.failed.map((f) => this.t("skillsFailed", { file: f.file, why: this.t(why[f.problem]) })),
+    ];
+    if (lines.length) this.say(lines.join(" · "));
+    this.skillsVersion++;
+    this.changed();
+  }
+  /** Bumped when skills were imported or turned on and off, so the lists reload. */
+  skillsVersion = 0;
+  skillsChanged(): void {
+    this.skillsVersion++;
+    this.changed();
+  }
 
   openSoundsHelp(open: boolean): void {
     this.soundsHelp = open;

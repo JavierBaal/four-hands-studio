@@ -30,6 +30,11 @@ const CH = {
   viewInfo: "fh:view-info",
   connectClaude: "fh:connect-claude",
   save: "fh:save",
+  skills: "fh:skills",
+  skillsEnable: "fh:skills-enable",
+  skillsImport: "fh:skills-import",
+  skillsPick: "fh:skills-pick",
+  skillsFolder: "fh:skills-folder",
 } as const;
 
 function listen(channel: string, listener: (value: unknown) => void): () => void {
@@ -63,4 +68,9 @@ contextBridge.exposeInMainWorld("fh", {
   viewInfo: (info: unknown) => ipcRenderer.send(CH.viewInfo, info),
   connectClaude: () => ipcRenderer.send(CH.connectClaude),
   save: () => ipcRenderer.send(CH.save),
+  skills: () => ipcRenderer.invoke(CH.skills),
+  setSkillEnabled: (name: string, on: boolean) => ipcRenderer.invoke(CH.skillsEnable, name, on),
+  importSkills: (files: File[]) => ipcRenderer.invoke(CH.skillsImport, files.map((f) => webUtils.getPathForFile(f))),
+  pickSkills: () => ipcRenderer.invoke(CH.skillsPick),
+  openSkillsFolder: () => ipcRenderer.send(CH.skillsFolder),
 });

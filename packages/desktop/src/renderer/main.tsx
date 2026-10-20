@@ -35,6 +35,18 @@ async function start(): Promise<void> {
           inUserFolder: false,
         },
       ],
+      // The built-in skills, one of the user's and one of theirs that replaces a built-in one (off).
+      skills: [
+        ...["four-hands-basics", "feelings-to-music", "jury", "listening-review", "orchestration-register", "styles"].map((name) => ({
+          name,
+          description: "",
+          origin: "built-in" as const,
+          enabled: true,
+          replacesBuiltIn: false,
+          files: name === "styles" ? 3 : 0,
+        })),
+        { name: "mi-armonia", description: "Cómo armonizo: pedales largos, nunca doblo la tercera y las cadencias se quedan abiertas.", origin: "user", enabled: true, replacesBuiltIn: false, files: 0 },
+      ],
     });
     if (fakeAi) memory.setAi(fakeAi);
     bridge = memory;
