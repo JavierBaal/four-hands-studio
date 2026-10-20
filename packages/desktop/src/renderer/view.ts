@@ -29,7 +29,7 @@ export interface ViewState {
   /** Track whose notes the vertical scroll was last centred on (centred once per track). */
   centredTrack: string | null;
   /** Which lane shows under the piano roll (ESPEC_PIANO_ROLL.md, 7). */
-  lane: "velocity" | "pedal";
+  lane: "velocity" | "pedal" | "expression" | "modulation";
   /**
    * Layout the user dragged (Fran, 15/10/2026). The sizes of DIRECCION_ARTISTICA.md are the
    * defaults; `arrHeight` null means "as tall as the tracks need".

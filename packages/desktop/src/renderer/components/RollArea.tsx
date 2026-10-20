@@ -3,11 +3,11 @@
  * items 4–6). Draws, and passes the pointer to the Editor (editor.ts).
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { type Note, barAt } from "@fourhands/core";
+import { CURVE_DEFAULT, type Note, barAt } from "@fourhands/core";
 import { activeTrack, notesByTrack, trackColors, useApp, useSize, useSong, useView } from "../context.js";
 import { durationName, noteName, scalePitchClasses } from "../music.js";
 import { hitTest } from "../roll/edit.js";
-import { drawGrid, drawKeyboard, drawNotes, drawPedal, drawStroke, drawVelocity, prepare } from "../roll/draw.js";
+import { drawCurve, drawGrid, drawKeyboard, drawNotes, drawPedal, drawStroke, drawVelocity, prepare } from "../roll/draw.js";
 import { T } from "../theme.js";
 import { type RollView, yToPitch } from "../roll/geometry.js";
 import { type Editor, modKey } from "../editor.js";
@@ -163,6 +163,8 @@ export function RollArea({ v, editor, audio, playhead, onResize, onWheel, onKeyP
       const vel = velRef.current && prepare(velRef.current);
       if (vel && view.lane === "velocity") drawVelocity(vel, v, own, selected, view.authorship, track ? colors.get(track.id) : undefined);
       if (vel && view.lane === "pedal") drawPedal(vel, v, overlay.pedalPreview ?? track?.pedal ?? []);
+      if (vel && (view.lane === "expression" || view.lane === "modulation"))
+        drawCurve(vel, v, overlay.curvePreview ?? track?.curves?.[view.lane] ?? [], CURVE_DEFAULT[view.lane]);
       if (vel && overlay.stroke) drawStroke(vel, overlay.stroke);
       if (fresh.size > 0 && !matchMedia("(prefers-reduced-motion: reduce)").matches) frame = requestAnimationFrame(draw);
     };
@@ -264,11 +266,26 @@ export function RollArea({ v, editor, audio, playhead, onResize, onWheel, onKeyP
       </div>
       <div className="vtab" role="tablist">
         <button role="tab" className={view.lane === "velocity" ? "vtabb on" : "vtabb"} aria-selected={view.lane === "velocity"} onClick={() => viewStore.set({ lane: "velocity" })}>
-          {t("velocity")}
+          <span className="lfull">{t("velocity")}</span>
+          <span className="lshort">{t("velocityShort")}</span>
         </button>
         <button role="tab" className={view.lane === "pedal" ? "vtabb on" : "vtabb"} aria-selected={view.lane === "pedal"} onClick={() => viewStore.set({ lane: "pedal" })}>
-          {t("pedal")}
+          <span className="lfull">{t("pedal")}</span>
+          <span className="lshort">{t("pedalShort")}</span>
         </button>
+        {(["expression", "modulation"] as const).map((k) => (
+          <button
+            key={k}
+            role="tab"
+            className={view.lane === k ? "vtabb on" : "vtabb"}
+            aria-selected={view.lane === k}
+            title={t(k === "expression" ? "expressionLane" : "modulationLane")}
+            onClick={() => viewStore.set({ lane: k })}
+          >
+            <span className="lfull">{t(k)}</span>
+            <span className="lshort">{t(k === "expression" ? "expressionShort" : "modulationShort")}</span>
+          </button>
+        ))}
       </div>
       <div className="vlane">
         <canvas
@@ -279,6 +296,7 @@ export function RollArea({ v, editor, audio, playhead, onResize, onWheel, onKeyP
             e.currentTarget.setPointerCapture(e.pointerId);
             const p = local(e);
             if (view.lane === "pedal") editor.pedalDown(p.x, mods(e));
+            else if (view.lane === "expression" || view.lane === "modulation") editor.curveDown(view.lane, p.x, p.y, e.currentTarget.clientHeight, mods(e));
             else editor.velocityDown(p.x, p.y, e.currentTarget.clientHeight, mods(e));
           }}
           onPointerMove={(e) => {
@@ -288,7 +306,8 @@ export function RollArea({ v, editor, audio, playhead, onResize, onWheel, onKeyP
               return;
             }
             if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
-            editor.velocityMove(p.x, p.y, mods(e));
+            if (view.lane === "expression" || view.lane === "modulation") editor.curveMove(p.x, p.y, mods(e));
+            else editor.velocityMove(p.x, p.y, mods(e));
           }}
           onPointerUp={(e) => {
             const p = local(e);
@@ -300,6 +319,9 @@ export function RollArea({ v, editor, audio, playhead, onResize, onWheel, onKeyP
             editor.laneMenu(view.lane, local(e).x, e.clientX, e.clientY);
           }}
         />
+        {(view.lane === "expression" || view.lane === "modulation") && !(track?.curves?.[view.lane]?.length) && !overlay.curvePreview?.length && (
+          <span className="lanehint">{t(view.lane === "expression" ? "expressionEmpty" : "modulationEmpty")}</span>
+        )}
       </div>
     </div>
   );
