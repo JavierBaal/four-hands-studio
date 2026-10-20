@@ -29,7 +29,8 @@ const BANKS: SoundBankInfo[] = [
     inUserFolder: true,
     presets: [
       { program: 0, bankMSB: 0, name: "1st Violins Sustain" },
-      { program: 12, bankMSB: 0, name: "Cello Sustain" },
+      { program: 12, bankMSB: 0, name: "Cello Sustain", profile: { low: 36, high: 72, attack: 0.3, release: 1.5, sustain: "holds", fade: null } },
+      { program: 35, bankMSB: 0, name: "Mixed Choir", profile: { low: 43, high: 84, attack: 0.62, release: 1.25, sustain: "decays", fade: 8.82 } },
     ],
   },
 ];
@@ -42,6 +43,10 @@ async function open(file = DILATACION): Promise<void> {
   desk = new AiDesk({
     session: () => session,
     banks: () => BANKS,
+    builtInSounds: () => [
+      { program: 52, bankMSB: 0, name: "Choir Aahs", profile: { low: 0, high: 96, attack: 0.01, release: 1.7, sustain: "holds", fade: null } },
+      { program: 46, bankMSB: 0, name: "Harp", profile: { low: 0, high: 108, attack: 0, release: 9.6, sustain: "fades", fade: 10.2 } },
+    ],
     skills: new SkillLibrary({ builtIn: REPO_SKILLS, user: path.join(root, "Four Hands", "Skills") }),
     now: () => clock,
     setTimer: (fn, ms) => {
@@ -591,5 +596,51 @@ describe("skills served by the app (ESTUDIO_SKILLS.md, 3)", () => {
     ok("load_skill", { name: "listening-review" });
     expect(states.every((s) => !s.reading)).toBe(true);
     expect(logs.at(-1)).toMatchObject({ type: "ai_call", tool: "load_skill", ok: true });
+  });
+});
+
+describe("sound profiles (ESTUDIO_SKILLS_COMPOSICION.md, 5.4)", () => {
+  it("list_instruments says how each built-in sound behaves, from the default bank's data", () => {
+    const text = ok("list_instruments");
+    expect(text).toMatch(/Choir \/ Coro · program 52 · E2–A5 · sung 'aah' vowels: no words, no consonants · fast attack, holds long notes, rings 1\.7 s after the note ends/);
+    expect(text).toMatch(/Harp \/ Arpa · program 46 · B0–G#7 · fast attack, fades away in about 10\.2 s even when held, rings 9\.6 s/);
+    expect(text).toMatch(/General MIDI 120-127 .* sound effects/);
+  });
+
+  it("a bank's sounds come with the keys they have samples for and their attack", () => {
+    const text = ok("list_instruments", { bank: "sonatina" });
+    expect(text).toContain("Mixed Choir · plays G2–C6 (silent outside), slow attack 0.62 s: sounds late, not for short hits; write it early, no loop: dies out after about 8.8 s, re-strike long notes, rings 1.3 s after the note ends");
+    expect(text).toContain("Cello Sustain · plays C2–C5 (silent outside), slow attack 0.3 s");
+  });
+
+  it("writing or analysing outside a bank sound's samples is reported", () => {
+    const id = begin("Chelos de Sonatina");
+    ok("add_track", { intervention_id: id, name: "Chelos Sonatina", instrument: "Chelos", sound: "Sonatina.sf2 / cello sus" });
+    const track = trackByName("Chelos Sonatina");
+    const written = ok("add_notes", { intervention_id: id, track: track.id, notes: "C2 1.1 1/2\nB1 1.3 1/2" });
+    expect(written).toMatch(/1 note is outside the keys "Cello Sustain" has samples for \(C2–C5\)/);
+    ok("end_intervention", { intervention_id: id });
+    expect(ok("analyze", { range: "1", tracks: [track.id] })).toMatch(/Outside the instrument's usual range \(or the keys a bank's sound has samples for\):\n.*B1/);
+  });
+});
+
+describe("the song concept (ESTUDIO_SKILLS_COMPOSICION.md, 6.3)", () => {
+  it("the overview says there is none and how to write one, then shows it with its author", () => {
+    expect(ok("get_song_overview").split("\n")[2]).toMatch(/^Concept: none yet\. For a new piece, write one with set_song_properties concept/);
+    const id = begin("Concepto");
+    expect(ok("set_song_properties", { intervention_id: id, concept: "Dilatación: el tiempo se estira. Dura 2:20." })).toMatch(/^Song: concept rewritten\./);
+    ok("end_intervention", { intervention_id: id });
+    expect(session.song.concept).toEqual({ text: "Dilatación: el tiempo se estira. Dura 2:20.", author: { by: "ai", client: "claude-ai" } });
+    expect(ok("get_song_overview").split("\n")[2]).toBe("Concept (by an AI; reread it before changing anything): Dilatación: el tiempo se estira. Dura 2:20.");
+    expect(ok("analyze")).toMatch(/Against the limits in the song concept:\n  the concept says 2:20; the music lasts/);
+  });
+
+  it("'' removes it, and it is one undo step with the rest of the intervention", () => {
+    const id = begin("Concepto");
+    ok("set_song_properties", { intervention_id: id, concept: "Algo" });
+    ok("set_song_properties", { intervention_id: id, concept: "" });
+    ok("end_intervention", { intervention_id: id });
+    expect(session.song.concept).toBeUndefined();
+    expect(fail("set_song_properties", { intervention_id: begin("x"), concept: 3 })).toMatch(/'concept' must be text/);
   });
 });

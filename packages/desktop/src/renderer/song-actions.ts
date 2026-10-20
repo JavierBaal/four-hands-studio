@@ -168,6 +168,15 @@ export class SongActions {
     return this.replica.song;
   }
 
+  /** The song concept, written by the user in the activity panel. */
+  setConcept(text: string): void {
+    const next = text.trim();
+    const now = this.song.concept?.text ?? "";
+    if (next === now) return;
+    const label = !now ? this.t("hConceptNew") : next ? this.t("hConceptChanged") : this.t("hConceptRemoved");
+    void this.run(label, [{ type: "setSongProperties", props: { concept: next } }]);
+  }
+
   private run(label: string, commands: CommandData[]) {
     return this.replica.run(label, commands);
   }

@@ -72,6 +72,7 @@ const annotation = z.object({
 
 const song = z.object({
   title: z.string(),
+  concept: z.object({ text: z.string().min(1).max(2000), author: authorship }).optional(),
   tempo: int.min(1),
   meter: z.object({ numerator: int.min(1), denominator: z.union([z.literal(1), z.literal(2), z.literal(4), z.literal(8), z.literal(16), z.literal(32)]) }),
   key: z.object({ fifths: int.min(-7).max(7), mode: z.enum(["major", "minor"]) }),

@@ -48,7 +48,7 @@ Small, surgical edits (one note, one velocity) don't need a full review, but sti
 
 ### 6. Side effects of your own changes
 - Compare with what was there before your intervention. Removing a part can leave a bar bare that it used to cushion. Changing tempo changes the duration. Moving a section shifts pedal, sections and annotations.
-- Re-read the song concept and its limits (the concept annotation or field in `get_song_overview`: intention, target duration, where the sound will go). After a tempo or structural change, compute the new duration and compare it with the target.
+- Re-read the song concept and its limits (second line of `get_song_overview`: intention, target duration, where the sound will go). `analyze` on the whole song compares a duration or tempo written in it with the music; after a tempo or structural change, run it and fix what no longer fits, or ask the user which limit wins.
 
 ### 7. Style and clichés
 - Ask: does this sound like the style the user asked for, or like its neighbour? Check the neighbours listed in `feelings-to-music`, section 5 (spy theme, creepy circus, romantic sadness, Spanish colour from a flat 2nd over a major triad, trailer). Each style in the `styles` skill lists the clichés that pull it towards the wrong genre (Latin percussion and octave-jumping bass turn an unsettling title into a 70s spy theme). Check yours against that list.

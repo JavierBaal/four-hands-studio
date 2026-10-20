@@ -267,6 +267,16 @@ input.inline.mixval { height: 16px; padding: 0 2px; font-size: 10px; text-align:
 .soundshelp ol, .soundshelp ul { padding-left: 20px; }
 .soundshelp li { margin: 3px 0; }
 .soundshelp .hint { color: var(--text-2); font-size: 12px; }
+/* The song concept, at the top of the activity panel */
+.concept .cbody { padding: 10px 12px; }
+.concept .cline { margin: 0; color: var(--text); font-size: 13px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+.concept .cmeta { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 11px; color: var(--text-2); }
+.concept .cmeta .linkbtn { margin-left: auto; font-size: 11px; }
+.concept .ctext { width: 100%; box-sizing: border-box; resize: vertical; min-height: 84px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line-on); background: var(--bg-control); color: var(--text); font: inherit; font-size: 13px; line-height: 1.45; }
+.concept .ctext:focus { outline: 2px solid var(--proposal-line); outline-offset: 1px; }
+.concept .ckeys { margin-top: 4px; font-size: 11px; }
+.concept .hint + .dashbtn { margin-top: 8px; }
+.dashbtn { height: 26px; padding: 0 10px; border-radius: 6px; border: 1px dashed var(--line-on); background: transparent; color: var(--text); font-size: 12px; cursor: pointer; }
 /* Skills activas in the activity panel (sketch 01) */
 .askill { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line-soft); font-size: 13px; color: var(--text); }
 .askill:last-of-type { border-bottom: none; }

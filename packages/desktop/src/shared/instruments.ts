@@ -72,7 +72,12 @@ export interface PaletteItem {
   en: string;
   /** Real sounding range, lowest and highest MIDI note (what the AI reads in list_instruments). */
   range?: [low: number, high: number];
+  /** What the AI cannot guess from the name (ESTUDIO_SKILLS_COMPOSICION.md, 5.4). */
+  note?: string;
 }
+
+/** General MIDI sounds outside the palette whose behaviour surprises (list_instruments says it once). */
+export const GM_NOTES = "General MIDI 120-127 (guitar fret noise, breath noise, seashore, bird, telephone, helicopter, applause, gunshot) are sound effects: the pitch changes their colour, not a note you hear as a melody.";
 
 /**
  * The instrument palette (PRD_MVP.md, 4.2): piano, strings by section, organ, pad, timpani, plus a
@@ -84,7 +89,7 @@ export const PALETTE: { es: string; en: string; items: PaletteItem[] }[] = [
     en: "Keyboards",
     items: [
       { program: 0, es: "Piano", en: "Piano", range: [21, 108] },
-      { program: 4, es: "Piano eléctrico", en: "Electric piano", range: [28, 103] },
+      { program: 4, es: "Piano eléctrico", en: "Electric piano", range: [28, 103], note: "an electric piano (tines), not an acoustic piano" },
       { program: 6, es: "Clave", en: "Harpsichord", range: [29, 89] },
       { program: 8, es: "Celesta", en: "Celesta", range: [60, 108] },
       { program: 19, es: "Órgano", en: "Organ", range: [24, 96] },
@@ -113,15 +118,15 @@ export const PALETTE: { es: string; en: string; items: PaletteItem[] }[] = [
       { program: 71, es: "Clarinete", en: "Clarinet", range: [50, 94] },
       { program: 70, es: "Fagot", en: "Bassoon", range: [34, 76] },
       { program: 60, es: "Trompa", en: "French horn", range: [35, 77] },
-      { program: 52, es: "Coro", en: "Choir", range: [40, 81] },
+      { program: 52, es: "Coro", en: "Choir", range: [40, 81], note: "sung 'aah' vowels: no words, no consonants" },
     ],
   },
   {
     es: "Otros",
     en: "Others",
     items: [
-      { program: 89, es: "Pad cálido", en: "Warm pad", range: [24, 108] },
-      { program: 47, es: "Timbales", en: "Timpani", range: [38, 57] },
+      { program: 89, es: "Pad cálido", en: "Warm pad", range: [24, 108], note: "a synth pad, not an acoustic instrument" },
+      { program: 47, es: "Timbales", en: "Timpani", range: [38, 57], note: "tuned drums: one or two pitches per passage; a roll is fast repeated notes" },
       { program: null, es: "Percusión", en: "Drums" },
     ],
   },

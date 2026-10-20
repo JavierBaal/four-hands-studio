@@ -6,7 +6,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { type BankHeader, bankDisplayName, readBankHeader } from "../shared/soundbank-info.js";
+import { type BankHeader, type BankPreset, bankDisplayName, readBankHeader } from "../shared/soundbank-info.js";
 import type { SoundBankInfo } from "../shared/protocol.js";
 
 export class SoundLibrary {
@@ -84,6 +84,11 @@ export class SoundLibrary {
     }
     this.cache.set(file, { mtimeMs: stat.mtimeMs, size: stat.size, header });
     return header;
+  }
+
+  /** The default bank's presets with their profiles (the built-in palette's sounds). */
+  defaultPresets(): BankPreset[] {
+    return this.defaultFile ? (this.header(this.defaultFile)?.presets ?? []) : [];
   }
 
   list(): SoundBankInfo[] {

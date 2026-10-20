@@ -63,14 +63,26 @@ function getNote(tx: Transaction, id: string): Note {
 
 export interface SongProperties {
   title?: string;
+  /** The song concept; "" removes it. Its author is the transaction's. */
+  concept?: string;
   /** Microseconds per quarter note. */
   tempo?: number;
   meter?: Meter;
   key?: KeySignature;
 }
 
+/** A few sentences: the intention and the limits, not a score. */
+export const CONCEPT_MAX = 1000;
+
 export function setSongProperties(tx: Transaction, props: SongProperties): void {
   if (props.title !== undefined && props.title !== tx.song.title) tx.set(["title"], props.title);
+  if (props.concept !== undefined) {
+    const text = props.concept.trim();
+    check(text.length <= CONCEPT_MAX, `The concept is too long (${text.length} characters; at most ${CONCEPT_MAX})`);
+    if (!text) {
+      if (tx.song.concept) tx.remove(["concept"]);
+    } else if (text !== tx.song.concept?.text) tx.set(["concept"], { text, author: tx.author });
+  }
   if (props.tempo !== undefined && props.tempo !== tx.song.tempo) {
     check(isInt(props.tempo) && props.tempo > 0 && props.tempo < 0x1000000, `Invalid tempo: ${props.tempo}`);
     tx.set(["tempo"], props.tempo);

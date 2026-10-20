@@ -1,6 +1,6 @@
 /**
  * Activity panel and its folded rail (DIRECCION_ARTISTICA.md, 6.1 item 7 and 6.2):
- * what the AI sees, proposals, signed history and active skills.
+ * the song concept, what the AI sees, proposals, signed history and active skills.
  * Proposals arrive with H4; until then their empty state explains them. Skills: SkillsPanel.tsx.
  */
 import type { HistoryEntry, Song } from "@fourhands/core";
@@ -8,6 +8,7 @@ import type { Translate } from "../../shared/i18n.js";
 import { activeTrack, useApp, useClock, useSong, useView } from "../context.js";
 import { barRange, shortPosition } from "../music.js";
 import { ActiveSkills } from "./SkillsPanel.js";
+import { ConceptCard } from "./Concept.js";
 import { ChevronLeft, ChevronRight, EyeIcon, HistoryIcon, ProposalIcon } from "./Icons.js";
 
 function ago(t: Translate, at: number, now: number): string {
@@ -49,6 +50,7 @@ export function ActivityPanel() {
           <ChevronRight />
         </button>
       </div>
+      <ConceptCard />
       <div>
         <p className="ah">{t("aiSeesTitle")}</p>
         <div className="card ai">

@@ -19,7 +19,8 @@ import {
   pitchName,
   songBars,
 } from "@fourhands/core";
-import { PALETTE, type PaletteItem, instrumentName } from "../../shared/instruments.js";
+import { GM_NOTES, PALETTE, type PaletteItem, instrumentName } from "../../shared/instruments.js";
+import type { BankPreset, SoundProfile } from "../../shared/soundbank-info.js";
 import type { SoundBankInfo } from "../../shared/protocol.js";
 
 /** What the window tells the main process about what the user sees (not part of the song). */
@@ -78,6 +79,9 @@ export function overviewText(song: Song, extras: OverviewExtras = { open: [] }):
     `Four Hands · r${song.revision} · "${song.title}"`,
     `Tempo ${Math.round(bpm(song) * 100) / 100} BPM · ${song.meter.numerator}/${song.meter.denominator} · ${keyText(song.key)} · ${total} bar${total === 1 ? "" : "s"} (about ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")})`,
   ];
+  // The concept first: the intention and the limits every change is measured against.
+  if (song.concept) lines.push(`Concept (by ${song.concept.author.by === "user" ? "the user" : "an AI"}; reread it before changing anything): ${song.concept.text}`);
+  else lines.push("Concept: none yet. For a new piece, write one with set_song_properties concept: the intention in a line, then the limits (duration, tempo, where the sound will go).");
   const sections = orderedSections(song);
   lines.push(sections.length ? `Form: ${sections.map((s) => `${s.id} ${s.name} ${s.startBar}-${s.endBar}`).join(" · ")}` : "Form: no sections yet");
 
@@ -167,16 +171,41 @@ export function userContextText(song: Song, win: WindowInfo, extras: ContextExtr
   return lines.join("\n");
 }
 
-export function instrumentsText(banks: SoundBankInfo[]): string {
-  const lines = ["Four Hands · instruments (built-in sound; ranges are the real sounding range)"];
+const secs = (s: number) => `${s < 1 ? s.toFixed(2).replace(/0$/, "") : Math.round(s * 10) / 10} s`;
+
+/**
+ * How a sound behaves, from its bank's data (soundbank-info.ts): what to expect when you write for it.
+ * `keys` adds the keys it has samples for (left out for General MIDI banks, which cover everything).
+ */
+export function profileText(p: SoundProfile, keys = true): string {
+  const parts: string[] = [];
+  if (keys) parts.push(`plays ${pitchName(p.low)}–${pitchName(p.high)} (silent outside)`);
+  if (p.attack >= 0.1) parts.push(`slow attack ${secs(p.attack)}: sounds late, not for short hits; write it early`);
+  else if (p.attack >= 0.03) parts.push(`attack ${secs(p.attack)}`);
+  else parts.push("fast attack");
+  if (p.sustain === "holds") parts.push("holds long notes");
+  else if (p.sustain === "fades") parts.push(`fades away in about ${secs(p.fade ?? 0)} even when held`);
+  else parts.push(p.fade ? `no loop: dies out after about ${secs(p.fade)}, re-strike long notes` : "no loop: dies out, re-strike long notes");
+  if (p.release >= 0.3) parts.push(`rings ${secs(p.release)} after the note ends`);
+  return parts.join(", ");
+}
+
+export function instrumentsText(banks: SoundBankInfo[], builtIn: readonly BankPreset[] = []): string {
+  const lines = [
+    "Four Hands · instruments (built-in sound; ranges are the real sounding range).",
+    "Behaviour comes from each sound's own data (attack, whether it holds a long note, how long it rings): trust it over the name.",
+  ];
+  const profileOf = (program: number | null) => (program === null ? undefined : builtIn.find((p) => p.bankMSB === 0 && p.program === program)?.profile);
   for (const group of PALETTE) {
     lines.push(`${group.en}:`);
     for (const item of group.items) {
       const program = item.program === null ? "drums" : `program ${item.program}`;
-      lines.push(`  ${item.en} / ${item.es} · ${program}${item.range ? ` · ${rangeText(item.range)}` : ""}`);
+      const profile = profileOf(item.program);
+      const extra = [item.range ? rangeText(item.range) : "", item.note ?? "", profile ? profileText(profile, false) : ""].filter(Boolean);
+      lines.push(`  ${item.en} / ${item.es} · ${program}${extra.length ? ` · ${extra.join(" · ")}` : ""}`);
     }
   }
-  lines.push("Any General MIDI program number (0-127) also works.");
+  lines.push("Any General MIDI program number (0-127) also works.", GM_NOTES);
   if (banks.length === 0) lines.push("Installed sound banks: none");
   else {
     lines.push("Installed sound banks (list one's sounds with list_instruments, bank):");
@@ -186,8 +215,11 @@ export function instrumentsText(banks: SoundBankInfo[]): string {
 }
 
 export function bankText(bank: SoundBankInfo): string {
-  const lines = [`Four Hands · sounds of ${bank.id} ("${bank.name}")`, "Use them as sound: '<bank file> / <sound name>'."];
-  for (const p of bank.presets) lines.push(`  ${p.name}${p.bankMSB === 128 ? " (drum kit)" : ""}`);
+  const lines = [
+    `Four Hands · sounds of ${bank.id} ("${bank.name}")`,
+    "Use them as sound: '<bank file> / <sound name>'. Behaviour comes from the bank's own data: trust it over the name.",
+  ];
+  for (const p of bank.presets) lines.push(`  ${p.name}${p.bankMSB === 128 ? " (drum kit)" : ""}${p.profile ? ` · ${profileText(p.profile)}` : ""}`);
   return lines.join("\n");
 }
 

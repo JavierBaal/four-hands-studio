@@ -296,6 +296,7 @@ async function startAi(): Promise<void> {
   desk = new AiDesk({
     session: () => songs!,
     banks: () => library?.list() ?? [],
+    builtInSounds: () => library?.defaultPresets() ?? [],
     skills: skills!,
     onState: (state) => win?.webContents.send(CH.aiState, state),
     log: appendLog,

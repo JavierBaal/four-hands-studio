@@ -69,6 +69,7 @@ import {
 import { NAMED_PROGRAMS, PALETTE } from "../../shared/instruments.js";
 import type { AiClientInfo, AiMark, AiState, AiWriting, PatchMessage, SoundBankInfo } from "../../shared/protocol.js";
 import type { SongSession } from "../session.js";
+import type { BankPreset } from "../../shared/soundbank-info.js";
 import { SkillError, type SkillSource, skillText, skillsFooter, skillsListText } from "./skills.js";
 import { DEFAULT_WINDOW, type WindowInfo, bankText, instrumentsText, mixText, overviewText, paletteItem, spanText, userContextText } from "./texts.js";
 
@@ -78,6 +79,8 @@ export interface AiDeskOptions {
   /** The open song (it changes when the user opens another one). */
   session: () => SongSession;
   banks?: () => SoundBankInfo[];
+  /** The default bank's presets with their profiles, for the built-in palette. */
+  builtInSounds?: () => BankPreset[];
   /** Built-in and user skills (ESTUDIO_SKILLS.md, 3). */
   skills?: SkillSource;
   now?: () => number;
@@ -483,19 +486,34 @@ export class AiDesk {
     return `r${this.song.revision}`;
   }
 
+  /**
+   * The range a track's notes should stay in: the usual range of a built-in instrument, or the keys a
+   * bank's sound has samples for (outside them it is silent).
+   */
+  private rangeOfTrack(trackId: string): { range: readonly [number, number]; what: string } | undefined {
+    const track = this.song.tracks[trackId];
+    if (!track) return undefined;
+    if (track.sound) {
+      const { bank, program, bankMSB, name } = track.sound;
+      const preset = this.options.banks?.().find((b) => b.id === bank)?.presets.find((p) => p.program === program && p.bankMSB === bankMSB);
+      return preset?.profile ? { range: [preset.profile.low, preset.profile.high], what: `the keys "${name}" has samples for` } : undefined;
+    }
+    const item = paletteItem(track.program);
+    return item?.range ? { range: item.range, what: `the usual range of ${item.en}` } : undefined;
+  }
+
   /** "2 notes are outside the usual range of Cellos (C2–A5): n12 n13." */
   private rangeWarning(trackId: string, ids: readonly string[]): string {
-    const track = this.song.tracks[trackId];
-    const item = track && !track.sound ? paletteItem(track.program) : undefined;
-    if (!item?.range) return "";
-    const [low, high] = item.range;
+    const known = this.rangeOfTrack(trackId);
+    if (!known) return "";
+    const [low, high] = known.range;
     const out = ids.filter((id) => {
       const p = this.song.notes[id]?.pitch;
       return p !== undefined && (p < low || p > high);
     });
     if (out.length === 0) return "";
     const range = `${formatPitch(low)}–${formatPitch(high)}`;
-    return `\nNote: ${plural(out.length, "note is", "notes are")} outside the usual range of ${item.en} (${range}): ${out.join(" ")}.`;
+    return `\nNote: ${plural(out.length, "note is", "notes are")} outside ${known.what} (${range}): ${out.join(" ")}.`;
   }
 
   // -------------------------------------------------------------------------
@@ -551,11 +569,8 @@ export class AiDesk {
         start: range.start,
         end: range.end,
         label: range.label,
-        // Usual range of the built-in instrument; a sound from a bank has no known range yet.
-        rangeOf: (trackId) => {
-          const track = song.tracks[trackId];
-          return track && !track.sound ? paletteItem(track.program)?.range : undefined;
-        },
+        // Usual range of the built-in instrument, or the keys a bank's sound has samples for.
+        rangeOf: (trackId) => this.rangeOfTrack(trackId)?.range,
       };
       if (trackIds) options.trackIds = trackIds;
       return analysisText(song, options);
@@ -564,7 +579,7 @@ export class AiDesk {
     list_instruments: (_conn, args) => {
       const banks = this.options.banks?.() ?? [];
       const wanted = this.str(args, "bank", false);
-      if (!wanted) return instrumentsText(banks);
+      if (!wanted) return instrumentsText(banks, this.options.builtInSounds?.() ?? []);
       return bankText(this.bank(wanted, banks));
     },
 
@@ -940,6 +955,12 @@ export class AiDesk {
       const said: string[] = [];
       const title = this.str(args, "title", false);
       if (title !== undefined) (props.title = title.trim()), said.push(`title "${title.trim()}"`);
+      const concept = args.concept;
+      if (concept !== undefined && concept !== null) {
+        if (typeof concept !== "string") throw new MusicError("'concept' must be text");
+        props.concept = concept;
+        said.push(concept.trim() ? "concept rewritten" : "concept removed");
+      }
       const tempo = this.num(args, "tempo");
       if (tempo !== undefined) {
         if (tempo < 10 || tempo > 400) throw new MusicError("tempo is in BPM, between 10 and 400");
@@ -950,7 +971,7 @@ export class AiDesk {
       if (meter !== undefined) (props.meter = parseMeter(meter)), said.push(`meter ${meter.trim()}`);
       const key = this.str(args, "key", false);
       if (key !== undefined) (props.key = parseKey(key)), said.push(`key ${key.trim()}`);
-      if (said.length === 0) throw new MusicError("Say what to change: title, tempo, meter or key");
+      if (said.length === 0) throw new MusicError("Say what to change: title, concept, tempo, meter or key");
       this.write(iv, (tx) => setSongProperties(tx, props));
       iv.other.push(said.join(", "));
       this.emit();

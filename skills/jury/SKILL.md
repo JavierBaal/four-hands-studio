@@ -9,7 +9,7 @@ The user calls the jury when a piece (or a section) is done and they want an hon
 
 ## Before the jury speaks
 
-1. **Know the brief.** `get_song_overview`: the concept annotation or field (intention, duration, where the sound goes) and how the user described the piece in this conversation. Without a brief, ask in one line what the piece was meant to do before judging it.
+1. **Know the brief.** `get_song_overview`: the song concept (intention, duration, where the sound goes) and how the user described the piece in this conversation. Without a brief, ask in one line what the piece was meant to do before judging it.
 2. **Measure.** `analyze` on the whole piece (or the range the user named). Read the shape line first.
 3. **Read the key moments.** `read_notes` of the opening (the first bars decide whether a listener stays), the climax or busiest bar, every transition between sections, and the ending.
 4. **Sounds.** If the brief mentions where the sound will end up, check the tracks' sounds (`list_instruments`) and which are placeholders.

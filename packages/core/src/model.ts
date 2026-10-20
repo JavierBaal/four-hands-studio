@@ -158,8 +158,17 @@ export interface MidiFileSettings {
 
 export type IdPrefix = "n" | "t" | "s" | "a" | "p" | "i";
 
+/** The song concept (ESTUDIO_SKILLS_COMPOSICION.md, 6.3): the intention and the limits, in words. */
+export interface SongConcept {
+  /** "Orquesta infectada. Dura 1:12, como los créditos; se exportará a Vital y Kontakt." */
+  text: string;
+  author: Authorship;
+}
+
 export interface Song {
   title: string;
+  /** What the song is for and its limits; every AI reads it first. Absent until someone writes it. */
+  concept?: SongConcept;
   /** Microseconds per quarter note, exactly as MIDI stores it. Use `bpm()` to show it. */
   tempo: number;
   meter: Meter;

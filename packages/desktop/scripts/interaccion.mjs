@@ -713,6 +713,27 @@ const az = await page.evaluate(() => window.fhTest.view.state.arrZoom);
 check("zoom tool on the arrangement", !!az && az.span > 0, JSON.stringify(az));
 await page.keyboard.press("1");
 
+// The song concept (20/10/2026): written in the activity panel, one undo step, signed by the user.
+await page.locator(".concept .dashbtn").click();
+await page.keyboard.type("Dura 1:12, como los créditos");
+await page.keyboard.press("Shift+Enter");
+await page.keyboard.type("Sin percusión");
+await page.keyboard.press("Enter");
+await settle();
+const concept = await page.evaluate(() => window.fhTest.replica.song.concept);
+check("the concept is written from the panel, with Shift+Enter for a new line", concept?.text === "Dura 1:12, como los créditos\nSin percusión" && concept.author.by === "user", JSON.stringify(concept));
+check("the panel shows it as yours", /tuyo/.test(await page.locator(".concept .cmeta").innerText()));
+check("the history says you wrote it", /escribiste el concepto/.test(await page.locator(".activity").innerText()));
+await page.locator(".concept .cmeta .linkbtn").click();
+await page.keyboard.type(" (rehecho)");
+await page.keyboard.press("Escape");
+await settle();
+check("Esc leaves the concept as it was", (await page.evaluate(() => window.fhTest.replica.song.concept?.text)) === "Dura 1:12, como los créditos\nSin percusión");
+await page.locator(".pgrid canvas").first().click({ position: { x: 5, y: 5 } }).catch(() => {});
+await page.keyboard.press("Control+z");
+await settle();
+check("Ctrl+Z takes the concept away", (await page.evaluate(() => window.fhTest.replica.song.concept)) === undefined && (await page.locator(".concept .dashbtn").count()) === 1);
+
 // Skills de la IA (20/10/2026): the active list in the panel, the card, turning one off, a dropped ZIP.
 const activeNames = () => page.locator(".actskills .askill .askname").allInnerTexts();
 check("Skills activas lists the skills that are on, with their origin", (await activeNames()).length === 7 && (await page.locator(".actskills .src").allInnerTexts()).includes("mía"));

@@ -15,7 +15,7 @@
 import { z } from "zod";
 
 /** Bumped whenever a tool, its parameters or its meaning changes. The app refuses other bridges. */
-export const TOOLS_VERSION = 9;
+export const TOOLS_VERSION = 10;
 
 /**
  * Track colours by name (H3.2). The app's palette (desktop/src/shared/track-colors.ts) has the same
@@ -138,9 +138,11 @@ export const TOOLS: readonly ToolDefinition[] = [
     name: "list_instruments",
     title: "List instruments",
     description:
-      "List the instruments you can give a track: the built-in palette with each instrument's real range, " +
-      "and the sound banks the user installed. With bank, list that bank's sounds. Use it before add_track or update_track, " +
-      "and to keep each part inside its instrument's range. Read-only.",
+      "List the instruments you can give a track: the built-in palette with each instrument's real range and how each sound behaves " +
+      "(fast or slow attack, whether it holds a long note or dies out, how long it rings after the note ends), and the sound banks the user installed. " +
+      "With bank, that bank's sounds with the same profile and the keys each has samples for (silent outside them). The profile comes from the sound's own data: " +
+      "trust it over the name (a slow-attack choir cannot do short hits; an unlooped sample dies out on a long note). " +
+      "Use it before add_track or update_track, and to keep each part inside its range. Read-only.",
     inputSchema: {
       bank: z.string().optional().describe("A bank's file name from the list, to see its sounds"),
     },
@@ -152,9 +154,9 @@ export const TOOLS: readonly ToolDefinition[] = [
     description:
       "Your substitute for ears: you cannot hear what you write, so check it. First the shape (notes per bar, tracks and loudness, section by section, and the busiest bar), then mechanical findings, each with its bars, tracks and note ids: " +
       "chords, sections or annotations left after the last note and empty tracks (leftovers of earlier versions), " +
-      "close intervals too low (mud), too many notes below C3, four or more parts crowded in one octave, bars or blocks repeated identically three or more times, the same chord progression looped three or more times, " +
+      "the song concept's limits (a duration or tempo written in it, against the music), close intervals too low (mud), too many notes below C3, four or more parts crowded in one octave, bars or blocks repeated identically three or more times, the same chord progression looped three or more times, " +
       "straight velocity ramps and long runs of one velocity, several tracks stopping at the same bar line or a sharp drop in loudness, " +
-      "notes outside the instrument's usual range, notes outside the key, and long notes on the beat outside the written chord. " +
+      "notes outside the instrument's usual range (or the keys a bank's sound has samples for), notes outside the key, and long notes on the beat outside the written chord. " +
       "It describes, it does not judge: a finding can be exactly what the music wants. " +
       "Use it after writing anything substantial and before handing the turn back, and when the user asks for your opinion. " +
       `tracks: only those parts are reported, but every unmuted track counts as heard around them. range: ${RANGE_HELP} Default: all. Read-only.`,
@@ -412,12 +414,15 @@ export const TOOLS: readonly ToolDefinition[] = [
     name: "set_song_properties",
     title: "Song properties",
     description:
-      "Change the title, tempo, meter or key of the song (one of each per song). " +
+      "Change the title, concept, tempo, meter or key of the song (one of each per song). " +
+      "concept: the song's intention and limits in a few sentences, in the user's language ('Orquesta infectada. Dura 1:12, como los créditos; se exportará a Vital y Kontakt'). " +
+      "Every AI reads it first in get_song_overview, and analyze checks a duration or tempo written in it. Write it for a new piece; if the user wrote it, change it only when they ask. '' removes it. " +
       "tempo in BPM (quarter notes per minute); meter like '3/4' or '6/8'; key like 'A minor', 'Eb major', 'F# minor'. " +
       "Changing the meter keeps every note where it is in time, so bar numbers change: tell the user.",
     inputSchema: {
       intervention_id: INTERVENTION,
       title: z.string().optional(),
+      concept: z.string().max(1000).optional().describe("The intention, then the limits (duration, tempo, where the sound will go); '' removes it"),
       tempo: z.number().min(10).max(400).optional().describe("BPM"),
       meter: z.string().optional().describe("E.g. '3/4'"),
       key: z.string().optional().describe("E.g. 'A minor'"),

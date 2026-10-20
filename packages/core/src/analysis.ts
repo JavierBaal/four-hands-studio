@@ -14,6 +14,8 @@
  * 6. Outside the instrument's range (the caller says what each track's range is).
  * 7. Outside the key, by pitch class.
  * 8. Long notes on the beat outside the written chord.
+ * And first of all: leftovers of earlier versions, and the song concept's limits (a duration or a
+ * tempo written in the concept, against the music), when the whole song is analysed.
  *
  * Muted tracks are left out of what is heard (1, 2, 5). Percussion (channel 10) is left out of
  * pitch checks (1, 2, 6, 7, 8).
@@ -41,9 +43,10 @@ export interface Finding {
   text: string;
 }
 
-export type Check = "leftovers" | "low" | "crowded" | "repeats" | "loops" | "dynamics" | "abrupt" | "range" | "key" | "harmony";
+export type Check = "concept" | "leftovers" | "low" | "crowded" | "repeats" | "loops" | "dynamics" | "abrupt" | "range" | "key" | "harmony";
 
 const HEADINGS: Record<Check, string> = {
+  concept: "Against the limits in the song concept",
   leftovers: "Left over from earlier versions (the song reads longer or fuller than the music)",
   low: "Low register (intervals too close for their height blur into a buzz)",
   crowded: "Crowded register (parts in the same octave mask each other)",
@@ -51,12 +54,12 @@ const HEADINGS: Record<Check, string> = {
   loops: "Harmonic loops (the same chords over and over)",
   dynamics: "Formula dynamics",
   abrupt: "Abrupt changes at a bar line",
-  range: "Outside the instrument's usual range",
+  range: "Outside the instrument's usual range (or the keys a bank's sound has samples for)",
   key: "Outside the key",
   harmony: "Long notes on the beat outside the written chord",
 };
 
-const CHECKS: readonly Check[] = ["leftovers", "low", "crowded", "repeats", "loops", "dynamics", "abrupt", "range", "key", "harmony"];
+const CHECKS: readonly Check[] = ["concept", "leftovers", "low", "crowded", "repeats", "loops", "dynamics", "abrupt", "range", "key", "harmony"];
 
 /**
  * Lowest comfortable bottom note (MIDI) for each interval in semitones, 1 to 11.
@@ -479,6 +482,56 @@ function duration(song: Song, bars: number): string {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
+// ---------------------------------------------------------------------------
+// 0. The song concept's limits
+
+/** Durations written in a concept, in seconds: "1:12", "45 s", "90 segundos", "2 min", "1 min 30 s". */
+export function conceptDurations(text: string): number[] {
+  const out: number[] = [];
+  const t = text.toLowerCase();
+  for (const m of t.matchAll(/(?<![\d:])(\d{1,2}):([0-5]\d)(?![\d:])/g)) out.push(Number(m[1]) * 60 + Number(m[2]));
+  for (const m of t.matchAll(/(\d+)\s*(?:min|minutos?|minutes?)\b(?:\s*(?:y\s*)?(\d+)\s*(?:s|seg|segs|segundos?|sec|secs|seconds?)\b)?/g)) out.push(Number(m[1]) * 60 + Number(m[2] ?? 0));
+  for (const m of t.matchAll(/(?<![\d:.,])(\d+(?:[.,]\d+)?)\s*(?:s|seg|segs|segundos?|sec|secs|seconds?)\b/g)) {
+    const before = t.slice(0, m.index);
+    if (/\d+\s*(?:min|minutos?|minutes?)\s*(?:y\s*)?$/.test(before)) continue;
+    out.push(Number(m[1]!.replace(",", ".")));
+  }
+  return out;
+}
+
+/** A tempo written in a concept ("a 120 BPM"), if there is one. */
+export function conceptTempo(text: string): number | null {
+  const m = /(\d{2,3}(?:[.,]\d+)?)\s*bpm\b/i.exec(text);
+  return m ? Number(m[1]!.replace(",", ".")) : null;
+}
+
+function clock(seconds: number): string {
+  const s = Math.round(seconds);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
+function conceptLimits(ctx: Ctx): string[] {
+  const { song } = ctx;
+  const text = song.concept?.text;
+  const all = notesOf(song);
+  if (!text || all.length === 0) return [];
+  const lastEnd = Math.max(...all.map((n) => n.start + n.duration));
+  // Only when the whole song is analysed: the limits are about the whole.
+  if (ctx.start > 0 || ctx.end < lastEnd) return [];
+  const out: string[] = [];
+  const seconds = (lastEnd * song.tempo) / PPQ / 1_000_000;
+  const lastBar = barAt(song.meter, lastEnd - 1);
+  for (const target of [...new Set(conceptDurations(text))]) {
+    const off = seconds - target;
+    if (Math.abs(off) <= Math.max(2, target * 0.05)) continue;
+    out.push(`the concept says ${clock(target)}; the music lasts ${clock(seconds)} (last note ends in c. ${lastBar}): ${Math.round(Math.abs(off))} s ${off > 0 ? "longer" : "shorter"}`);
+  }
+  const tempo = conceptTempo(text);
+  const now = 60_000_000 / song.tempo;
+  if (tempo !== null && Math.abs(tempo - now) >= 1) out.push(`the concept says ${tempo} BPM; the song is at ${Math.round(now * 100) / 100} BPM`);
+  return out;
+}
+
 function leftovers(ctx: Ctx): string[] {
   const { song } = ctx;
   const all = notesOf(song);
@@ -588,6 +641,7 @@ export function analyze(song: Song, options: AnalyzeOptions): Finding[] {
     rangeOf: options.rangeOf,
   };
   const run: Record<Check, (c: Ctx) => string[]> = {
+    concept: conceptLimits,
     leftovers,
     low: lowRegister,
     crowded,
@@ -614,7 +668,7 @@ export function analysisText(song: Song, options: AnalyzeOptions): string {
   for (const check of CHECKS) {
     const mine = findings.filter((f) => f.check === check);
     if (mine.length === 0) {
-      if (check !== "range" || options.rangeOf) empty.push(check);
+      if ((check !== "range" || options.rangeOf) && (check !== "concept" || song.concept)) empty.push(check);
       continue;
     }
     lines.push(`${HEADINGS[check]}:`);
@@ -627,6 +681,7 @@ export function analysisText(song: Song, options: AnalyzeOptions): string {
 }
 
 const CHECK_NAMES: Record<Check, string> = {
+  concept: "the concept's limits",
   leftovers: "leftovers",
   low: "low register",
   crowded: "crowded register",

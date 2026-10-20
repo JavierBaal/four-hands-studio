@@ -71,6 +71,18 @@ export const SHOTS = [
     await page.waitForTimeout(300);
   } },
   // 20/10/2026: Skills de la IA, from the link next to the AI chip; Claude has used two of them.
+  // 20/10/2026: the song concept at the top of the activity panel: empty, written by the AI, editing.
+  { name: "concepto_vacio", q: `?song=boceto&ai=conectada&view=${sketchView(1440 - 288 - 72, 12)}` },
+  { name: "concepto_de_la_ia", q: `?song=boceto&ai=conectada&view=${sketchView(1440 - 288 - 72, 12)}`, act: async (page) => {
+    await page.evaluate(() => window.fhTest.ai.doc.transact({ actor: { by: "ai", client: "claude-ai" }, label: "Concepto" }, (tx) =>
+      tx.set(["concept"], { text: "Dilatación: el tiempo se estira sin romperse. Piano y cuerdas, sin percusión hasta el puente. Dura unos 3 minutos; se exportará a Kontakt.", author: { by: "ai", client: "claude-ai" } })));
+    await page.waitForTimeout(300);
+  } },
+  { name: "concepto_editando", q: `?song=boceto&ai=conectada&view=${sketchView(1440 - 288 - 72, 12)}`, act: async (page) => {
+    await page.locator(".concept .dashbtn").click();
+    await page.keyboard.type("Dilatación: el tiempo se estira sin romperse. Dura unos 3 minutos");
+    await page.waitForTimeout(200);
+  } },
   // 20/10/2026: Skills activas in the activity panel (sketch 01) and the card from "Gestionar skills…".
   { name: "skills_activas", q: `?song=boceto&ai=conectada&view=${sketchView(1440 - 288 - 72, 12)}`, act: async (page) => {
     await page.evaluate(() => window.fhTest.ai.setAi({ clients: [{ client: "claude-ai", name: "Claude" }], reading: null, writing: [], mark: null, skillsUsed: ["four-hands-basics", "jury"] }));
