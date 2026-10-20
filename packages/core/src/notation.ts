@@ -247,7 +247,7 @@ function fold(text: string): string {
     .trim();
 }
 
-function barsLabel(from: number, to: number): string {
+export function barsLabel(from: number, to: number): string {
   return from === to ? `c. ${from}` : `c. ${from}–${to}`;
 }
 

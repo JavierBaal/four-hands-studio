@@ -15,7 +15,7 @@
 import { z } from "zod";
 
 /** Bumped whenever a tool, its parameters or its meaning changes. The app refuses other bridges. */
-export const TOOLS_VERSION = 11;
+export const TOOLS_VERSION = 12;
 
 /**
  * Track colours by name (H3.2). The app's palette (desktop/src/shared/track-colors.ts) has the same
@@ -27,8 +27,10 @@ const COLOR_HELP = `Track colour, one of: ${TRACK_COLOR_NAMES.join(", ")}. Muted
 export const SERVER_INSTRUCTIONS = `You are composing together with the user inside Four Hands Studio, a shared MIDI score.
 The user sees every change you make, live.
 
-Start of each turn: call get_user_context (and get_song_overview the first time, or when the user
-may have changed the song). "This", "here" and "these bars" refer to the user's selection, loop or cursor.
+Start of each turn: call get_user_context (and get_song_overview the first time). When it says the song
+changed since your last call, call get_changes_since before writing: the user may have moved, replaced or
+deleted your notes, and their changes win. "This", "here" and "these bars" refer to the user's selection,
+loop or cursor. For a long song, summarize gives the big picture; read in detail only what you will touch.
 
 Four Hands serves skills: craft written down for composing here. At the start of every conversation, before
 you write anything, call load_skill("four-hands-basics"). Then call list_skills and load the ones whose
@@ -172,6 +174,43 @@ export const TOOLS: readonly ToolDefinition[] = [
       "It describes, it does not judge: a finding can be exactly what the music wants. " +
       "Use it after writing anything substantial and before handing the turn back, and when the user asks for your opinion. " +
       `tracks: only those parts are reported, but every unmuted track counts as heard around them. range: ${RANGE_HELP} Default: all. Read-only.`,
+    inputSchema: {
+      range: z.string().optional().describe(`${RANGE_HELP} Default 'all'`),
+      tracks: TRACKS,
+    },
+    annotations: readOnly,
+  },
+  {
+    name: "get_changes_since",
+    title: "What changed since",
+    description:
+      "What changed in the song since your last call (default) or since a revision ('r120'): the signed history in between (who did what: the user, you, another AI), " +
+      "then the differences grouped by kind: notes per track (added, changed with what changed, removed; every note when they are few), harmony per bar, form, tempo, meter, key, concept, tracks and mix, annotations. " +
+      "Call it when you come back to a conversation or when get_user_context says the song changed since your last call: the user may have moved, deleted or replaced your notes, and you must not undo their work by writing over it. Read-only.",
+    inputSchema: {
+      since: z.string().optional().describe("A revision, 'r120'. Default: the end of your last call"),
+    },
+    annotations: readOnly,
+  },
+  {
+    name: "get_history",
+    title: "Signed history",
+    description:
+      "The signed history of the song, newest first: revision, who (the user, you, another AI) and what, with undo and redo. " +
+      "Shorter than get_changes_since; use it to see the order of decisions, what the user undid, or to find a revision to pass to get_changes_since. Read-only.",
+    inputSchema: {
+      limit: z.number().int().min(1).max(200).optional().describe("Entries, newest first. Default 30"),
+    },
+    annotations: readOnly,
+  },
+  {
+    name: "summarize",
+    title: "Summarize the song",
+    description:
+      "The song by section (or blocks of 8 bars) and track, without reading every note: notes and notes per bar, range and where most notes sit, the usual figure and how much falls on the beat, " +
+      "the contour of the top line (rising, falling, arch, valley, level), velocity, and who wrote it; plus the chords written in each section. " +
+      "Use it to get the big picture of a long song, then read in detail only what you will touch. It describes, it does not judge. " +
+      `range: ${RANGE_HELP} Default: all. Read-only.`,
     inputSchema: {
       range: z.string().optional().describe(`${RANGE_HELP} Default 'all'`),
       tracks: TRACKS,

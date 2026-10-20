@@ -65,6 +65,9 @@ import {
   updateTrack,
   moveTrack,
   removeTrack,
+  changesText,
+  historyLine,
+  summaryText,
 } from "@fourhands/core";
 import { NAMED_PROGRAMS, PALETTE } from "../../shared/instruments.js";
 import type { AiClientInfo, AiMark, AiState, AiTone, AiWriting, PatchMessage, SoundBankInfo } from "../../shared/protocol.js";
@@ -99,6 +102,9 @@ export interface AiDeskOptions {
 /** At most 15 tracks: channel 16 is the metronome's (H2.8). */
 const MAX_TRACKS = 15;
 const PAGE_NOTES = 800;
+const SNAPSHOTS_MAX = 12;
+/** Calls after which the AI has seen everything that changed. */
+const SEES_EVERYTHING = new Set(["get_changes_since", "get_song_overview"]);
 
 interface Intervention {
   id: string;
@@ -188,6 +194,8 @@ export class AiDesk {
   /** A different song was opened: everything about the previous one is forgotten. */
   songChanged(): void {
     for (const iv of this.interventions.values()) if (!iv.closed) this.close(iv, "song");
+    this.seen.clear();
+    this.snapshots.clear();
     this.interventions.clear();
     this.userTouched.clear();
     this.mark = null;
@@ -285,7 +293,45 @@ export class AiDesk {
     });
     // "Reading the song": not for pointing, nor for loading skills, which don't read the song.
     if (READ_TOOLS.has(tool) && !NOT_READING_THE_SONG.has(tool)) this.showReading(conn.name);
+    this.remember(conn.client, tool);
     return reply;
+  }
+
+  /**
+   * The song as this AI client last saw it, for get_changes_since and the "changed since your last
+   * call" line of get_user_context. It moves on when the AI reads the whole picture
+   * (get_changes_since, get_song_overview), and when it writes with nothing unseen in between;
+   * reading a few bars or the user context does not count as having seen the user's changes.
+   */
+  private remember(client: string, tool: string): void {
+    const song = this.song;
+    const seen = this.seen.get(client);
+    if (seen?.revision === song.revision) return;
+    if (seen && !SEES_EVERYTHING.has(tool)) {
+      if (READ_TOOLS.has(tool)) return;
+      const unseen = this.historySince(seen.revision).some((h) => !(h.actor.by === "ai" && h.actor.client === client));
+      if (unseen) return;
+    }
+    const copy = this.snapshots.get(song.revision) ?? structuredClone(song);
+    this.seen.set(client, copy);
+    this.snapshots.set(song.revision, copy);
+    while (this.snapshots.size > SNAPSHOTS_MAX) this.snapshots.delete(this.snapshots.keys().next().value!);
+  }
+
+  /** get_user_context: has anyone else changed the song since this client's last call? */
+  private changedLine(client: string): string | null {
+    const seen = this.seen.get(client);
+    if (!seen) return null;
+    const others = this.historySince(seen.revision).filter((h) => !(h.actor.by === "ai" && h.actor.client === client));
+    if (!others.length) return "Since your last call: nothing changed.";
+    const labels = others.slice(-3).map((h) => (h.kind === "edit" ? h.label : `${h.kind === "undo" ? "undid" : "redid"}: ${h.label}`));
+    const by = others.every((h) => h.actor.by === "user") ? "the user" : "the user or another AI";
+    return `Since your last call (r${seen.revision}): ${others.length} change${others.length === 1 ? "" : "s"} by ${by} (${labels.join("; ")}${others.length > 3 ? "; …" : ""}). Call get_changes_since before writing.`;
+  }
+
+  /** History entries after a revision, oldest first. */
+  private historySince(revision: number) {
+    return this.session.document.history.filter((h) => h.revision > revision);
   }
 
   private showReading(name: string): void {
@@ -296,6 +342,10 @@ export class AiDesk {
 
   // -------------------------------------------------------------------------
   // Helpers shared by the tools
+
+  /** The song as each AI client last saw it, and recent copies by revision (get_changes_since). */
+  private readonly seen = new Map<string, Song>();
+  private readonly snapshots = new Map<number, Song>();
 
   /** Skills loaded since the app opened (shown in the skills panel). */
   private readonly skillsUsed = new Set<string>();
@@ -533,7 +583,12 @@ export class AiDesk {
     get_user_context: (conn) => {
       const mine = this.openOf(conn.client);
       const others = [...new Set([...this.connections.values()].filter((c) => c.client !== conn.client).map((c) => `${c.name} (${c.client})`))];
-      return userContextText(this.song, this.window, { mine: mine ? { id: mine.id, description: mine.description } : null, others, tone: this.options.tone?.() ?? "direct" });
+      return userContextText(this.song, this.window, {
+        mine: mine ? { id: mine.id, description: mine.description } : null,
+        others,
+        tone: this.options.tone?.() ?? "direct",
+        changed: this.changedLine(conn.client),
+      });
     },
 
     read_notes: (_conn, args) => {
@@ -561,6 +616,51 @@ export class AiDesk {
           ? `\nPage ${page} of ${pages} (${slice.length} of ${ids.length} notes in ${range.label}).${page < pages ? ` Next: read_notes with page ${page + 1}.` : ""}`
           : `\n${plural(ids.length, "note")} in ${range.label}.`;
       return body + footer;
+    },
+
+    get_changes_since: (conn, args) => {
+      const wanted = this.str(args, "since", false);
+      const song = this.song;
+      let before: Song | undefined;
+      let since: string;
+      if (wanted) {
+        const m = /^r?(\d+)$/i.exec(wanted.trim());
+        if (!m) throw new MusicError(`'${wanted}' is not a revision: write it like r120`);
+        const rev = Number(m[1]);
+        if (rev > song.revision) throw new MusicError(`The song is at r${song.revision}; r${rev} does not exist yet`);
+        before = this.snapshots.get(rev);
+        since = `since r${rev}`;
+        if (!before) {
+          const history = this.historySince(rev);
+          const lines = [`Four Hands · changes since r${rev} → r${song.revision}`, `No copy of r${rev} is kept (only the versions an AI saw recently), so here is the history; read the bars it names with read_notes.`];
+          for (const h of history.slice(-30)) lines.push(`  ${historyLine(h, displayName)}`);
+          if (!history.length) lines.push("  Nothing changed.");
+          return lines.join("\n");
+        }
+      } else {
+        before = this.seen.get(conn.client);
+        since = "since your last call";
+        if (!before) return "This is your first call on this song: there is nothing to compare with. Read it with get_song_overview.";
+      }
+      return changesText(before, song, { since, history: this.historySince(before.revision), aiName: displayName });
+    },
+
+    get_history: (_conn, args) => {
+      const limit = Math.max(1, Math.min(200, Math.round(this.num(args, "limit") ?? 30)));
+      const history = this.session.document.history;
+      const lines = [`Four Hands · r${this.song.revision} · history, newest first (${Math.min(limit, history.length)} of ${history.length})`];
+      for (const h of history.slice(-limit).reverse()) lines.push(historyLine(h, displayName));
+      if (!history.length) lines.push("Nothing yet.");
+      return lines.join("\n");
+    },
+
+    summarize: (_conn, args) => {
+      const song = this.song;
+      const range = resolveRange(song, this.str(args, "range", false) ?? "all");
+      const trackIds = this.tracks(args);
+      const options: Parameters<typeof summaryText>[1] = { fromBar: range.fromBar, toBar: range.toBar };
+      if (trackIds) options.trackIds = trackIds;
+      return summaryText(song, options);
     },
 
     analyze: (_conn, args) => {
@@ -1238,7 +1338,7 @@ export class AiDesk {
   }
 }
 
-const READ_TOOLS = new Set(["get_song_overview", "get_user_context", "read_notes", "analyze", "list_instruments", "list_skills", "load_skill", "point_to"]);
+const READ_TOOLS = new Set(["get_song_overview", "get_user_context", "read_notes", "analyze", "get_changes_since", "get_history", "summarize", "list_instruments", "list_skills", "load_skill", "point_to"]);
 const NOT_READING_THE_SONG = new Set(["point_to", "list_skills", "load_skill"]);
 
 function formatPitch(pitch: number): string {

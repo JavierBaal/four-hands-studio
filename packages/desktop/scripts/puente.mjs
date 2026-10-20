@@ -41,8 +41,8 @@ const transport = new StdioClientTransport({ command: process.execPath, args: [b
 const client = new Client({ name: "claude-ai", version: "e2e" });
 await client.connect(transport);
 const tools = (await client.listTools()).tools;
-check("the bridge lists the tools, analyze and the skills included", tools.length === 29 && ["analyze", "remove_annotations", "list_skills", "load_skill"].every((n) => tools.some((t) => t.name === n)), tools.length);
-check("read tools are read-only for Claude's permissions", tools.filter((t) => t.annotations?.readOnlyHint).length === 8);
+check("the bridge lists the tools, analyze and the skills included", tools.length === 32 && ["analyze", "remove_annotations", "list_skills", "load_skill", "get_changes_since", "get_history", "summarize"].every((n) => tools.some((t) => t.name === n)), tools.length);
+check("read tools are read-only for Claude's permissions", tools.filter((t) => t.annotations?.readOnlyHint).length === 11);
 const instructions = client.getInstructions() ?? "";
 check("the server instructions ask to load four-hands-basics first", instructions.includes('load_skill("four-hands-basics")'));
 await win.waitForFunction(() => document.querySelector(".aichip")?.textContent?.includes("Claude conectado"), null, { timeout: 8000 }).catch(() => {});
@@ -75,6 +75,11 @@ const bridgeNotes = await call("read_notes", { range: "section:Puente" });
 check("route 1: reads the bridge section, every track", bridgeNotes.ok && /notes in Puente \(c\. 29–36\)/.test(bridgeNotes.text) && (bridgeNotes.text.match(/^Four Hands · /gm) ?? []).length === 6);
 const ears = await call("analyze", { range: "section:Puente" });
 check("route 1: analyze the bridge, the AI's ears", ears.ok && /^Analysis of Puente \(c\. 29–36\), all tracks/.test(ears.text) && /cannot hear sounds/.test(ears.text), ears.text.slice(0, 300));
+// H4: the big picture of a section, and what changed since the last call.
+const summary = await call("summarize", { range: "section:Puente" });
+check("summarize the bridge by track", summary.ok && /summary · c\. 29–36/.test(summary.text) && /Puente c\. 29–36 · /.test(summary.text), summary.text.slice(0, 300));
+const changes = await call("get_changes_since");
+check("get_changes_since answers", changes.ok && /^Four Hands · changes r\d+ → r\d+|first call/.test(changes.text), changes.text.slice(0, 200));
 const context = await call("get_user_context");
 check("route 1: reads the user's context", context.ok && /Do Re Mi/.test(context.text) && /Visible in the piano roll: c\. 1–/.test(context.text), context.text);
 
@@ -188,7 +193,7 @@ check("bridge.json removed on quit", !fs.existsSync(configFile));
 const logFile = path.join(home, ".config", "Four Hands Studio", "registro-app.jsonl");
 const log = fs.readFileSync(logFile, "utf8");
 const calls = log.split("\n").filter((l) => l.includes('"type":"ai_call"')).map((l) => JSON.parse(l));
-check("every call is in the app's log", calls.length === 24, calls.length);
+check("every call is in the app's log", calls.length === 26, calls.length);
 check("calls answer fast (< 200 ms in the app)", calls.every((c) => c.ms < 200), JSON.stringify(calls.map((c) => c.ms)));
 check("no page errors", errors.length === 0, errors.join("\n"));
 fs.copyFileSync(logFile, path.join(shots, "registro-app.jsonl"));

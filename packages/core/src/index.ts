@@ -8,3 +8,5 @@ export * from "./compact.js";
 export * from "./command-data.js";
 export * from "./notation.js";
 export * from "./analysis.js";
+export * from "./changes.js";
+export * from "./summary.js";

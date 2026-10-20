@@ -139,6 +139,8 @@ export interface ContextExtras {
   others: string[];
   /** How the user wants opinions given (Tu IA > Opiniones). */
   tone?: AiTone;
+  /** What changed since this AI's last call (null on its first call). */
+  changed?: string | null;
 }
 
 /**
@@ -180,6 +182,7 @@ export function userContextText(song: Song, win: WindowInfo, extras: ContextExtr
   lines.push("Your changes go straight into the song as you write them; the user sees them live and undoes a whole intervention in one step.");
   lines.push(extras.mine ? `Your open intervention: ${extras.mine.id} "${extras.mine.description}"` : "Your open intervention: none");
   if (extras.others.length) lines.push(`Other AI connected: ${extras.others.join(", ")}`);
+  if (extras.changed) lines.push(extras.changed);
   lines.push(toneText(extras.tone ?? "direct"));
   return lines.join("\n");
 }

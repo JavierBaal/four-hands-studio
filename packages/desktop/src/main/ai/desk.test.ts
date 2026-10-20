@@ -196,6 +196,48 @@ describe("reading (route 1: the AI reads the song without the user describing it
     expect(Object.keys(session.song.notes)).toHaveLength(before + 2);
   });
 
+  it("tells the AI what the user changed since its last call, and shows it with get_changes_since (H4)", () => {
+    expect(ok("get_user_context")).not.toContain("Since your last call"); // its first call
+    expect(ok("get_changes_since")).toContain("Nothing changed.");
+    const cello = trackByName("cello").id;
+    const iv = begin("Dos notas");
+    ok("add_notes", { intervention_id: iv, track: cello, notes: "C3 1.1 1/4\nD3 1.2 1/4" });
+    ok("end_intervention", { intervention_id: iv });
+    // Its own writing is not news.
+    expect(ok("get_user_context")).toContain("Since your last call: nothing changed.");
+    const mine = notesOf(session.song, cello).filter((n) => n.shapedBy.by === "ai").map((n) => n.id);
+    session.handle({ type: "run", label: "borraste 1 nota (c. 1)", commands: [{ type: "deleteNotes", ids: [mine[0]!] }] });
+    const context = ok("get_user_context");
+    expect(context).toMatch(/Since your last call \(r\d+\): 1 change by the user \(borraste 1 nota \(c\. 1\)\)\. Call get_changes_since before writing\./);
+    const changes = ok("get_changes_since");
+    expect(changes).toContain("user · borraste 1 nota (c. 1)");
+    expect(changes).toMatch(/1 removed c\. 1/);
+    expect(changes).toMatch(/- n\d+ C3 1\.1 1\/4 v\d+ @ai/);
+    // Asked again, nothing new.
+    expect(ok("get_changes_since")).toContain("Nothing changed.");
+    const rev = /last call \(r(\d+)\)/.exec(context)![1];
+    expect(ok("get_changes_since", { since: `r${rev}` })).toContain("1 removed");
+    // More than twelve versions later, the oldest copies are gone: only the history is left.
+    for (let i = 0; i < 14; i++) {
+      session.handle({ type: "run", label: `tempo ${i}`, commands: [{ type: "setSongProperties", props: { tempo: 800_000 + i } }] });
+      ok("get_changes_since");
+    }
+    expect(ok("get_changes_since", { since: `r${rev}` })).toMatch(/No copy of r\d+ is kept/);
+    expect(fail("get_changes_since", { since: "ayer" })).toMatch(/not a revision/);
+  });
+
+  it("gives the signed history newest first, and a summary by section (H4)", () => {
+    const iv = begin("Contracanto");
+    ok("add_notes", { intervention_id: iv, track: trackByName("cello").id, notes: "C3 1.1 1/4" });
+    ok("end_intervention", { intervention_id: iv });
+    const history = ok("get_history", { limit: 5 });
+    expect(history.split("\n")[1]).toMatch(/^r\d+ Claude \(claude-ai\) · Contracanto$/);
+    const summary = ok("summarize", { range: "section:Intro" });
+    expect(summary).toMatch(/summary · c\. 1–8/);
+    expect(summary).toMatch(/Intro c\. 1–8 · /);
+    expect(summary).toMatch(/: silent|· user/);
+  });
+
   it("lists instruments with their ranges and the installed banks", () => {
     const text = ok("list_instruments");
     expect(text).toContain("Cellos / Chelos · program 42 · C2–A5");
