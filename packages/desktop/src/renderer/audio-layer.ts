@@ -8,7 +8,7 @@ import type { Strings, Translate } from "../shared/i18n.js";
 import { Engine } from "../audio/engine.js";
 import { INITIAL_KEYBOARD, type KeyboardState, keyAction } from "../audio/keyboard.js";
 import { Player } from "../audio/player.js";
-import { type MidiPort, SoundRouter } from "../audio/router.js";
+import { type MidiPort, SoundRouter, isOwnLoopback } from "../audio/router.js";
 import type { Bridge } from "./bridge.js";
 import type { SoundBankInfo } from "../shared/protocol.js";
 import { activeTrack } from "./context.js";
@@ -74,6 +74,8 @@ export class AudioLayer {
   private midiAccess: MIDIAccess | null = null;
   private router: SoundRouter | null = null;
   private outSides = new Map<string, boolean>();
+  /** Listens to the MIDI inputs again (the output port changed: skip its loopback). */
+  private relisten: () => void = () => {};
 
   constructor(
     private readonly replica: Replica,
@@ -505,6 +507,7 @@ export class AudioLayer {
   async chooseOutPort(name: string | null): Promise<void> {
     this.player.stop();
     this.outName = await this.bridge.setMidiOutPort(name);
+    this.relisten();
     this.bridge.log({ type: "midi_out_port", name: this.outName, found: this.outStatus === "ready" });
     this.changed();
   }
@@ -523,6 +526,11 @@ export class AudioLayer {
       this.refreshOutPorts();
       const listen = () => {
         for (const input of access.inputs.values()) {
+          // Never our own output coming back (loopMIDI): it would feed itself.
+          if (isOwnLoopback(input.name, this.outName)) {
+            input.onmidimessage = null;
+            continue;
+          }
           input.onmidimessage = (m) => {
             const [status = 0, a = 0, b = 0] = m.data ?? [];
             const kind = status & 0xf0;
@@ -533,6 +541,7 @@ export class AudioLayer {
         }
       };
       listen();
+      this.relisten = listen;
       access.onstatechange = () => {
         listen();
         this.refreshOutPorts();

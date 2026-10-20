@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SynthEvent } from "../shared/messages.js";
-import { SoundRouter, midiBytes } from "./router.js";
+import { SoundRouter, isOwnLoopback, midiBytes } from "./router.js";
 
 function setup(external = new Set([3])) {
   const inner = { ctx: { currentTime: 10 }, nowed: [] as SynthEvent[], scheduled: [] as { time: number; ev: SynthEvent }[], panics: 0 };
@@ -48,5 +48,14 @@ describe("MIDI out to another program (H4)", () => {
     unplug();
     router.sched([{ time: 10.1, ev: { kind: "on", ch: 3, note: 48, vel: 80 } }]);
     expect(inner.scheduled).toEqual([]);
+  });
+});
+
+describe("never listen to our own output (loopMIDI feedback, Fran 20/10/2026)", () => {
+  it("recognises the other end of the chosen port, also with a number added", () => {
+    expect(isOwnLoopback("Four Hands", "Four Hands")).toBe(true);
+    expect(isOwnLoopback("four hands 2", "Four Hands")).toBe(true);
+    expect(isOwnLoopback("Arturia KeyLab", "Four Hands")).toBe(false);
+    expect(isOwnLoopback("Four Hands", null)).toBe(false);
   });
 });

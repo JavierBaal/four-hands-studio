@@ -20,6 +20,17 @@ export interface MidiPort {
   send(data: number[], timestamp?: number): void;
 }
 
+/**
+ * Is this MIDI input the other end of our own output? A virtual port (loopMIDI) has the same name
+ * on both sides: listening to it would play back everything we send, send it again, and so on
+ * (loopMIDI then mutes the port). Windows may add a number to a repeated name ("Four Hands 2").
+ */
+export function isOwnLoopback(inputName: string | null | undefined, outName: string | null): boolean {
+  if (!inputName || !outName) return false;
+  const norm = (s: string) => s.trim().toLowerCase().replace(/\s+\d+$/, "");
+  return norm(inputName) === norm(outName);
+}
+
 /** The bytes of an event, or null when it does not go out (program changes, panic). */
 export function midiBytes(ev: SynthEvent): number[] | null {
   switch (ev.kind) {
