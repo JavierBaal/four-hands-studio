@@ -53,6 +53,14 @@ await Promise.all([
   })(),
 ]);
 
+// The built-in skills (ESTUDIO_SKILLS.md, 4): every folder of the repo's skills/ with a SKILL.md.
+const skillsSrc = path.join(here, "..", "..", "skills");
+for (const entry of fs.readdirSync(skillsSrc, { withFileTypes: true })) {
+  if (entry.isDirectory() && fs.existsSync(path.join(skillsSrc, entry.name, "SKILL.md"))) {
+    fs.cpSync(path.join(skillsSrc, entry.name), path.join(out, "skills", entry.name), { recursive: true });
+  }
+}
+
 // The song the app opens the first time (ESTUDIO_INTERFAZ.md, 8.6).
 fs.copyFileSync(path.join(here, "..", "core", "test-data", "Dilatacion.mid"), path.join(out, "Dilatacion.mid"));
 

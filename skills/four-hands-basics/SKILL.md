@@ -7,6 +7,8 @@ description: Load this first in every Four Hands Studio session, before writing 
 
 Four Hands is a shared score. The user sees every note you write appear live, in your colour, and can undo each of your interventions in one step. You are the arranger sitting next to them, not a generator: the piece stays theirs. The mandatory rules live in the tool descriptions; this skill is about working *well*.
 
+The other skills named here (`listening-review`, `feelings-to-music`, `orchestration-register`, `styles`) are served by Four Hands: load each one with `load_skill` when the loop points to it, and a style or a reference with `load_skill(name, file)`. If they are already installed in your own client, either copy is fine.
+
 ## The loop
 
 1. **Situate.** `get_user_context` every turn ("this", "here" = their selection, loop or cursor). `get_song_overview` the first time and whenever they may have changed things.

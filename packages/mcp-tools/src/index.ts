@@ -7,15 +7,15 @@
  *
  * Milestone H3 (the AI's hand): reading, interventions, every write tool of ESQUEMA_MCP.md, 6, and
  * point_to. H3.1 (15/10/2026): the mix (set_mix, mute), remove_track and move_track. H3.2: track colours (color in
- * add_track and update_track). 19/10/2026: analyze (ESTUDIO_SKILLS_COMPOSICION.md, 5). Still to come in H4: summarize, get_changes_since, get_history, get_proposals
- * and withdraw_proposal; list_skills and load_skill arrive with the built-in skills.
+ * add_track and update_track). 19/10/2026: analyze (ESTUDIO_SKILLS_COMPOSICION.md, 5). 20/10/2026: list_skills and load_skill (ESTUDIO_SKILLS.md, 3).
+ * Still to come in H4: summarize, get_changes_since, get_history, get_proposals and withdraw_proposal.
  *
  * No tool composes (ESQUEMA_MCP.md, 8): they read, write, and transform mechanically.
  */
 import { z } from "zod";
 
 /** Bumped whenever a tool, its parameters or its meaning changes. The app refuses other bridges. */
-export const TOOLS_VERSION = 8;
+export const TOOLS_VERSION = 9;
 
 /**
  * Track colours by name (H3.2). The app's palette (desktop/src/shared/track-colors.ts) has the same
@@ -29,6 +29,10 @@ The user sees every change you make, live.
 
 Start of each turn: call get_user_context (and get_song_overview the first time, or when the user
 may have changed the song). "This", "here" and "these bars" refer to the user's selection, loop or cursor.
+
+Four Hands serves skills: craft written down for composing here. At the start of every conversation, before
+you write anything, call load_skill("four-hands-basics"). Then call list_skills and load the ones whose
+description fits what the user asks (a style, a feeling, an arrangement, a review). They are short; load them.
 
 To change the song: begin_intervention with a short description in the user's language, make your edits,
 then end_intervention. One intervention = one undo step for the user.
@@ -157,6 +161,29 @@ export const TOOLS: readonly ToolDefinition[] = [
     inputSchema: {
       range: z.string().optional().describe(`${RANGE_HELP} Default 'all'`),
       tracks: TRACKS,
+    },
+    annotations: readOnly,
+  },
+  {
+    name: "list_skills",
+    title: "List skills",
+    description:
+      "List the skills Four Hands serves: craft for composing here (how to work in the shared score, translating feelings, styles, orchestration, reviewing). " +
+      "Each line gives the name, whether it is built in or the user's own, and when to use it. " +
+      "Call it at the start of a conversation and load with load_skill every skill whose description fits the request. " +
+      "The user's skills win over the built-in ones when they disagree. Read-only.",
+    inputSchema: {},
+    annotations: readOnly,
+  },
+  {
+    name: "load_skill",
+    title: "Load a skill",
+    description:
+      "Load a skill from list_skills and follow it. Without file, returns its instructions and the list of its reference files; " +
+      "with file, returns that reference (load a reference when the instructions point to it, e.g. one style of the atlas). Read-only.",
+    inputSchema: {
+      name: z.string().describe("Skill name from list_skills, e.g. 'four-hands-basics'"),
+      file: z.string().optional().describe("A reference file listed by the skill, e.g. 'references/dark-synth.md'"),
     },
     annotations: readOnly,
   },

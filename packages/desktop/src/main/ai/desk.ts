@@ -69,6 +69,7 @@ import {
 import { NAMED_PROGRAMS, PALETTE } from "../../shared/instruments.js";
 import type { AiClientInfo, AiMark, AiState, AiWriting, PatchMessage, SoundBankInfo } from "../../shared/protocol.js";
 import type { SongSession } from "../session.js";
+import { SkillError, type SkillSource, skillText, skillsFooter, skillsListText } from "./skills.js";
 import { DEFAULT_WINDOW, type WindowInfo, bankText, instrumentsText, mixText, overviewText, paletteItem, spanText, userContextText } from "./texts.js";
 
 export type ToolReply = { ok: true; text: string } | { ok: false; error: string };
@@ -77,6 +78,8 @@ export interface AiDeskOptions {
   /** The open song (it changes when the user opens another one). */
   session: () => SongSession;
   banks?: () => SoundBankInfo[];
+  /** Built-in and user skills (ESTUDIO_SKILLS.md, 3). */
+  skills?: SkillSource;
   now?: () => number;
   /** 5 minutes (ESQUEMA_MCP.md, 5.1). */
   autoCloseMs?: number;
@@ -275,7 +278,8 @@ export class AiDesk {
       chars: reply.ok ? reply.text.length : 0,
       ...(reply.ok ? {} : { error: reply.error }),
     });
-    if (READ_TOOLS.has(tool) && tool !== "point_to") this.showReading(conn.name);
+    // "Reading the song": not for pointing, nor for loading skills, which don't read the song.
+    if (READ_TOOLS.has(tool) && !NOT_READING_THE_SONG.has(tool)) this.showReading(conn.name);
     return reply;
   }
 
@@ -287,6 +291,15 @@ export class AiDesk {
 
   // -------------------------------------------------------------------------
   // Helpers shared by the tools
+
+  private skillList() {
+    try {
+      return this.options.skills?.list() ?? [];
+    } catch (error) {
+      this.options.log?.({ type: "skills_unreadable", error: String(error) });
+      return [];
+    }
+  }
 
   private str(args: Record<string, unknown>, key: string, required = true): string | undefined {
     const v = args[key];
@@ -486,10 +499,13 @@ export class AiDesk {
   // The tools
 
   private readonly handlers: Record<string, (conn: Connection, args: Record<string, unknown>) => string> = {
-    get_song_overview: () =>
-      overviewText(this.song, {
+    get_song_overview: () => {
+      const text = overviewText(this.song, {
         open: [...this.interventions.values()].filter((iv) => !iv.closed).map((iv) => ({ id: iv.id, who: this.nameOf(iv.owner), description: iv.description })),
-      }),
+      });
+      const footer = skillsFooter(this.skillList());
+      return footer ? `${text}\n${footer}` : text;
+    },
 
     get_user_context: (conn) => {
       const mine = this.openOf(conn.client);
@@ -547,6 +563,21 @@ export class AiDesk {
       const wanted = this.str(args, "bank", false);
       if (!wanted) return instrumentsText(banks);
       return bankText(this.bank(wanted, banks));
+    },
+
+    list_skills: () => skillsListText(this.skillList()),
+
+    load_skill: (_conn, args) => {
+      const name = this.str(args, "name")!;
+      const file = this.str(args, "file", false);
+      if (!this.options.skills) throw new MusicError("This copy of Four Hands has no skills");
+      try {
+        const { skill, text } = this.options.skills.load(name, file);
+        return skillText(skill, text, file);
+      } catch (error) {
+        if (error instanceof SkillError) throw new MusicError(error.message);
+        throw error;
+      }
     },
 
     point_to: (conn, args) => {
@@ -1177,7 +1208,8 @@ export class AiDesk {
   }
 }
 
-const READ_TOOLS = new Set(["get_song_overview", "get_user_context", "read_notes", "analyze", "list_instruments", "point_to"]);
+const READ_TOOLS = new Set(["get_song_overview", "get_user_context", "read_notes", "analyze", "list_instruments", "list_skills", "load_skill", "point_to"]);
+const NOT_READING_THE_SONG = new Set(["point_to", "list_skills", "load_skill"]);
 
 function formatPitch(pitch: number): string {
   const names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];

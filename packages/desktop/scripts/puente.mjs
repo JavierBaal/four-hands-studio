@@ -41,8 +41,10 @@ const transport = new StdioClientTransport({ command: process.execPath, args: [b
 const client = new Client({ name: "claude-ai", version: "e2e" });
 await client.connect(transport);
 const tools = (await client.listTools()).tools;
-check("the bridge lists the tools, analyze included", tools.length === 27 && tools.some((t) => t.name === "analyze") && tools.some((t) => t.name === "remove_annotations"), tools.length);
-check("read tools are read-only for Claude's permissions", tools.filter((t) => t.annotations?.readOnlyHint).length === 6);
+check("the bridge lists the tools, analyze and the skills included", tools.length === 29 && ["analyze", "remove_annotations", "list_skills", "load_skill"].every((n) => tools.some((t) => t.name === n)), tools.length);
+check("read tools are read-only for Claude's permissions", tools.filter((t) => t.annotations?.readOnlyHint).length === 8);
+const instructions = client.getInstructions() ?? "";
+check("the server instructions ask to load four-hands-basics first", instructions.includes('load_skill("four-hands-basics")'));
 await win.waitForFunction(() => document.querySelector(".aichip")?.textContent?.includes("Claude conectado"), null, { timeout: 8000 }).catch(() => {});
 check("chip says Claude is connected", (await win.locator(".aichip").innerText()).includes("Claude conectado"));
 
@@ -52,6 +54,13 @@ const call = async (name, args = {}) => {
   if (r.structuredContent) failures.push(`${name} sent structuredContent`);
   return { ok: !r.isError, text };
 };
+
+// --- The skills travel with the app (ESTUDIO_SKILLS.md, 3)
+const skillList = await call("list_skills");
+check("the app serves its built-in skills", skillList.ok && /^- four-hands-basics \(built in\)/m.test(skillList.text) && /- styles \(built in, 3 reference files\)/.test(skillList.text), skillList.text.slice(0, 300));
+const basics = await call("load_skill", { name: "four-hands-basics" });
+const darkSynth = await call("load_skill", { name: "styles", file: "references/dark-synth.md" });
+check("load_skill gives the instructions and the references", basics.ok && /^Skill four-hands-basics \(built in\)\. Follow it\./.test(basics.text) && darkSynth.ok, `${basics.text.slice(0, 120)} / ${darkSynth.text.slice(0, 120)}`);
 
 // --- Route 1: "lee la canción y dime qué le falta al puente"
 const overview = await call("get_song_overview");
@@ -171,7 +180,7 @@ check("bridge.json removed on quit", !fs.existsSync(configFile));
 const logFile = path.join(home, ".config", "Four Hands Studio", "registro-app.jsonl");
 const log = fs.readFileSync(logFile, "utf8");
 const calls = log.split("\n").filter((l) => l.includes('"type":"ai_call"')).map((l) => JSON.parse(l));
-check("every call is in the app's log", calls.length === 21, calls.length);
+check("every call is in the app's log", calls.length === 24, calls.length);
 check("calls answer fast (< 200 ms in the app)", calls.every((c) => c.ms < 200), JSON.stringify(calls.map((c) => c.ms)));
 check("no page errors", errors.length === 0, errors.join("\n"));
 fs.copyFileSync(logFile, path.join(shots, "registro-app.jsonl"));

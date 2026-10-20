@@ -1,5 +1,9 @@
 # Skills de Four Hands
 
+**Desde el 20/10/2026 las sirve la app** (`list_skills` y `load_skill`, herramientas versión 9, extensión 0.3.6). Viajan dentro de Four Hands y Claude las carga solo: `four-hands-basics` al empezar cada conversación y las demás cuando encajan. Ya no hace falta instalarlas en Claude; si las tienes instaladas, bórralas de Customize > Skills para que no haya dos copias. Los ZIP siguen sirviendo para usarlas fuera de Four Hands.
+
+**Tus propias skills:** carpeta `Documentos/Four Hands/Skills`, una carpeta por skill con su `SKILL.md`. Aparecen al momento, sin reiniciar, y si una se llama como una de serie, manda la tuya.
+
 **Versión 2 (20/10/2026)**, tras la prueba de Severance con y sin skills:
 - Descripciones más directas para que se carguen solas: `four-hands-basics` al empezar cualquier sesión, `listening-review` después de cada escritura grande y `orchestration-register` antes de escribir con tres o más pistas.
 - Esbozos cortos antes de construir la pieza entera.

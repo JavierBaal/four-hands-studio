@@ -6,10 +6,12 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { AiState, SoundBankInfo } from "../../shared/protocol.js";
 import { SongSession } from "../session.js";
 import { AiDesk, type ToolReply } from "./desk.js";
+import { SkillLibrary } from "./skills.js";
 import { TRACK_COLOR_NAMES } from "@fourhands/mcp-tools";
 import { TRACK_PALETTE } from "../../shared/track-colors.js";
 
 const DILATACION = path.resolve(__dirname, "../../../../core/test-data/Dilatacion.mid");
+const REPO_SKILLS = path.resolve(__dirname, "../../../../../skills");
 
 let root: string;
 let session: SongSession;
@@ -40,6 +42,7 @@ async function open(file = DILATACION): Promise<void> {
   desk = new AiDesk({
     session: () => session,
     banks: () => BANKS,
+    skills: new SkillLibrary({ builtIn: REPO_SKILLS, user: path.join(root, "Four Hands", "Skills") }),
     now: () => clock,
     setTimer: (fn, ms) => {
       const t = { fn, at: clock + ms, done: false };
@@ -532,5 +535,55 @@ describe("H3.2: track colours", () => {
 
   it("the tool descriptions list the same colour names as the app's palette", () => {
     expect([...TRACK_COLOR_NAMES]).toEqual(TRACK_PALETTE.map((c) => c.id));
+  });
+});
+
+describe("skills served by the app (ESTUDIO_SKILLS.md, 3)", () => {
+  it("list_skills lists the built-in skills, the basics first, and the overview points to them", () => {
+    const text = ok("list_skills");
+    expect(text).toMatch(/^Skills \(\d+\)\. Load with load_skill/);
+    expect(text.split("\n")[1]).toMatch(/^- four-hands-basics \(built in\): /);
+    for (const name of ["feelings-to-music", "listening-review", "orchestration-register", "styles"]) expect(text).toContain(`- ${name} (built in`);
+    expect(text).toMatch(/styles \(built in, 3 reference files\)/);
+    expect(ok("get_song_overview")).toMatch(/\nSkills \(list_skills\): four-hands-basics, .*Load four-hands-basics before you write anything/);
+  });
+
+  it("load_skill returns the instructions without the front matter, and its references on request", () => {
+    const basics = ok("load_skill", { name: "four-hands-basics" });
+    expect(basics).toMatch(/^Skill four-hands-basics \(built in\)\. Follow it\./);
+    expect(basics).not.toMatch(/^---$/m);
+    const styles = ok("load_skill", { name: "Styles" });
+    expect(styles).toContain("Reference files (load_skill with file when the instructions point to them): references/cinematic-hybrid.md, references/dark-synth.md, references/title-experimental.md");
+    expect(ok("load_skill", { name: "styles", file: "references/dark-synth.md" })).toMatch(/^Skill styles, file references\/dark-synth\.md:\n\n# /);
+    expect(ok("load_skill", { name: "styles", file: "dark-synth.md" })).toMatch(/file dark-synth\.md/);
+  });
+
+  it("refuses unknown skills and files outside the skill, saying what there is", () => {
+    expect(fail("load_skill", { name: "jazz" })).toMatch(/^There is no skill 'jazz'\. Skills: four-hands-basics, /);
+    expect(fail("load_skill", { name: "styles", file: "../four-hands-basics/SKILL.md" })).toMatch(/has no file .*Files: references\/cinematic-hybrid\.md/);
+    expect(fail("load_skill", {})).toMatch(/Missing 'name'/);
+    expect(fail("load_skill", { name: "jazz" })).not.toMatch(/Nothing was written/);
+  });
+
+  it("a skill in the user's folder shows up at once and wins over a built-in one with its name", () => {
+    const user = path.join(root, "Four Hands", "Skills");
+    fs.mkdirSync(path.join(user, "mi-armonia"), { recursive: true });
+    fs.writeFileSync(path.join(user, "mi-armonia", "SKILL.md"), "---\nname: mi-armonia\ndescription: Cómo armonizo: nunca dobles la tercera.\n---\n\n# Mi armonía\n\nNunca dobles la tercera.\n");
+    fs.mkdirSync(path.join(user, "styles"), { recursive: true });
+    fs.writeFileSync(path.join(user, "styles", "SKILL.md"), "---\nname: styles\ndescription: Mis estilos.\n---\nSolo los míos.");
+    const text = ok("list_skills");
+    expect(text).toContain("- mi-armonia (the user's): Cómo armonizo: nunca dobles la tercera.");
+    expect(text).toContain("- styles (the user's): Mis estilos.");
+    expect(text).not.toContain("styles (built in");
+    expect(ok("load_skill", { name: "mi-armonia" })).toMatch(/\(the user's\)\. Follow it\.\n\n# Mi armonía/);
+    expect(ok("load_skill", { name: "styles" })).toMatch(/Solo los míos\.$/);
+  });
+
+  it("need no intervention and don't show the AI reading the song", () => {
+    states.length = 0;
+    ok("list_skills");
+    ok("load_skill", { name: "listening-review" });
+    expect(states.every((s) => !s.reading)).toBe(true);
+    expect(logs.at(-1)).toMatchObject({ type: "ai_call", tool: "load_skill", ok: true });
   });
 });

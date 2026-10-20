@@ -13,6 +13,7 @@ import { BRIDGE_CONFIG_FILE, TOOLS_VERSION, bridgeConfigDir } from "@fourhands/m
 import { type Lang, langFrom, translator } from "../shared/i18n.js";
 import { CH, NO_AI, type MenuAction, type Request, type ViewInfo } from "../shared/protocol.js";
 import { AiDesk } from "./ai/desk.js";
+import { SkillLibrary } from "./ai/skills.js";
 import { AiServer } from "./ai/server.js";
 import { connectClaude, findMcpb } from "./ai/connect.js";
 import { type SessionOptions, SongSession } from "./session.js";
@@ -78,6 +79,8 @@ function findSoundFont(): string | null {
 
 /** Where the user puts more sound banks. */
 const soundsDir = () => path.join(songsDir(), "Sonidos");
+/** The user's skills (ESTUDIO_SKILLS.md, 6); the built-in ones travel with the app. */
+const userSkillsDir = () => path.join(songsDir(), "Skills");
 
 function makeLibrary(): SoundLibrary {
   const extra = [projectRoot && path.join(projectRoot, "recursos", "soundfonts"), path.join(repoRoot, "recursos", "soundfonts"), soundFontPath && path.dirname(soundFontPath)].filter(
@@ -280,9 +283,15 @@ function buildMenu(): void {
 // The AI (H3): the desk answers the tools, the server carries them from the bridges.
 
 async function startAi(): Promise<void> {
+  try {
+    fs.mkdirSync(userSkillsDir(), { recursive: true });
+  } catch (error) {
+    appendLog({ type: "skills_folder_failed", error: (error as Error).message });
+  }
   desk = new AiDesk({
     session: () => songs!,
     banks: () => library?.list() ?? [],
+    skills: new SkillLibrary({ builtIn: path.join(here, "skills"), user: userSkillsDir() }),
     onState: (state) => win?.webContents.send(CH.aiState, state),
     log: appendLog,
   });
