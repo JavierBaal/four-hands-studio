@@ -461,6 +461,24 @@ await page.keyboard.press("Enter");
 await settle();
 const note = Object.values((await song()).annotations)[0];
 check("annotation", note && note.text === "más aire" && note.start === 7 * BAR, JSON.stringify(note));
+// Annotations live in their own ruler, in lanes: never on top of each other or of the sections (20/10/2026).
+check("annotation ruler shows", await page.locator(".rrow.notes .anote", { hasText: "más aire" }).count() === 1);
+await page.evaluate((bar) => window.fhTest.replica.run("x", [
+  { type: "addAnnotation", spec: { start: 7 * bar, end: 9 * bar, trackIds: [], text: "una nota larga que se cruza con la otra" } },
+  { type: "addAnnotation", spec: { start: 7 * bar + 960, end: 8 * bar, trackIds: [], text: "y otra más" } },
+]), BAR);
+await settle();
+const boxes = await page.locator(".rrow.notes .anote").evaluateAll((els) => els.map((e) => e.getBoundingClientRect()).map((r) => ({ l: r.left, r: r.right, t: r.top, b: r.bottom })));
+const overlap = boxes.some((a, i) => boxes.some((b, j) => i !== j && a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b));
+check("annotations never overlap", boxes.length === 3 && !overlap, JSON.stringify(boxes));
+const secBox = await page.locator(".rrow.form").boundingBox();
+check("annotations are off the form ruler", boxes.every((b) => b.t >= secBox.y + secBox.height - 1));
+await page.evaluate(() => {
+  const s = window.fhTest.replica.song;
+  const extra = Object.values(s.annotations).filter((a) => a.text !== "más aire").map((a) => ({ type: "removeAnnotation", id: a.id }));
+  return window.fhTest.replica.run("x", extra);
+});
+await settle();
 
 // 23. Chords: the empty state's button types at the cursor's bar; Tab goes on to the next bar.
 const barsNow = await page.locator(".rrow.bars").boundingBox(); // the empty rulers are taller

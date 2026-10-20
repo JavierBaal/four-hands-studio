@@ -13,7 +13,8 @@ import { type RollView, yToPitch } from "../roll/geometry.js";
 import { type Editor, modKey } from "../editor.js";
 import type { AudioLayer } from "../audio-layer.js";
 import { AiOverlay } from "./AiPresence.js";
-import { BarRuler, FormRuler, HarmonyRuler } from "./Rulers.js";
+import { AnnotationRuler, BarRuler, FormRuler, HarmonyRuler, NOTE_LANE, annotationLanes, hasAnnotationRuler } from "./Rulers.js";
+import { useActions } from "../context.js";
 import { CURSORS } from "../cursors.js";
 
 export interface RollAreaProps {
@@ -177,7 +178,10 @@ export function RollArea({ v, editor, audio, playhead, onResize, onWheel, onKeyP
 
   const formEmpty = Object.keys(song.sections).length === 0;
   const harmonyEmpty = Object.keys(song.harmony).length === 0;
-  const rows = `${formEmpty ? 30 : 24}px ${harmonyEmpty ? 30 : 24}px 24px minmax(0, 1fr) 64px`;
+  const actionsForNotes = useActions();
+  const notesShown = hasAnnotationRuler(song, actionsForNotes.typing?.kind === "annotation");
+  const notesHeight = 6 + NOTE_LANE * annotationLanes(song, v);
+  const rows = `${formEmpty ? 30 : 24}px ${notesShown ? `${notesHeight}px ` : ""}${harmonyEmpty ? 30 : 24}px 24px minmax(0, 1fr) 64px`;
   const from = barAt(song.meter, v.startTick);
   const to = barAt(song.meter, v.startTick + v.width / v.pxPerTick);
 
@@ -189,6 +193,16 @@ export function RollArea({ v, editor, audio, playhead, onResize, onWheel, onKeyP
       <div className="rrow form" style={{ height: "auto" }}>
         <FormRuler song={song} v={v} t={t} />
       </div>
+      {notesShown && (
+        <>
+          <div className="rlab" style={{ height: "auto" }}>
+            {t("annotationsRuler")}
+          </div>
+          <div className="rrow notes" style={{ height: "auto" }}>
+            <AnnotationRuler song={song} v={v} t={t} />
+          </div>
+        </>
+      )}
       <div className="rlab" style={{ height: "auto" }}>
         {t("harmony")}
       </div>
