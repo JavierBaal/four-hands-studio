@@ -27,6 +27,7 @@ function historyText(t: Translate, h: HistoryEntry): { who: string; what: string
   const who = ai ? t("aiName") : t("you");
   if (h.kind === "undo") return { who, what: t("undid", { label: h.label }), ai };
   if (h.kind === "redo") return { who, what: t("redid", { label: h.label }), ai };
+  if (h.kind === "propose") return { who, what: t("proposedHist", { label: h.label }), ai };
   return { who, what: h.label, ai };
 }
 

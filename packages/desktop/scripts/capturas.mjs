@@ -53,6 +53,24 @@ async function aiIntervention(page) {
   await page.waitForTimeout(400);
 }
 
+/** Proposal mode (H4): Claude's counter-line on the active track, c. 21–22, ends as a proposal. */
+async function aiProposal(page) {
+  await page.evaluate((bar) => {
+    const doc = window.fhTest.ai.doc;
+    const claude = { by: "ai", client: "claude-ai" };
+    const t = doc.song.context.activeTrackId ?? doc.song.trackOrder[0];
+    doc.transact({ actor: claude, label: "Respuesta a la melodía, c. 21–22", group: "i8" }, (tx) => {
+      [76, 74, 72, 71, 69].forEach((pitch, i) => {
+        const id = `n${9100 + i}`;
+        tx.set(["notes", id], { id, trackId: t, pitch, start: 20 * bar + 1920 + i * 960, duration: 900, velocity: 70, createdBy: claude, shapedBy: claude });
+      });
+    });
+    doc.closeGroup("i8");
+    doc.liftLastStep("i8");
+  }, BAR);
+  await page.waitForTimeout(400);
+}
+
 /** The active track gets a crescendo over c. 17–20 and a swell on the long note of c. 23–24. */
 async function expressionCurve(page) {
   await page.evaluate((bar) => {
@@ -244,6 +262,32 @@ export const SHOTS = [
     await page.waitForSelector(".skillspanel .skill");
     await page.locator('.skillspanel [data-tone="gentle"]').click();
     await page.waitForTimeout(200);
+  } },
+  // H4 (26/10/2026): proposal mode, off by default. The setting, the proposal bar and its notes.
+  { name: "propuesta_ajuste", q: `?song=boceto&ai=conectada&view=${sketchView(1440 - 288 - 72, 12)}`, act: async (page) => {
+    await page.locator(".askmanage").click();
+    await page.waitForSelector(".skillspanel .skill");
+    await page.locator('.skillspanel [data-apply="proposal"]').click();
+    await page.waitForTimeout(200);
+  } },
+  { name: "propuesta_barra", q: `?song=boceto&ai=conectada&view=${sketchView(1440 - 288 - 72, 12)}`, act: aiProposal },
+  { name: "propuesta_sin", q: `?song=boceto&ai=conectada&view=${sketchView(1440 - 288 - 72, 12)}`, act: async (page) => {
+    await aiProposal(page);
+    await page.keyboard.press("b");
+    await page.waitForTimeout(200);
+  } },
+  { name: "propuesta_desactualizada", q: `?song=boceto&ai=conectada&view=${sketchView(1440 - 288 - 72, 12)}`, act: async (page) => {
+    await page.evaluate(() => {
+      const doc = window.fhTest.ai.doc;
+      const claude = { by: "ai", client: "claude-ai" };
+      const t = doc.song.context.activeTrackId ?? doc.song.trackOrder[0];
+      const first = Object.values(doc.song.notes).filter((n) => n.trackId === t).sort((a, b) => a.start - b.start)[0];
+      doc.transact({ actor: claude, label: "Más presencia en la melodía", group: "i9" }, (tx) => tx.set(["notes", first.id, "velocity"], 110));
+      doc.closeGroup("i9");
+      doc.liftLastStep("i9");
+      window.fhTest.replica.run("x", [{ type: "updateNotes", changes: [{ id: first.id, velocity: 60 }] }]);
+    });
+    await page.waitForTimeout(400);
   } },
   // H4 (20/10/2026): expression and modulation lanes next to Velocidad and Pedal.
   { name: "curvas_expresion", q: `?song=boceto&view=${view({ lane: "expression", startTick: 16 * BAR, pxPerTick: (1440 - 288 - 72) / 12 / BAR, scrollY: (127 - 86) * 15 })}`, act: expressionCurve },

@@ -834,7 +834,7 @@ await settle();
 check("opinions are direct by default", (await page.locator('.skillspanel [data-tone="direct"][aria-checked="true"]').count()) === 1);
 await page.locator('.skillspanel [data-tone="gentle"]').click();
 await settle();
-check("with tact is chosen and kept", (await page.evaluate(() => window.fhTest.ai.aiTone())) === "gentle" && /empieza por lo que funciona/.test(await page.locator(".skillspanel .tonebox").innerText()));
+check("with tact is chosen and kept", (await page.evaluate(() => window.fhTest.ai.aiTone())) === "gentle" && /empieza por lo que funciona/.test(await page.locator(".skillspanel .tonebox").first().innerText()));
 await page.locator('.skillspanel [data-tone="direct"]').click();
 await page.keyboard.press("Escape");
 await settle();
@@ -901,6 +901,49 @@ check("a key change from the bar numbers shows on the Key ruler", ((await song()
 await page.keyboard.press("Control+z");
 await settle();
 check("undo removes the key change", ((await song()).keyChanges ?? []).length === 0 && (await page.locator(".rrow.keys").count()) === 0);
+
+// 31. Proposal mode (H4): the setting, the bar, its notes, Con / Sin, Aceptar and Descartar.
+await page.keyboard.press("Escape");
+const propose = async (group, label) => {
+  await page.evaluate(([g, l]) => {
+    const doc = window.fhTest.ai.doc;
+    const claude = { by: "ai", client: "claude-ai" };
+    const t = doc.song.context.activeTrackId ?? doc.song.trackOrder[0];
+    doc.transact({ actor: claude, label: l, group: g }, (tx) => {
+      const id = `n${doc.song.counters.n++}`;
+      tx.set(["notes", id], { id, trackId: t, pitch: 79, start: 3840, duration: 900, velocity: 70, createdBy: claude, shapedBy: claude });
+    });
+    doc.closeGroup(g);
+    doc.liftLastStep(g);
+  }, [group, label]);
+  await settle();
+};
+const g5 = () => Object.values(window.fhTest?.replica?.song?.notes ?? {});
+void g5;
+const has79 = async () => (await page.evaluate(() => Object.values(window.fhTest.replica.song.notes).some((n) => n.pitch === 79 && n.start === 3840)));
+await propose("i90", "Una nota arriba");
+check("the proposal bar shows, the note is not in the song", (await page.locator(".propbar").count()) === 1 && !(await has79()));
+check("the proposal is heard by default", (await page.evaluate(() => window.fhTest.audio.proposalListen)) === "with");
+await page.keyboard.press("b");
+await page.waitForTimeout(150);
+check("B plays the song without the proposal", (await page.evaluate(() => window.fhTest.audio.proposalListen)) === "without");
+await page.locator(".propbar .btn.pri").click();
+await settle();
+check("Aceptar puts it in the song as the user's step", (await has79()) && (await page.locator(".propbar").count()) === 0);
+await page.keyboard.press("Control+z");
+await settle();
+await propose("i91", "Otra nota arriba");
+await page.locator(".propbar .btn", { hasText: /^Descartar$/ }).click();
+await settle();
+check("Descartar drops it and leaves the song", !(await has79()) && (await page.locator(".propbar").count()) === 0);
+await page.locator(".askmanage").click().catch(() => {});
+const hasPanel = (await page.locator(".skillspanel").count()) === 1;
+if (hasPanel) {
+  await page.locator('.skillspanel [data-apply="proposal"]').click();
+  await page.waitForTimeout(100);
+  check("Tu IA > Lo que escribe: como propuesta", (await page.evaluate(() => window.fhTest.ai.aiApply())) === "proposal");
+  await page.keyboard.press("Escape");
+}
 
 console.log(`${passed} passed, ${failures.length} failed`);
 for (const f of failures) console.log("FAIL", f);

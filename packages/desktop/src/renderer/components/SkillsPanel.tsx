@@ -9,7 +9,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import type { Strings } from "../../shared/i18n.js";
-import type { AiTone, SkillCardInfo } from "../../shared/protocol.js";
+import type { AiApply, AiTone, SkillCardInfo } from "../../shared/protocol.js";
 import { useActions, useAi, useApp } from "../context.js";
 
 /** The built-in skills have a title and a description in the user's language. */
@@ -27,6 +27,7 @@ export function SkillsPanel() {
   const ref = useRef<HTMLDivElement>(null);
   const [skills, setSkills] = useState<SkillCardInfo[] | null>(null);
   const [tone, setTone] = useState<AiTone | null>(null);
+  const [apply, setApply] = useState<AiApply | null>(null);
   const open = actions.skillsPanel;
 
   useEffect(() => {
@@ -34,8 +35,10 @@ export function SkillsPanel() {
   }, [open, actions.skillsVersion]);
   useEffect(() => {
     if (open) void bridge.aiTone().then(setTone);
+    if (open) void bridge.aiApply().then(setApply);
   }, [open]);
   const pickTone = (next: AiTone) => void bridge.setAiTone(next).then(setTone);
+  const pickApply = (next: AiApply) => void bridge.setAiApply(next).then(setApply);
 
   useEffect(() => {
     if (!open) return;
@@ -73,6 +76,19 @@ export function SkillsPanel() {
         </div>
         <p className="skdesc">{tone === "gentle" ? t("toneGentleHint") : t("toneDirectHint")}</p>
         <p className="skdesc toneall">{t("toneAlways")}</p>
+      </div>
+      <div className="tonebox">
+        <div className="toneh">
+          <span className="sech">{t("applyTitle")}</span>
+          <div className="seg" role="radiogroup" aria-label={t("applyTitle")}>
+            {(["direct", "proposal"] as const).map((v) => (
+              <button key={v} role="radio" aria-checked={apply === v} className={apply === v ? "segb on" : "segb"} onClick={() => pickApply(v)} data-apply={v}>
+                {v === "direct" ? t("applyDirect") : t("applyProposal")}
+              </button>
+            ))}
+          </div>
+        </div>
+        <p className="skdesc">{apply === "proposal" ? t("applyProposalHint") : t("applyDirectHint")}</p>
       </div>
       <span className="sech skh">{t("skillsSection")}</span>
       <p className="skintro">{t("skillsIntro")}</p>

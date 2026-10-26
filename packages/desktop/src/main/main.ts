@@ -11,7 +11,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { BRIDGE_CONFIG_FILE, TOOLS_VERSION, bridgeConfigDir } from "@fourhands/mcp-tools";
 import { type Lang, langFrom, translator } from "../shared/i18n.js";
-import { type AiTone, CH, DEFAULT_AI_TONE, NO_AI, type MenuAction, type Request, type SkillImportResult, type ViewInfo } from "../shared/protocol.js";
+import { type AiApply, type AiTone, CH, DEFAULT_AI_APPLY, DEFAULT_AI_TONE, NO_AI, type MenuAction, type Request, type SkillImportResult, type ViewInfo } from "../shared/protocol.js";
 import { AiDesk } from "./ai/desk.js";
 import { SkillImportError, SkillLibrary, importSkillZip } from "./ai/skills.js";
 import { AiServer } from "./ai/server.js";
@@ -54,11 +54,14 @@ interface Settings {
   disabledSkills?: string[];
   /** Tu IA > Opiniones (H4): how the AI gives its opinions. */
   aiTone?: AiTone;
+  /** Tu IA > Lo que escribe (H4): straight in, or as a proposal the user accepts. */
+  aiApply?: AiApply;
   /** MIDI out (H4): the port for the tracks that sound in another program. */
   midiOutPort?: string | null;
 }
 
 const aiTone = (): AiTone => (readSettings().aiTone === "gentle" ? "gentle" : DEFAULT_AI_TONE);
+const aiApply = (): AiApply => (readSettings().aiApply === "proposal" ? "proposal" : DEFAULT_AI_APPLY);
 
 function readSettings(): Settings {
   try {
@@ -307,6 +310,7 @@ async function startAi(): Promise<void> {
     skills: skills!,
     onState: (state) => win?.webContents.send(CH.aiState, state),
     tone: aiTone,
+    apply: aiApply,
     log: appendLog,
   });
   aiServer = new AiServer({
@@ -471,6 +475,14 @@ function registerIpc(): void {
     const next: AiTone = tone === "gentle" ? "gentle" : "direct";
     writeSettings({ aiTone: next });
     appendLog({ type: "ai_tone", tone: next });
+    return next;
+  });
+  // Tu IA > Lo que escribe.
+  ipcMain.handle(CH.aiApply, () => aiApply());
+  ipcMain.handle(CH.aiApplySet, (_e, mode: string) => {
+    const next: AiApply = mode === "proposal" ? "proposal" : "direct";
+    writeSettings({ aiApply: next });
+    appendLog({ type: "ai_apply", mode: next });
     return next;
   });
   // Con / Sin: the song without the last AI intervention, only to listen to it.

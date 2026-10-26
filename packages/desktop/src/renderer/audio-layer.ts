@@ -3,6 +3,7 @@
  * 8.2), Web MIDI input and recording (ESPEC, 8). Recording is a take: everything played goes in
  * as one command at the end, so the whole take undoes in one step, and it is never quantized.
  */
+import { currentProposal, songWithProposal } from "./proposals.js";
 import { type Note, type PedalSpan, type Song, PPQ, barAt, barStart, orderedSections } from "@fourhands/core";
 import type { Strings, Translate } from "../shared/i18n.js";
 import { Engine } from "../audio/engine.js";
@@ -66,6 +67,12 @@ export class AudioLayer {
   compare: "with" | "without" = "with";
   private before: { revision: number; song: Song } | null = null;
   /**
+   * Proposal mode (H4): hear the pending proposal ("with", the default when one arrives) or the song
+   * as it is ("without"). The proposal is not in the song until the user accepts it.
+   */
+  proposalListen: "with" | "without" = "with";
+  private proposalSeen: string | null = null;
+  /**
    * MIDI out (H4): tracks set to "Studio One" send their MIDI through this port instead of
    * sounding here. `outPorts` lists what the system offers; `outName` is the user's choice.
    */
@@ -95,6 +102,14 @@ export class AudioLayer {
       // Anything new on top of the AI's step: back to the song as it is.
       const last = this.replica.undo.lastAi;
       if (this.before && last?.revision !== this.before.revision) this.resetCompare();
+      // A new proposal is heard at once; when it goes, the song plays as it is.
+      const p = currentProposal(this.replica.undo.proposals);
+      if ((p?.id ?? null) !== this.proposalSeen) {
+        this.proposalSeen = p?.id ?? null;
+        this.proposalListen = "with";
+        this.player.setup();
+        this.changed();
+      }
       const sig = this.replica.song.trackOrder.map((id) => {
         const tr = this.replica.song.tracks[id];
         return tr ? `${tr.channel}:${tr.program}:${tr.volume}:${tr.pan}:${tr.reverb ?? 0}:${tr.sound ? `${tr.sound.bank}/${tr.sound.bankMSB}/${tr.sound.program}` : ""}` : "";
@@ -136,7 +151,21 @@ export class AudioLayer {
   /** What plays: the song, or the song without the last AI intervention (with the current loop and cursor). */
   private heard(): Song {
     const song = this.replica.song;
+    const p = currentProposal(this.replica.undo.proposals);
+    if (p && !p.stale && this.proposalListen === "with") {
+      const withIt = songWithProposal(song, p);
+      if (withIt) return { ...withIt, context: song.context };
+    }
     return this.compare === "without" && this.before ? { ...this.before.song, context: song.context } : song;
+  }
+
+  /** The proposal bar's Con / Sin (and B while it shows). */
+  setProposalListen(mode: "with" | "without"): void {
+    if (mode === this.proposalListen) return;
+    this.proposalListen = mode;
+    this.player.setup();
+    this.bridge.log({ type: "compare_proposal", mode });
+    this.changed();
   }
 
   /** B, or the Con / Sin buttons: hear the song with or without the last AI intervention. */
@@ -160,6 +189,8 @@ export class AudioLayer {
   }
 
   toggleCompare(): void {
+    const p = currentProposal(this.replica.undo.proposals);
+    if (p && !p.stale) return this.setProposalListen(this.proposalListen === "with" ? "without" : "with");
     void this.setCompare(this.compare === "with" ? "without" : "with");
   }
 

@@ -336,6 +336,9 @@ input.inline.mixval { height: 16px; padding: 0 2px; font-size: 10px; text-align:
 .cmpbar .cmpclose { color: var(--ai-text-2); background: transparent; border-color: transparent; }
 .cmpbar .cmpclose:hover { background: var(--ai-surface-2); color: var(--ai-text); }
 .cmpbar.sin .pmeta { color: var(--ai-text); }
+/* H4, proposal mode: the proposal bar of sketches 01 and 07 (Aceptar primary, Descartar secondary). */
+.propbar .pmore { color: var(--ai-text-2); font-size: 12px; }
+.propbar.stale .pmeta { color: var(--ai-text); }
 .pflag { position: absolute; top: 8px; z-index: 4; display: flex; align-items: center; gap: 8px; max-width: 360px; box-sizing: border-box; background: var(--ai-surface-2); border: 1px solid var(--author-ai); border-radius: 8px; padding: 6px 10px; color: var(--ai-text); font-size: 12px; box-shadow: 0 6px 16px rgba(0, 0, 0, .3); }
 .pflag > span { min-width: 0; }
 .edge { position: absolute; right: 0; top: 44px; z-index: 4; display: flex; align-items: center; gap: 6px; background: var(--ai-surface-2); border: 1px solid var(--ai-line); border-right: 0; border-radius: 8px 0 0 8px; padding: 6px 10px; color: var(--ai-text); font: inherit; font-size: 12px; cursor: pointer; }

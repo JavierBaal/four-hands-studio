@@ -28,7 +28,7 @@ function who(a: Authorship, aiName: (client: string) => string): string {
 }
 
 export function historyLine(h: HistoryEntry, aiName: (client: string) => string = (c) => c): string {
-  const what = h.kind === "undo" ? `undid: ${h.label}` : h.kind === "redo" ? `redid: ${h.label}` : h.label;
+  const what = h.kind === "undo" ? `undid: ${h.label}` : h.kind === "redo" ? `redid: ${h.label}` : h.kind === "propose" ? `proposed (left the song until accepted): ${h.label}` : h.label;
   return `r${h.revision} ${who(h.actor, aiName)} · ${what}`;
 }
 

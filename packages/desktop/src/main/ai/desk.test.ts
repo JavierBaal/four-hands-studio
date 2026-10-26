@@ -36,6 +36,7 @@ const BANKS: SoundBankInfo[] = [
 ];
 
 let tone: "direct" | "gentle" = "direct";
+let apply: "direct" | "proposal" = "direct";
 
 async function open(file = DILATACION): Promise<void> {
   session = await SongSession.open(
@@ -59,6 +60,7 @@ async function open(file = DILATACION): Promise<void> {
     clearTimer: (t) => ((t as { done: boolean }).done = true),
     onState: (s) => states.push(s),
     tone: () => tone,
+    apply: () => apply,
     log: (e) => logs.push(e),
   });
   desk.connect("c1", "claude-ai");
@@ -99,6 +101,7 @@ beforeEach(async () => {
   timers = [];
   states = [];
   logs = [];
+  apply = "direct";
   await open();
 });
 
@@ -641,6 +644,44 @@ describe("H3.1: the mix and the track list", () => {
     ok("add_notes", { intervention_id: second, track: cello, notes: "G2 1.4 1/4" });
     ok("end_intervention", { intervention_id: second });
     expect(logs.find((l) => l.type === "ai_intervention_closed" && l.id === second)).toMatchObject({ corrects: [{ id: first, notes: 2 }] });
+  });
+
+  it("proposal mode (H4): the intervention leaves the song when it ends, and comes back when the user accepts it", () => {
+    apply = "proposal";
+    const cello = trackByName("cello").id;
+    const before = Object.keys(session.song.notes).length;
+    const id = begin("Contracanto");
+    ok("add_notes", { intervention_id: id, track: cello, notes: "C3 1.1 1/4\nD3 1.2 1/4" });
+    expect(Object.keys(session.song.notes)).toHaveLength(before + 2);
+    expect(ok("end_intervention", { intervention_id: id })).toMatch(/it left the song and waits/);
+    expect(Object.keys(session.song.notes)).toHaveLength(before);
+    expect(session.document.proposals.map((p) => p.id)).toEqual([id]);
+    expect(ok("get_user_context")).toMatch(new RegExp(`Changes: as proposals[\\s\\S]*Pending proposals: ${id} "Contracanto"`));
+    expect(logs.find((l) => l.type === "ai_intervention_closed" && l.id === id)).toMatchObject({ proposal: true });
+    expect(session.handle({ type: "acceptProposal", id, label: "aceptaste la propuesta: Contracanto" }).ok).toBe(true);
+    expect(Object.keys(session.song.notes)).toHaveLength(before + 2);
+    expect(session.history.at(-1)).toMatchObject({ actor: { by: "user" }, author: { by: "ai", client: "claude-ai" } });
+    expect(ok("get_user_context")).not.toMatch(/Pending proposals/);
+  });
+
+  it("proposal mode: a discarded proposal never touches the song; a stale one cannot be accepted", () => {
+    apply = "proposal";
+    const cello = trackByName("cello").id;
+    const first = notesOf(session.song, cello)[0]!;
+    const id = begin("Más fuerte");
+    ok("shape_velocities", { intervention_id: id, range: "all", tracks: [cello], velocity: 110 });
+    ok("end_intervention", { intervention_id: id });
+    const rev = session.song.revision;
+    expect(session.handle({ type: "discardProposal", id }).ok).toBe(true);
+    expect(session.song.revision).toBe(rev);
+    expect(session.document.proposals).toHaveLength(0);
+    // Again, and this time the user edits a note it touches.
+    const id2 = begin("Más fuerte otra vez");
+    ok("shape_velocities", { intervention_id: id2, range: "all", tracks: [cello], velocity: 110 });
+    ok("end_intervention", { intervention_id: id2 });
+    session.run("muevo", [{ type: "moveNotes", ids: [first.id], semitones: 1 }]);
+    expect(session.document.proposals[0]!.stale).toBe(true);
+    expect(session.handle({ type: "acceptProposal", id: id2, label: "x" })).toMatchObject({ ok: false });
   });
 
   it("set_mix rejects the whole call when a line is wrong", () => {
