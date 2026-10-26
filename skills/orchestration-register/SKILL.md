@@ -56,6 +56,15 @@ Below these pitches the interval stops sounding as harmony and becomes a muddy b
 - Doubling a whole passage in octaves across many instruments sounds like a wall. Save full octave doublings for the one moment that should hit hardest.
 - In a big tutti, don't double the 3rd of the chord in the bass; double roots and 5ths.
 
+## 4b. Depth
+
+Register and pan place a part up and down and left and right; the reverb send (`set_mix 't2 rev 30'`) places it near or far.
+
+- **Far for what holds, near for what moves.** Pads, string sections, choir and slow solo lines take more reverb (around 25–45); bass, drums, piano ostinatos and fast figures stay drier (0–15), or they blur.
+- **One room.** Give related parts similar values so they sound in the same space; a single very wet part sounds pasted on.
+- **The front voice slightly drier than its accompaniment**, so it stays close to the listener.
+- Tracks that sound in the user's DAW get the same send; their own reverb may already be on there. Ask before adding much.
+
 ## 5. Density across the piece
 
 - Arrangements breathe by adding and removing layers. Plan an arc: which layers enter where, which drop out before the climax so the climax has somewhere to go.

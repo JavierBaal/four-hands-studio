@@ -27,7 +27,7 @@ Emotional orchestral score and orchestra subverted by electronics: drama, scienc
 - **Two fake climaxes in a short piece:** one rise, one peak.
 - **Everything in the middle register:** organ pad + piano + violas + choir + horns in the same octave and a half. Spread the layers.
 - **Church organ as permanent glue:** it turns sci-fi into a hymn. Use strings that breathe; keep organ for a specific moment.
-- **Programmed dynamics:** straight velocity ramps and every track at the same volume. Shape phrases and set a real mix (violins left, cellos and basses right, timpani and choir centre is a classic seating).
+- **Programmed dynamics:** straight velocity ramps and every track at the same volume. Shape phrases and set a real mix (violins left, cellos and basses right, timpani and choir centre is a classic seating), with depth from the reverb send: strings and choir further back, basses and percussion drier.
 
 ## How users ask for it
 

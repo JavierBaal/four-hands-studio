@@ -66,8 +66,14 @@ describe("schedule", () => {
     expect(ev.map((e) => (e.ev as { note: number }).note)).toEqual([84, 77, 77, 77]);
   });
 
-  it("prepares programs, volume and pan", () => {
+  it("prepares programs, volume, pan and reverb", () => {
     expect(setupEvents(song().song)).toContainEqual({ kind: "prog", ch: 1, prog: 42, bank: 0 });
+    // Reverb send (CC91): 0 when the track has none, so it goes back to dry.
+    expect(setupEvents(song().song)).toContainEqual({ kind: "cc", ch: 1, cc: 91, value: 0 });
+    const doc = song();
+    doc.transact({ actor: USER, label: "r" }, (tx) => updateTrack(tx, "t1", { reverb: 0.5 }));
+    const ch = doc.song.tracks.t1!.channel;
+    expect(setupEvents(doc.song)).toContainEqual({ kind: "cc", ch, cc: 91, value: 64 });
     // A track that plays a preset of an installed bank sends that bank's select and preset instead.
     const custom = setupEvents(song().song, (t) => (t.channel === 1 ? { bank: 20, prog: 2 } : null));
     expect(custom).toContainEqual({ kind: "prog", ch: 1, prog: 2, bank: 20 });

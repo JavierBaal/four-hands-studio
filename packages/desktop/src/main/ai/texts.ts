@@ -54,9 +54,10 @@ export function panText(pan: number): string {
   return v === 0 ? "C" : v < 0 ? `L${-v}` : `R${v}`;
 }
 
-/** "mix vol 80 pan L30" or "mix vol 80 pan C muted". */
+/** "mix vol 80 pan L30", "mix vol 80 pan C rev 30" or "mix vol 80 pan C muted" (no reverb: no "rev"). */
 export function mixText(track: Track): string {
-  return `mix vol ${Math.round(track.volume * 100)} pan ${panText(track.pan)}${track.mute ? " muted" : ""}`;
+  const rev = track.reverb ? ` rev ${Math.round(track.reverb * 100)}` : "";
+  return `mix vol ${Math.round(track.volume * 100)} pan ${panText(track.pan)}${rev}${track.mute ? " muted" : ""}`;
 }
 
 function bars(from: number, to: number): string {

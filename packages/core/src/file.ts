@@ -51,6 +51,7 @@ const track = z.object({
   channel: int.min(0).max(15),
   volume: z.number().min(0).max(1),
   pan: z.number().min(-1).max(1),
+  reverb: z.number().min(0).max(1).optional(),
   mute: z.boolean(),
   solo: z.boolean(),
   color: int.min(0),

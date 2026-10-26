@@ -15,7 +15,7 @@
 import { z } from "zod";
 
 /** Bumped whenever a tool, its parameters or its meaning changes. The app refuses other bridges. */
-export const TOOLS_VERSION = 13;
+export const TOOLS_VERSION = 14;
 
 /**
  * Track colours by name (H3.2). The app's palette (desktop/src/shared/track-colors.ts) has the same
@@ -116,7 +116,7 @@ export const TOOLS: readonly ToolDefinition[] = [
     title: "Song overview",
     description:
       "Read the overview of the song open in Four Hands Studio: title, tempo, meter, key, length, form (sections with bars), " +
-      "tracks (id, instrument, sound, mix: volume, pan and mute; range, note count, average velocity, share by author), " +
+      "tracks (id, instrument, sound, mix: volume, pan, reverb and mute; range, note count, average velocity, share by author), " +
       "harmony per bar, annotations and current revision. " +
       "Small on purpose: call it first. Read-only.",
     inputSchema: {},
@@ -517,7 +517,7 @@ export const TOOLS: readonly ToolDefinition[] = [
     name: "update_track",
     title: "Change a track",
     description:
-      "Change a track's name, instrument, installed sound, volume (0-100), pan (-100 left to 100 right), mute or colour. " +
+      "Change a track's name, instrument, installed sound, volume (0-100), pan (-100 left to 100 right), reverb (0 dry to 100), mute or colour. " +
       "sound: 'bank file / sound name', or 'default' to go back to the built-in sound. " +
       "To balance several tracks at once, use set_mix. The current mix is in get_song_overview.",
     inputSchema: {
@@ -528,6 +528,7 @@ export const TOOLS: readonly ToolDefinition[] = [
       sound: z.string().optional(),
       volume: z.number().min(0).max(100).optional(),
       pan: z.number().min(-100).max(100).optional(),
+      reverb: z.number().min(0).max(100).optional().describe("Reverb send: 0 dry, more sounds further away"),
       mute: z.boolean().optional().describe("Silence the whole track (an arrangement decision)"),
       color: z.string().optional().describe(COLOR_HELP),
     },
@@ -537,9 +538,11 @@ export const TOOLS: readonly ToolDefinition[] = [
     name: "set_mix",
     title: "Balance the mix",
     description:
-      "Set volume, pan and mute of several tracks in one step, one track per line: the track (id or name), then any of " +
-      "'vol 70' (0-100), 'pan -30' (-100 left to 100 right; also 'pan L30', 'pan R20', 'pan C'), 'mute' or 'unmute'. " +
-      "E.g. 't1 vol 65 pan -40', 'Violines vol 80 pan L25', 'Bateria mute'. Read the current mix in get_song_overview first. " +
+      "Set volume, pan, reverb and mute of several tracks in one step, one track per line: the track (id or name), then any of " +
+      "'vol 70' (0-100), 'pan -30' (-100 left to 100 right; also 'pan L30', 'pan R20', 'pan C'), 'rev 30' (reverb send, 0 dry to 100), 'mute' or 'unmute'. " +
+      "E.g. 't1 vol 65 pan -40', 'Violines vol 80 pan L25 rev 35', 'Bateria mute'. Read the current mix in get_song_overview first. " +
+      "Reverb places a track in depth: more sounds further back. Keep bass, drums and fast or short parts drier, and remember " +
+      "tracks sounding in the user's DAW get the send too, where their own reverb may already be on. " +
       "You cannot hear the result: describe what you changed and why, and let the user listen. " +
       "Solo is the user's listening tool and is not available.",
     inputSchema: {

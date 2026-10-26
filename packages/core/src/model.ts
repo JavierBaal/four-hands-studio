@@ -103,6 +103,11 @@ export interface Track {
   volume: number;
   /** -1 (left) to 1 (right). */
   pan: number;
+  /**
+   * Reverb send (CC91), 0–1 (H4, Fran 15/10/2026: "los violines más lejos"). Absent: 0, the
+   * synthesizer's own default, so songs from before sound the same.
+   */
+  reverb?: number;
   mute: boolean;
   solo: boolean;
   /** Index in the track palette (DIRECCION_ARTISTICA.md, 2.7), 0 to TRACK_COLOR_COUNT - 1. */

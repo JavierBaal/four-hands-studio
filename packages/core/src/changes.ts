@@ -164,6 +164,7 @@ export function changesText(before: Song, after: Song, options: ChangesOptions):
     if (old.program !== t.program || old.sound?.name !== t.sound?.name) d.push(`sound ${t.sound ? `"${t.sound.name}"` : `program ${t.program}`}`);
     if (old.volume !== t.volume) d.push(`vol ${Math.round(old.volume * 100)} → ${Math.round(t.volume * 100)}`);
     if (old.pan !== t.pan) d.push(`pan ${Math.round(old.pan * 100)} → ${Math.round(t.pan * 100)}`);
+    if ((old.reverb ?? 0) !== (t.reverb ?? 0)) d.push(`rev ${Math.round((old.reverb ?? 0) * 100)} → ${Math.round((t.reverb ?? 0) * 100)}`);
     if (old.mute !== t.mute) d.push(t.mute ? "muted" : "unmuted");
     if (JSON.stringify(old.pedal) !== JSON.stringify(t.pedal)) d.push("pedal rewritten");
     if (JSON.stringify(old.curves?.expression ?? []) !== JSON.stringify(t.curves?.expression ?? [])) d.push("expression (CC11) rewritten");

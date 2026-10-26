@@ -309,8 +309,8 @@ export class SongActions {
   }
 
   /** While a fader moves: only the sound changes (one undo step on release, with `setMix`). */
-  previewMix(id: string, volume: number, pan: number): void {
-    this.audio?.previewMix(id, volume, pan);
+  previewMix(id: string, volume: number, pan: number, reverb?: number): void {
+    this.audio?.previewMix(id, volume, pan, reverb);
   }
 
   /** A typed volume (dB) or pan (C, L30, R25). False if it cannot be read: the field stays open. */
@@ -324,10 +324,15 @@ export class SongActions {
     return true;
   }
 
-  setMix(id: string, volume: number, pan: number): void {
+  /** Volume, pan and (H4) reverb send of a track in one undo step. Reverb left out: unchanged. */
+  setMix(id: string, volume: number, pan: number, reverb?: number): void {
     const track = this.song.tracks[id];
-    if (!track || (track.volume === volume && track.pan === pan)) return;
-    void this.run(this.h("hMix", { name: track.name }), [{ type: "updateTrack", id, changes: { volume, pan } }]);
+    if (!track) return;
+    const rev = reverb ?? track.reverb ?? 0;
+    const revChanged = rev !== (track.reverb ?? 0);
+    if (track.volume === volume && track.pan === pan && !revChanged) return;
+    const onlyReverb = track.volume === volume && track.pan === pan;
+    void this.run(this.h(onlyReverb ? "hReverb" : "hMix", { name: track.name }), [{ type: "updateTrack", id, changes: { volume, pan, reverb: rev } }]);
   }
 
   instrumentLabel(track: Track): string {

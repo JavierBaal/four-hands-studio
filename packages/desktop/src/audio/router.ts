@@ -3,7 +3,7 @@
  * virtual port such as loopMIDI) send their events out on their own channel instead of playing
  * the built-in sound. The player keeps scheduling as always; this sits between it and the synth
  * and splits by channel. Program changes never go out (they would change the preset loaded in the
- * other program); notes, pedal, expression, modulation, volume and pan do.
+ * other program); notes, pedal, expression, modulation, volume, pan and reverb send do.
  */
 import type { SynthEvent } from "../shared/messages.js";
 

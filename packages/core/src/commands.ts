@@ -164,6 +164,8 @@ export function addTrack(tx: Transaction, spec: TrackSpec): string {
 }
 
 export type TrackChanges = Partial<Pick<Track, "name" | "program" | "channel" | "volume" | "pan" | "mute" | "solo" | "color">> & {
+  /** Reverb send 0–1; 0 removes the field (the default). */
+  reverb?: number;
   /** A preset of another sound bank, or null to go back to the default bank. */
   sound?: TrackSound | null;
   /** "external": the track's MIDI goes out (Studio One); "internal": the built-in sound plays it. */
@@ -178,9 +180,14 @@ export function updateTrack(tx: Transaction, id: string, changes: TrackChanges):
   if (changes.channel !== undefined) check(isInt(changes.channel) && changes.channel >= 0 && changes.channel <= 15, "Invalid channel");
   if (changes.volume !== undefined) check(changes.volume >= 0 && changes.volume <= 1, "Volume must be between 0 and 1");
   if (changes.pan !== undefined) check(changes.pan >= -1 && changes.pan <= 1, "Pan must be between -1 and 1");
+  if (changes.reverb !== undefined) check(changes.reverb >= 0 && changes.reverb <= 1, "Reverb must be between 0 and 1");
   if (changes.name !== undefined) check(changes.name.trim().length > 0, "A track needs a name");
   if (changes.color !== undefined) checkColor(changes.color);
-  const { sound, output, ...rest } = changes;
+  const { sound, output, reverb, ...rest } = changes;
+  if (reverb !== undefined && reverb !== (track.reverb ?? 0)) {
+    if (reverb === 0) tx.remove(["tracks", id, "reverb"]);
+    else tx.set(["tracks", id, "reverb"], reverb);
+  }
   if (output !== undefined) {
     check(output === "internal" || output === "external", `Invalid output: ${String(output)}`);
     if (output === "external" && track.output !== "external") tx.set(["tracks", id, "output"], "external");

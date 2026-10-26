@@ -64,3 +64,16 @@ export function parsePan(text: string): number | null {
   if (!Number.isFinite(p)) return null;
   return Math.max(-100, Math.min(100, p)) / 100;
 }
+
+/** Reverb send as people read it (H4): 0 to 100, "0" being dry. */
+export function formatReverb(reverb: number): string {
+  return String(Math.round(Math.max(0, Math.min(1, reverb)) * 100));
+}
+
+/** Reads "30", "30 %", "0". Null if unreadable; clamped to 0–100. */
+export function parseReverb(text: string): number | null {
+  const t = text.trim().replace(/\s*%$/, "");
+  if (!/^\d{1,3}([.,]\d+)?$/.test(t)) return null;
+  const v = Math.round(Number(t.replace(",", ".")));
+  return Math.max(0, Math.min(100, v)) / 100;
+}

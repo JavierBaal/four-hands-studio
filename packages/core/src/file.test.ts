@@ -35,6 +35,15 @@ describe(".fourhands", () => {
     expect(serializeSong(opened)).toBe(text);
   });
 
+  it("keeps the reverb of a track and opens files without it", () => {
+    const doc = sampleDoc();
+    doc.transact({ actor: USER, label: "Reverb" }, (tx) => updateTrack(tx, "t1", { reverb: 0.35 }));
+    const opened = parseSongFile(serializeSong({ song: doc.song, history: doc.history, proposals: [] }));
+    expect(opened.song.tracks.t1!.reverb).toBe(0.35);
+    const before = parseSongFile(serializeSong({ song: sampleDoc().song, history: [], proposals: [] }));
+    expect(before.song.tracks.t1!.reverb).toBeUndefined();
+  });
+
   it("keeps the sound a track takes from a bank the user installed", () => {
     const doc = sampleDoc();
     const sound = { bank: "YDP-GrandPiano-20160804.sf2", program: 0, bankMSB: 0, name: "Grand Piano" };

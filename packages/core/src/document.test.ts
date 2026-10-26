@@ -218,6 +218,25 @@ describe("track output (H4): inside Four Hands or out to another program", () =>
   });
 });
 
+describe("track reverb (H4): a send per track", () => {
+  it("is 0 by default, changes, goes back to absent at 0, undoes and rejects bad values", () => {
+    const { doc, t } = docWithTrack();
+    expect(doc.song.tracks[t]!.reverb).toBeUndefined();
+    doc.transact({ actor: USER, label: "lejos" }, (tx) => updateTrack(tx, t, { reverb: 0.4 }));
+    expect(doc.song.tracks[t]!.reverb).toBe(0.4);
+    const rev = doc.song.revision;
+    doc.transact({ actor: USER, label: "igual" }, (tx) => updateTrack(tx, t, { reverb: 0.4 }));
+    expect(doc.song.revision).toBe(rev);
+    doc.transact({ actor: USER, label: "seca" }, (tx) => updateTrack(tx, t, { reverb: 0 }));
+    expect("reverb" in doc.song.tracks[t]!).toBe(false);
+    doc.undo(USER);
+    expect(doc.song.tracks[t]!.reverb).toBe(0.4);
+    doc.undo(USER);
+    expect("reverb" in doc.song.tracks[t]!).toBe(false);
+    expect(() => doc.transact({ actor: USER, label: "x" }, (tx) => updateTrack(tx, t, { reverb: 1.5 }))).toThrow(CommandError);
+  });
+});
+
 describe("commands", () => {
   it("validate their input with readable errors", () => {
     const { doc, t } = docWithTrack();
