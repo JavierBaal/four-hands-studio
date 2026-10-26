@@ -15,7 +15,7 @@
 import { z } from "zod";
 
 /** Bumped whenever a tool, its parameters or its meaning changes. The app refuses other bridges. */
-export const TOOLS_VERSION = 14;
+export const TOOLS_VERSION = 15;
 
 /**
  * Track colours by name (H3.2). The app's palette (desktop/src/shared/track-colors.ts) has the same
@@ -483,7 +483,8 @@ export const TOOLS: readonly ToolDefinition[] = [
     name: "set_song_properties",
     title: "Song properties",
     description:
-      "Change the title, concept, tempo, meter or key of the song (one of each per song). " +
+      "Change the title, concept, tempo, meter or key of the song. tempo and key are those at the start; " +
+      "changes along the song go with set_tempo_changes and set_key_changes. " +
       "concept: the song's intention and limits in a few sentences, in the user's language ('Orquesta infectada. Dura 1:12, como los créditos; se exportará a Vital y Kontakt'). " +
       "Every AI reads it first in get_song_overview, and analyze checks a duration or tempo written in it. Write it for a new piece; if the user wrote it, change it only when they ask. '' removes it. " +
       "tempo in BPM (quarter notes per minute); meter like '3/4' or '6/8'; key like 'A minor', 'Eb major', 'F# minor'. " +
@@ -495,6 +496,33 @@ export const TOOLS: readonly ToolDefinition[] = [
       tempo: z.number().min(10).max(400).optional().describe("BPM"),
       meter: z.string().optional().describe("E.g. '3/4'"),
       key: z.string().optional().describe("E.g. 'A minor'"),
+    },
+    annotations: write,
+  },
+  {
+    name: "set_tempo_changes",
+    title: "Tempo changes",
+    description:
+      "Write the tempo changes after the start, one per line; the list replaces the current one (read it in get_song_overview first, and keep what you don't mean to change). " +
+      "'17.1 60' jumps to 60 BPM there; '21.1 rit 50' slows down from the previous point and reaches 50 there; '25.1 accel 72' speeds up the same way; " +
+      "'24.3 fermata' holds that beat twice as long (a fermata) and comes back to the tempo; 'fermata 3' three times; 'fermata 2 1/2' for a half note. " +
+      "'' removes every change. The tempo at 1.1 is set_song_properties tempo. Notes stay where they are in bars; what changes is how long they last, so say how the duration changes.",
+    inputSchema: {
+      intervention_id: INTERVENTION,
+      changes: z.string().describe("One per line, e.g. '51.1 rit 66\n52.1 58'; '' for none"),
+    },
+    annotations: write,
+  },
+  {
+    name: "set_key_changes",
+    title: "Key changes",
+    description:
+      "Write the key changes after the start, one per line, each from a bar line on; the list replaces the current one. " +
+      "'17 C major', 'c. 25 La menor', or a section's name: 'Coro D major'. '' removes every change. The key at bar 1 is set_song_properties key. " +
+      "Notes do not move: this says which key the music is in from there (note names, scale degrees in move_notes, and analyze follow it).",
+    inputSchema: {
+      intervention_id: INTERVENTION,
+      changes: z.string().describe("One per line, e.g. '17 C major'; '' for none"),
     },
     annotations: write,
   },

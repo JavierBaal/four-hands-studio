@@ -2,9 +2,8 @@
  * The passages of the blind listening test (ARQUITECTURA.md, 7.2): the same notes of Dilatación
  * for every candidate SoundFont, as timed synth events.
  */
-import { type Song, barStart, orderedTracks } from "@fourhands/core";
+import { type Song, barStart, orderedTracks, secondsBetween } from "@fourhands/core";
 import type { SynthEvent } from "../shared/messages.js";
-import { secondsPerTick } from "../audio/schedule.js";
 import { type BankPreset, looksGeneralMidi } from "../shared/soundbank-info.js";
 
 /** What a passage asks each bank for. */
@@ -69,7 +68,6 @@ export function fragmentEvents(song: Song, f: Fragment, chosen?: readonly BankPr
   const tracks = orderedTracks(song);
   const from = barStart(song.meter, f.fromBar);
   const to = barStart(song.meter, f.toBar + 1);
-  const spt = secondsPerTick(song);
   const setup: SynthEvent[] = [];
   const events: { at: number; ev: SynthEvent }[] = [];
   f.trackIndexes.forEach((index, i) => {
@@ -80,8 +78,8 @@ export function fragmentEvents(song: Song, f: Fragment, chosen?: readonly BankPr
     for (const n of Object.values(song.notes)) {
       if (n.trackId !== track.id || n.start < from || n.start >= to) continue;
       const end = Math.min(n.start + n.duration, to);
-      events.push({ at: (n.start - from) * spt, ev: { kind: "on", ch: track.channel, note: n.pitch, vel: n.velocity } });
-      events.push({ at: (end - from) * spt, ev: { kind: "off", ch: track.channel, note: n.pitch } });
+      events.push({ at: secondsBetween(song, from, n.start), ev: { kind: "on", ch: track.channel, note: n.pitch, vel: n.velocity } });
+      events.push({ at: secondsBetween(song, from, end), ev: { kind: "off", ch: track.channel, note: n.pitch } });
     }
   });
   return { setup, events: events.sort((a, b) => a.at - b.at) };

@@ -20,7 +20,8 @@
  * Muted tracks are left out of what is heard (1, 2, 5). Percussion (channel 10) is left out of
  * pitch checks (1, 2, 6, 7, 8).
  */
-import { type Note, type Song, barAt, barStart, barTicks, beatTicks, notesOf } from "./model.js";
+import { type KeySignature, type Note, type Song, barAt, barStart, barTicks, beatTicks, notesOf } from "./model.js";
+import { keyAt, secondsAt, steadyTempo } from "./tempo.js";
 import { barHarmony, pitchName } from "./compact.js";
 import { PPQ } from "./time.js";
 import { tonicOf, keyText } from "./notation.js";
@@ -378,28 +379,31 @@ function instrumentRange(ctx: Ctx): string[] {
 // ---------------------------------------------------------------------------
 // 7. Key
 
-function scaleOf(song: Song): Set<number> {
-  const tonic = tonicOf(song.key);
+function scaleOf(key: KeySignature): Set<number> {
+  const tonic = tonicOf(key);
   // Minor accepts the raised 6th and 7th (melodic and harmonic minor): they are not "outside".
-  const steps = song.key.mode === "minor" ? [0, 2, 3, 5, 7, 8, 9, 10, 11] : [0, 2, 4, 5, 7, 9, 11];
+  const steps = key.mode === "minor" ? [0, 2, 3, 5, 7, 8, 9, 10, 11] : [0, 2, 4, 5, 7, 9, 11];
   return new Set(steps.map((s) => (tonic + s) % 12));
 }
 
+/** Notes outside the key in force where they sound (H4: the key can change along the song). */
 function key(ctx: Ctx): string[] {
   const { song } = ctx;
-  const scale = scaleOf(song);
-  const byClass = new Map<number, { count: number; tracks: Set<string>; bars: number[] }>();
+  const byClass = new Map<string, { pc: number; key: KeySignature; count: number; tracks: Set<string>; bars: number[] }>();
   for (const n of ctx.own) {
-    if (isDrums(song, n.trackId) || scale.has(n.pitch % 12)) continue;
-    const entry = byClass.get(n.pitch % 12) ?? { count: 0, tracks: new Set<string>(), bars: [] };
+    if (isDrums(song, n.trackId)) continue;
+    const k = keyAt(song, n.start);
+    if (scaleOf(k).has(n.pitch % 12)) continue;
+    const id = `${n.pitch % 12}|${k.fifths}|${k.mode}`;
+    const entry = byClass.get(id) ?? { pc: n.pitch % 12, key: k, count: 0, tracks: new Set<string>(), bars: [] };
     entry.count++;
     entry.tracks.add(n.trackId);
     entry.bars.push(barAt(song.meter, n.start));
-    byClass.set(n.pitch % 12, entry);
+    byClass.set(id, entry);
   }
-  return [...byClass.entries()]
-    .sort((a, b) => b[1].count - a[1].count)
-    .map(([pc, e]) => `${pitchName(pc + 60, song.key).replace(/-?\d+$/, "")} ×${e.count} (${keyText(song.key)}) · ${names(song, e.tracks)} · ${barList(e.bars)}`);
+  return [...byClass.values()]
+    .sort((a, b) => b.count - a.count)
+    .map((e) => `${pitchName(e.pc + 60, e.key).replace(/-?\d+$/, "")} ×${e.count} (${keyText(e.key)}) · ${names(song, e.tracks)} · ${barList(e.bars)}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -476,9 +480,9 @@ function harmony(ctx: Ctx): string[] {
 // ---------------------------------------------------------------------------
 // 0. Leftovers: chords, sections and annotations past the music, empty tracks
 
-/** "1:15" for a number of bars at the song's tempo. */
+/** "1:15" for the first bars of the song, with its tempo changes. */
 function duration(song: Song, bars: number): string {
-  const seconds = Math.round((bars * barTicks(song.meter) * song.tempo) / PPQ / 1_000_000);
+  const seconds = Math.round(secondsAt(song, bars * barTicks(song.meter)));
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
@@ -519,7 +523,7 @@ function conceptLimits(ctx: Ctx): string[] {
   // Only when the whole song is analysed: the limits are about the whole.
   if (ctx.start > 0 || ctx.end < lastEnd) return [];
   const out: string[] = [];
-  const seconds = (lastEnd * song.tempo) / PPQ / 1_000_000;
+  const seconds = secondsAt(song, lastEnd);
   const lastBar = barAt(song.meter, lastEnd - 1);
   for (const target of [...new Set(conceptDurations(text))]) {
     const off = seconds - target;
@@ -528,7 +532,8 @@ function conceptLimits(ctx: Ctx): string[] {
   }
   const tempo = conceptTempo(text);
   const now = 60_000_000 / song.tempo;
-  if (tempo !== null && Math.abs(tempo - now) >= 1) out.push(`the concept says ${tempo} BPM; the song is at ${Math.round(now * 100) / 100} BPM`);
+  const verb = steadyTempo(song) ? "is at" : "starts at";
+  if (tempo !== null && Math.abs(tempo - now) >= 1) out.push(`the concept says ${tempo} BPM; the song ${verb} ${Math.round(now * 100) / 100} BPM`);
   return out;
 }
 

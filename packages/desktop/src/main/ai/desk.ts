@@ -60,6 +60,15 @@ import {
   setChord,
   setPedal,
   setSongProperties,
+  setKeyChanges,
+  setTempoChanges,
+  parseTempoChanges,
+  parseKeyChanges,
+  tempoChangesText,
+  keyChangesText,
+  keyAt,
+  secondsAt,
+  songEnd,
   transposeByDegrees,
   updateNotes,
   updateSection,
@@ -875,7 +884,7 @@ export class AiDesk {
       if (ticks === 0 && semitones === 0 && degrees === 0) throw new MusicError("Say how to move them: by_time, by_semitones or by_degrees");
       const changes = ids.map((id) => {
         const n = song.notes[id]!;
-        const pitch = (degrees ? transposeByDegrees(n.pitch, degrees, song.key) : n.pitch) + semitones;
+        const pitch = (degrees ? transposeByDegrees(n.pitch, degrees, keyAt(song, n.start)) : n.pitch) + semitones;
         if (n.start + ticks < 0) throw new MusicError(`${id} would move before the beginning of the song`);
         if (pitch < 0 || pitch > 127) throw new MusicError(`${id} would leave the MIDI range`);
         return { id, start: n.start + ticks, pitch };
@@ -1158,6 +1167,31 @@ export class AiDesk {
       iv.other.push(said.join(", "));
       this.emit();
       return `Song: ${said.join(", ")}. ${this.rev()}`;
+    },
+
+    set_tempo_changes: (conn, args) => {
+      const iv = this.intervention(conn, args);
+      if (typeof args.changes !== "string") throw new MusicError("'changes' is text: one change per line, or '' for none");
+      const before = secondsAt(this.song, songEnd(this.song));
+      const points = parseTempoChanges(this.song, args.changes);
+      this.write(iv, (tx) => setTempoChanges(tx, points));
+      iv.other.push(points.length ? "tempo changes" : "tempo changes removed");
+      this.emit();
+      const after = secondsAt(this.song, songEnd(this.song));
+      const clock = (x: number) => `${Math.floor(Math.round(x) / 60)}:${String(Math.round(x) % 60).padStart(2, "0")}`;
+      const text = tempoChangesText(this.song);
+      return `Tempo changes: ${text ? text.split("\n").join(" · ") : "none (one tempo)"}. The music lasts ${clock(after)} (was ${clock(before)}). ${this.rev()}`;
+    },
+
+    set_key_changes: (conn, args) => {
+      const iv = this.intervention(conn, args);
+      if (typeof args.changes !== "string") throw new MusicError("'changes' is text: one change per line, or '' for none");
+      const changes = parseKeyChanges(this.song, args.changes);
+      this.write(iv, (tx) => setKeyChanges(tx, changes));
+      iv.other.push(changes.length ? "key changes" : "key changes removed");
+      this.emit();
+      const text = keyChangesText(this.song);
+      return `Key changes: ${text ? text.split("\n").join(" · ") : "none (one key)"}. ${this.rev()}`;
     },
 
     add_track: (conn, args) => {

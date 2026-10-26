@@ -21,17 +21,21 @@ import {
   setChord,
   setPedal,
   setCurve,
+  setKeyChanges,
   setSongProperties,
+  setTempoChanges,
   updateAnnotation,
   updateNotes,
   updateSection,
   updateTrack,
 } from "./commands.js";
 import { CommandError, type Transaction } from "./document.js";
-import type { Annotation, CcPoint, CurveKind, PedalSpan, Section } from "./model.js";
+import type { Annotation, CcPoint, CurveKind, KeyChange, PedalSpan, Section, TempoPoint } from "./model.js";
 
 export type CommandData =
   | { type: "addNotes"; trackId: string; notes: NoteSpec[] }
+  | { type: "setTempoChanges"; points: TempoPoint[] }
+  | { type: "setKeyChanges"; changes: KeyChange[] }
   | { type: "updateNotes"; changes: NoteChange[] }
   | { type: "moveNotes"; ids: string[]; ticks?: number; semitones?: number }
   | { type: "deleteNotes"; ids: string[] }
@@ -59,6 +63,12 @@ export function runCommand(tx: Transaction, c: CommandData): CommandResult {
       return addNotes(tx, c.trackId, c.notes);
     case "updateNotes":
       updateNotes(tx, c.changes);
+      return null;
+    case "setTempoChanges":
+      setTempoChanges(tx, c.points);
+      return null;
+    case "setKeyChanges":
+      setKeyChanges(tx, c.changes);
       return null;
     case "moveNotes": {
       const by: { ticks?: number; semitones?: number } = {};

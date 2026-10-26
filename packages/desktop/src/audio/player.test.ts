@@ -1,4 +1,4 @@
-import { SongDocument, USER, addNotes, setCurve, starterSong } from "@fourhands/core";
+import { SongDocument, USER, addNotes, setCurve, setTempoChanges, starterSong } from "@fourhands/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SynthEvent } from "../shared/messages.js";
 import type { Engine } from "./engine.js";
@@ -63,6 +63,35 @@ describe("Player", () => {
     expect(cc11.length).toBeGreaterThanOrEqual(4); // and again after the jump
     player.stop();
     expect(immediate).toContainEqual({ kind: "cc", ch: 0, cc: 11, value: 127 });
+  });
+
+  it("follows the tempo map: a jump and a ritardando delay what comes after (H4)", () => {
+    const { doc, player, scheduled, advance } = setup();
+    // 120 until beat 2, then 60: the note at beat 2 sounds 0.5 s after the first; the next bar
+    // (3 more beats at 60) 3 s later.
+    doc.transact({ actor: USER, label: "t" }, (tx) => setTempoChanges(tx, [{ tick: 960, tempo: 1_000_000 }]));
+    player.play(0);
+    advance(4);
+    expect(ons(scheduled)).toEqual([
+      [60, 10.08],
+      [62, 10.58],
+      [64, 13.58],
+    ]);
+    expect(player.position()).toBeGreaterThan(3840);
+    expect(player.position()).toBeLessThan(3840 + 960);
+  });
+
+  it("keeps the tempo map inside a loop, lap after lap (H4)", () => {
+    const { doc, player, scheduled, advance } = setup();
+    // A ritardando inside the loop: 120 at 0, gliding to 60 at beat 2. Each lap lasts the same.
+    doc.transact({ actor: USER, label: "t" }, (tx) => setTempoChanges(tx, [{ tick: 960, tempo: 1_000_000, ramp: true }]));
+    doc.setContext({ loop: { start: 0, end: 1920 } });
+    player.play(0);
+    advance(5);
+    const c = ons(scheduled).filter(([n]) => n === 60).map(([, t]) => t as number);
+    const lap = 0.5 * Math.log(2) * 2 + 1; // ramp 120→60 over one beat (ln 2 / ... ) + one beat at 60
+    expect(c.length).toBeGreaterThanOrEqual(2);
+    expect(c[1]! - c[0]!).toBeCloseTo(lap, 2);
   });
 
   it("starts from the cursor", () => {

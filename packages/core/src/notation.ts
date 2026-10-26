@@ -10,7 +10,7 @@
  */
 import type { NoteSpec } from "./commands.js";
 import { formatPosition } from "./compact.js";
-import { type KeySignature, type Meter, type Song, barAt, barStart, barTicks, beatTicks, notesOf, orderedSections, songEnd } from "./model.js";
+import { type KeyChange, type KeySignature, type Meter, type Song, type TempoPoint, barAt, barStart, barTicks, beatTicks, notesOf, orderedSections, songEnd } from "./model.js";
 import { PPQ, nominalGridPosition } from "./time.js";
 
 /** An error the AI can read and act on. */
@@ -450,4 +450,120 @@ export function parseMeter(text: string): Meter {
     throw new MusicError(`'${text}' is not a meter (e.g. '4/4', '3/4', '6/8')`);
   }
   return { numerator: Number(m[1]), denominator: Number(m[2]) };
+}
+
+// ---------------------------------------------------------------------------
+// Tempo and key changes (H4, Fran 26/10/2026)
+
+function bpmText(tempo: number): string {
+  return String(Math.round((60_000_000 / tempo) * 100) / 100);
+}
+
+/**
+ * The tempo changes as the AI reads and writes them, one per line:
+ *   17.1 60          the tempo jumps to 60 BPM there
+ *   21.1 rit 50      it slows down from the previous point and reaches 50 there
+ *   25.1 accel 72    it speeds up from the previous point and reaches 72 there
+ * Empty when the song keeps one tempo.
+ */
+export function tempoChangesText(song: Song): string {
+  const points = song.tempoChanges ?? [];
+  let previous = song.tempo;
+  return points
+    .map((p) => {
+      const word = p.ramp ? (p.tempo > previous ? "rit " : "accel ") : "";
+      previous = p.tempo;
+      return `${formatPosition(song.meter, p.tick)} ${word}${bpmText(p.tempo)}`;
+    })
+    .join("\n");
+}
+
+/**
+ * Reads the whole list of tempo changes. Besides the lines of `tempoChangesText`:
+ *   24.3 fermata         that beat lasts twice as long (a fermata), then the tempo comes back
+ *   24.3 fermata 3       three times as long
+ *   24.3 fermata 2 1/2   twice as long, for a half note
+ * "rit" must slow down and "accel" speed up; the BPM written is where the ramp arrives.
+ */
+export function parseTempoChanges(song: Song, text: string): TempoPoint[] {
+  const out: TempoPoint[] = [];
+  const tempoBefore = (tick: number) => {
+    let t = song.tempo;
+    for (const p of out) if (p.tick <= tick) t = p.tempo;
+    return t;
+  };
+  for (const { n, text: line } of lines(text)) {
+    const where = `Line ${n} ("${line}")`;
+    const tokens = line.split(/\s+/);
+    let tick: number;
+    try {
+      tick = parsePosition(song.meter, tokens[0]!).tick;
+    } catch (error) {
+      throw new MusicError(`${where}: ${(error as Error).message}`);
+    }
+    if (tick === 0) throw new MusicError(`${where}: the tempo at 1.1 is the song's tempo; change it with set_song_properties`);
+    const last = out.at(-1);
+    if (last && tick <= last.tick) throw new MusicError(`${where}: write the changes in order, one per position`);
+    const word = tokens[1]?.toLowerCase();
+    if (word === "fermata" || word === "calderon" || word === "calderón") {
+      const factor = tokens[2] === undefined ? 2 : Number(tokens[2].replace(",", "."));
+      if (!(factor > 1 && factor <= 8)) throw new MusicError(`${where}: a fermata makes the beat 1.5 to 8 times longer (e.g. 'fermata 2')`);
+      const length = tokens[3] === undefined ? beatTicks(song.meter) : parseDuration(tokens[3]);
+      const before = tempoBefore(tick);
+      out.push({ tick, tempo: Math.round(before * factor) }, { tick: tick + length, tempo: before });
+      continue;
+    }
+    const ramp = word === "rit" || word === "rit." || word === "ritardando" || word === "rall" || word === "accel" || word === "accel." || word === "accelerando";
+    const raw = ramp ? tokens[2] : tokens[1];
+    const value = raw === undefined ? NaN : Number(raw.replace(",", "."));
+    if (!(value >= 10 && value <= 1000)) throw new MusicError(`${where}: write the BPM (10 to 1000), e.g. '17.1 60' or '21.1 rit 50'`);
+    if (tokens.length > (ramp ? 3 : 2)) throw new MusicError(`${where}: one change per line: position, then 'rit' or 'accel' if it glides, then the BPM`);
+    const tempo = Math.round(60_000_000 / value);
+    if (ramp) {
+      const before = tempoBefore(tick);
+      const slower = tempo > before;
+      if (word!.startsWith("rit") || word!.startsWith("rall")) {
+        if (!slower) throw new MusicError(`${where}: a ritardando goes slower than ${bpmText(before)} BPM; use 'accel' to speed up`);
+      } else if (slower || tempo === before) throw new MusicError(`${where}: an accelerando goes faster than ${bpmText(before)} BPM; use 'rit' to slow down`);
+    }
+    out.push(ramp ? { tick, tempo, ramp: true } : { tick, tempo });
+  }
+  return out;
+}
+
+/** The key changes, one per line: "c. 17 C major". Empty when the song keeps one key. */
+export function keyChangesText(song: Song): string {
+  return (song.keyChanges ?? []).map((c) => `c. ${barAt(song.meter, c.tick)} ${keyText(c.key)}`).join("\n");
+}
+
+/** Reads the whole list of key changes: "17 C major", "c. 25 La menor", "Coro D major" (a section's first bar). */
+export function parseKeyChanges(song: Song, text: string): KeyChange[] {
+  const out: KeyChange[] = [];
+  for (const { n, text: line } of lines(text)) {
+    const where = `Line ${n} ("${line}")`;
+    const m = /^(?:c\.?\s*)?(\d+)\s+(.+)$/i.exec(line);
+    let bar: number;
+    let keyPart: string;
+    if (m) {
+      bar = Number(m[1]);
+      keyPart = m[2]!;
+    } else {
+      const section = orderedSections(song).find((s) => line.toLowerCase().startsWith(`${s.name.toLowerCase()} `));
+      if (!section) throw new MusicError(`${where}: write the bar (or a section's name) and the key, e.g. '17 C major' or 'Coro D major'`);
+      bar = section.startBar;
+      keyPart = line.slice(section.name.length).trim();
+    }
+    if (bar < 2) throw new MusicError(`${where}: the key at bar 1 is the song's key; change it with set_song_properties`);
+    let key: KeySignature;
+    try {
+      key = parseKey(keyPart);
+    } catch (error) {
+      throw new MusicError(`${where}: ${(error as Error).message}`);
+    }
+    const tick = barStart(song.meter, bar);
+    const last = out.at(-1);
+    if (last && tick <= last.tick) throw new MusicError(`${where}: write the changes in order, one per bar`);
+    out.push({ tick, key });
+  }
+  return out;
 }

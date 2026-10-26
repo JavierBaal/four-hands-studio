@@ -11,6 +11,7 @@
 import { CommandError, type Transaction } from "./document.js";
 import {
   type Annotation,
+  type KeyChange,
   type KeySignature,
   type Meter,
   type Note,
@@ -18,8 +19,10 @@ import {
   type CcPoint,
   type CurveKind,
   type Section,
+  type TempoPoint,
   type Track,
   type TrackSound,
+  barTicks,
   sameAuthorship,
   TRACK_COLOR_COUNT,
 } from "./model.js";
@@ -100,6 +103,42 @@ export function setSongProperties(tx: Transaction, props: SongProperties): void 
     check(props.key.mode === "major" || props.key.mode === "minor", `Invalid mode: ${props.key.mode}`);
     tx.set(["key"], { fifths: props.key.fifths, mode: props.key.mode });
   }
+}
+
+/** The tempo changes after the start (H4). Replaces the whole list; an empty list leaves one tempo. */
+export function setTempoChanges(tx: Transaction, points: TempoPoint[]): void {
+  const clean: TempoPoint[] = [];
+  for (const p of points) {
+    check(isInt(p.tick) && p.tick > 0, `A tempo change goes after the start: tick ${p.tick}`);
+    check(isInt(p.tempo) && p.tempo >= 60_000 && p.tempo <= 6_000_000, `Invalid tempo: ${p.tempo} (10 to 1000 BPM)`);
+    const last = clean.at(-1);
+    check(!last || p.tick > last.tick, "Tempo changes go in order, one per position");
+    clean.push(p.ramp ? { tick: p.tick, tempo: p.tempo, ramp: true } : { tick: p.tick, tempo: p.tempo });
+  }
+  if (JSON.stringify(clean) === JSON.stringify(tx.song.tempoChanges ?? [])) return;
+  if (clean.length === 0) tx.remove(["tempoChanges"]);
+  else tx.set(["tempoChanges"], clean);
+}
+
+/** The key changes after the start (H4), on bar lines. Replaces the whole list. */
+export function setKeyChanges(tx: Transaction, changes: KeyChange[]): void {
+  const bar = barTicks(tx.song.meter);
+  const clean: KeyChange[] = [];
+  let current = tx.song.key;
+  for (const c of changes) {
+    check(isInt(c.tick) && c.tick > 0 && c.tick % bar === 0, "A key change goes on a bar line after the first bar");
+    check(isInt(c.key.fifths) && Math.abs(c.key.fifths) <= 7, `Invalid key: ${c.key.fifths}`);
+    check(c.key.mode === "major" || c.key.mode === "minor", `Invalid mode: ${c.key.mode}`);
+    const last = clean.at(-1);
+    check(!last || c.tick > last.tick, "Key changes go in order, one per bar");
+    // A change to the key already in force says nothing: drop it.
+    if (c.key.fifths === current.fifths && c.key.mode === current.mode) continue;
+    clean.push({ tick: c.tick, key: { fifths: c.key.fifths, mode: c.key.mode } });
+    current = c.key;
+  }
+  if (JSON.stringify(clean) === JSON.stringify(tx.song.keyChanges ?? [])) return;
+  if (clean.length === 0) tx.remove(["keyChanges"]);
+  else tx.set(["keyChanges"], clean);
 }
 
 // ---------------------------------------------------------------------------
