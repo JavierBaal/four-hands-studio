@@ -2,7 +2,7 @@
  * Canvas drawing of the piano roll, the keyboard, the velocity lane and the arrangement lanes
  * (ARQUITECTURA.md, 8), with the colours and sizes of DIRECCION_ARTISTICA.md (2.9, 4, 5).
  */
-import { type Meter, type Note, type Song, type Track, barAt, barStart, barTicks, beatTicks, orderedSections, songEnd } from "@fourhands/core";
+import { type Meter, type Note, type Song, type Track, barAt, barStart, barTicks, beatTicks, keyAt, orderedSections, songEnd } from "@fourhands/core";
 import { type NoteNames, isBlack, noteName } from "../music.js";
 import { FONT, SIZE, T, velocityOpacity } from "../theme.js";
 import { type RollView, endTick, pitchToY, rowH, rowMetrics, tickToX } from "./geometry.js";
@@ -207,7 +207,7 @@ export function drawNotes(s: Surface, v: RollView, layer: NotesLayer): void {
       ctx.rect(x, y + 1, w - 2, M.note);
       ctx.clip();
       ctx.fillStyle = T.textOnLight;
-      ctx.fillText(noteName(note.pitch, layer.names, layer.song.key), x + 4, y + 1 + M.note / 2);
+      ctx.fillText(noteName(note.pitch, layer.names, keyAt(layer.song, note.start)), x + 4, y + 1 + M.note / 2);
       ctx.restore();
     }
     if (layer.selected.has(note.id)) {

@@ -402,7 +402,7 @@ await page.keyboard.press("Escape");
 check("mixer closes with Esc", (await page.locator(".qdialog[role=dialog]").count()) === 0);
 
 // 20. Tempo typed in place; meter and key from their menus.
-await page.locator(".fbtn[title=Tempo]").click();
+await page.locator(".field", { has: page.locator(".flabel", { hasText: /^Tempo$/ }) }).locator(".fbtn").click();
 await page.locator("input.inline.field").fill("90");
 await page.keyboard.press("Enter");
 await settle();
@@ -646,6 +646,9 @@ const someNote = await page.evaluate(() => {
   const id = s.context.activeTrackId ?? s.trackOrder[0];
   return Object.values(s.notes).filter((n) => n.trackId === id).sort((a, b) => a.start - b.start)[0];
 });
+// The note in the middle of the grid, whatever the rulers above take (H4 added Tempo and Key).
+await page.evaluate((pitch) => window.fhTest.view.set({ scrollY: Math.max(0, (127 - pitch) * 15 - 150) }), someNote.pitch);
+await page.waitForTimeout(150);
 const viewNow = await page.evaluate(() => window.fhTest.view.state);
 const gridH32 = await page.locator(".pgrid canvas:not(.playhead-layer)").boundingBox();
 const nx = gridH32.x + (someNote.start - viewNow.startTick) * viewNow.pxPerTick + 3;
@@ -871,6 +874,33 @@ check("undoing the user's change brings the bar back", (await page.locator(".cmp
 await page.locator(".cmpbar .btn.aibtn").click();
 await settle();
 check("Deshacer undoes the intervention", (await page.locator(".cmpbar").count()) === 0 && !Object.values((await song()).notes).some((n) => n.createdBy.by === "ai" && n.pitch === 72 && n.start === 6 * BAR));
+
+// 30. Tempo and key along the song (H4): from the bar numbers, the Tempo and Key rulers appear.
+await page.keyboard.press("Escape");
+await page.evaluate(() => window.fhTest.replica.run("x", [{ type: "setTempoChanges", points: [] }, { type: "setKeyChanges", changes: [] }]));
+await settle();
+check("no Tempo ruler without changes", (await page.locator(".rrow.tempo").count()) === 0);
+await page.locator(".rrow.bars").click({ button: "right", position: { x: 300, y: 12 } });
+await page.locator(".menu [role=menuitem]", { hasText: /^Calderón aquí$/ }).click();
+await settle();
+check("a fermata from the bar numbers: two points and the Tempo ruler", ((await song()).tempoChanges ?? []).length === 2 && (await page.locator(".rrow.tempo .tferm").count()) === 1);
+await page.locator(".rrow.tempo .rfill").dblclick({ position: { x: 40, y: 12 } });
+await page.keyboard.type("90");
+await page.keyboard.press("Enter");
+await settle();
+check("a tempo typed on the Tempo ruler", ((await song()).tempoChanges ?? []).some((p) => p.tempo === Math.round(60_000_000 / 90)), JSON.stringify((await song()).tempoChanges));
+await page.locator(".rrow.tempo .tmark.tjump").first().click({ button: "right" });
+await page.locator(".menu [role=menuitem]", { hasText: /^Llegar poco a poco/ }).click();
+await settle();
+check("a jump becomes a ramp from its menu", ((await song()).tempoChanges ?? []).some((p) => p.ramp && p.tempo === Math.round(60_000_000 / 90)));
+await page.locator(".rrow.bars").click({ button: "right", position: { x: 600, y: 12 } });
+await page.locator(".menu [role=menuitem]", { hasText: /^Cambio de tonalidad aquí/ }).click();
+await page.locator(".menu [role=menuitem]", { hasText: /^Re mayor$/ }).click();
+await settle();
+check("a key change from the bar numbers shows on the Key ruler", ((await song()).keyChanges ?? []).length === 1 && (await page.locator(".rrow.keys .kchange").count()) === 1);
+await page.keyboard.press("Control+z");
+await settle();
+check("undo removes the key change", ((await song()).keyChanges ?? []).length === 0 && (await page.locator(".rrow.keys").count()) === 0);
 
 console.log(`${passed} passed, ${failures.length} failed`);
 for (const f of failures) console.log("FAIL", f);

@@ -3,7 +3,25 @@
  * sections, chords and annotations. Every action is one command list (one undo step) with its
  * sentence in the history. Also holds which field is being typed into (one at a time).
  */
-import { type CommandData, type Song, type Track, type TrackSound, barAt, barStart, barTicks, beatTicks, orderedSections, orderedTracks } from "@fourhands/core";
+import {
+  type CommandData,
+  type KeySignature,
+  type Song,
+  type Track,
+  type TrackSound,
+  barAt,
+  barStart,
+  barTicks,
+  beatTicks,
+  bpmAt,
+  formatPosition,
+  keyAt,
+  orderedSections,
+  orderedTracks,
+  parseTempoChanges,
+  tempoMarks,
+  tempoChangesText,
+} from "@fourhands/core";
 import type { AudioLayer } from "./audio-layer.js";
 import type { SkillImportResult, SoundBankInfo } from "../shared/protocol.js";
 import type { Bridge } from "./bridge.js";
@@ -26,7 +44,9 @@ export type Typing =
   | { kind: "tempo" }
   | { kind: "section"; id: string }
   | { kind: "chord"; tick: number }
-  | { kind: "annotation"; id: string | null; tick: number };
+  | { kind: "annotation"; id: string | null; tick: number }
+  /** A tempo change typed on the Tempo ruler (H4); `editing` is the tick of the change being rewritten. */
+  | { kind: "tempoChange"; tick: number; editing: number | null };
 
 /** What the palette gives: an instrument of the default bank, or a preset of an installed bank. */
 export type SoundChoice = { kind: "default"; item: PaletteItem } | { kind: "bank"; bank: SoundBankInfo; preset: BankPreset };
@@ -450,6 +470,174 @@ export class SongActions {
     void this.run(this.h("hTempo", { bpm: clean }), [{ type: "setSongProperties", props: { tempo } }]);
   }
 
+  // -------------------------------------------------------------------------
+  // Tempo and key along the song (H4, Fran 26/10/2026)
+
+  /** The tempo in force at a tick, in whole BPM (the top bar shows it at the playhead or the cursor). */
+  tempoAt(tick: number): number {
+    return Math.round(bpmAt(this.song, tick) * 100) / 100;
+  }
+
+  /**
+   * The top bar's tempo, typed: it changes the tempo in force where the playhead or the cursor is.
+   * Before the first change, that is the song's tempo; after it, the change in force.
+   */
+  setTempoAt(tick: number, bpm: number): void {
+    const points = this.song.tempoChanges ?? [];
+    const inForce = [...points].reverse().find((p) => p.tick <= tick);
+    if (!inForce) return this.setTempo(bpm);
+    if (!Number.isFinite(bpm)) return;
+    const clean = Math.round(Math.max(20, Math.min(300, bpm)));
+    const tempo = Math.round(60_000_000 / clean);
+    if (tempo === inForce.tempo) return;
+    const next = points.map((p) => (p === inForce ? { ...p, tempo } : p));
+    void this.run(this.h("hTempoAt", { bpm: clean, bar: barAt(this.song.meter, inForce.tick) }), [{ type: "setTempoChanges", points: next }]);
+  }
+
+  /** The text a change reads as on its ruler, to edit it: "60", "rit 60", "fermata 2". */
+  tempoChangeText(tick: number): string {
+    const mark = tempoMarks(this.song).find((m) => m.tick === tick);
+    if (!mark) return "";
+    if (mark.kind === "fermata") return `${this.t("fermataWord")} ${mark.factor}`;
+    if (mark.kind === "ramp") return `${mark.slower ? "rit" : "accel"} ${mark.bpm}`;
+    return String(mark.bpm);
+  }
+
+  /**
+   * Writes a tempo change typed on the ruler ("60", "rit 60", "accel 90", "calderón", "calderón 3"),
+   * replacing the change at `editing` (and the second point of a fermata). Empty text removes it.
+   * False, with a notice, when the text cannot be read.
+   */
+  saveTempoChange(editing: number | null, tick: number, text: string): boolean {
+    const clean = text
+      .trim()
+      .toLowerCase()
+      .replace(/^calder[oó]n\b/, "fermata");
+    const marks = tempoMarks(this.song);
+    const drop = new Set<number>();
+    if (editing !== null) {
+      const m = marks.find((x) => x.tick === editing);
+      if (m) drop.add(m.tick);
+      if (m?.kind === "fermata") drop.add(m.end);
+    }
+    const kept = (this.song.tempoChanges ?? []).filter((p) => !drop.has(p.tick));
+    const keptSong = { ...this.song, tempoChanges: kept };
+    const keptLines = tempoChangesText(keptSong)
+      .split("\n")
+      .filter(Boolean)
+      .map((line, i) => ({ tick: kept[i]!.tick, line }));
+    if (editing === null && !clean) return true;
+    const all = clean ? [...keptLines.filter((l) => l.tick !== tick), { tick, line: `${formatPosition(this.song.meter, tick)} ${clean}` }] : keptLines;
+    all.sort((a, b) => a.tick - b.tick);
+    let points;
+    try {
+      points = parseTempoChanges(this.song, all.map((l) => l.line).join("\n"));
+    } catch {
+      this.say(this.t("tempoChangeInvalid"));
+      return false;
+    }
+    const bar = barAt(this.song.meter, tick);
+    const label = !clean ? this.h("hTempoChangeRemove", { bar }) : this.h("hTempoChange", { text: clean.replace(/^fermata\b/, this.t("fermataWord")), bar });
+    void this.run(label, [{ type: "setTempoChanges", points }]);
+    return true;
+  }
+
+  /** Right click on the Tempo ruler: on a change, edit / glide or jump / remove; elsewhere, add one. */
+  tempoMenu(tick: number, onMark: number | null, x: number, y: number): void {
+    const close = (fn: () => void) => () => (this.editor.closeMenus(), fn());
+    const at = this.beatAt(tick);
+    if (onMark === null) {
+      this.editor.openMenu(x, y, this.tempoAddItems(at));
+      return;
+    }
+    const mark = tempoMarks(this.song).find((m) => m.tick === onMark);
+    if (!mark) return;
+    const items: MenuItem[] = [{ label: this.t("tempoChangeEdit"), run: close(() => this.type({ kind: "tempoChange", tick: onMark, editing: onMark })) }];
+    if (mark.kind !== "fermata") {
+      const ramp = mark.kind === "ramp";
+      items.push({
+        label: this.t(ramp ? "tempoChangeJump" : "tempoChangeGlide"),
+        run: close(() => {
+          const points = (this.song.tempoChanges ?? []).map((p) => (p.tick === onMark ? (ramp ? { tick: p.tick, tempo: p.tempo } : { ...p, ramp: true as const }) : p));
+          void this.run(this.h(ramp ? "hTempoJump" : "hTempoGlide", { bar: barAt(this.song.meter, onMark) }), [{ type: "setTempoChanges", points }]);
+        }),
+      });
+    }
+    items.push({ label: this.t(mark.kind === "fermata" ? "fermataRemove" : "tempoChangeRemove"), run: close(() => this.saveTempoChange(onMark, onMark, "")) });
+    this.editor.openMenu(x, y, items);
+  }
+
+  /** "Cambio de tempo aquí…", "Calderón aquí": on the rulers, wherever there is room for them. */
+  private tempoAddItems(at: number): MenuItem[] {
+    const close = (fn: () => void) => () => (this.editor.closeMenus(), fn());
+    return [
+      { label: this.t("tempoChangeHere"), run: close(() => this.type({ kind: "tempoChange", tick: Math.max(beatTicks(this.song.meter), at), editing: null })) },
+      { label: this.t("fermataHere"), run: close(() => void this.saveTempoChange(null, Math.max(beatTicks(this.song.meter), at), "fermata")) },
+    ];
+  }
+
+  /** The key in force at a tick. */
+  keyAt(tick: number): KeySignature {
+    return keyAt(this.song, tick);
+  }
+
+  /** Writes the key from a bar line on (bar 1: the song's key). The same key as before removes the change. */
+  setKeyFrom(barTick: number, key: KeySignature): void {
+    const name = keyName(key, this.lang);
+    if (barTick <= 0) {
+      const k = this.song.key;
+      if (k.fifths === key.fifths && k.mode === key.mode) return;
+      void this.run(this.h("hKey", { key: name }), [{ type: "setSongProperties", props: { key } }]);
+      return;
+    }
+    const others = (this.song.keyChanges ?? []).filter((c) => c.tick !== barTick);
+    const changes = [...others, { tick: barTick, key }].sort((a, b) => a.tick - b.tick);
+    void this.run(this.h("hKeyChange", { key: name, bar: barAt(this.song.meter, barTick) }), [{ type: "setKeyChanges", changes }]);
+  }
+
+  removeKeyChange(barTick: number): void {
+    const changes = (this.song.keyChanges ?? []).filter((c) => c.tick !== barTick);
+    void this.run(this.h("hKeyChangeRemove", { bar: barAt(this.song.meter, barTick) }), [{ type: "setKeyChanges", changes }]);
+  }
+
+  /** The keys to choose from, marking `current`. */
+  private keyItems(current: KeySignature, pick: (key: KeySignature) => void): MenuItem[] {
+    const items: MenuItem[] = [];
+    for (const mode of ["major", "minor"] as const) {
+      items.push({ label: this.t(mode === "major" ? "keysMajor" : "keysMinor"), header: true });
+      for (let fifths = -6; fifths <= 6; fifths++) {
+        const key = { fifths, mode };
+        items.push({
+          label: keyName(key, this.lang),
+          active: current.fifths === fifths && current.mode === mode,
+          run: () => (this.editor.closeMenus(), pick(key)),
+        });
+      }
+    }
+    return items;
+  }
+
+  /** The Key ruler: a change's menu (pick another key, or remove it), or a new change at that bar. */
+  keyChangeMenu(tick: number, x: number, y: number): void {
+    const bar = barStart(this.song.meter, barAt(this.song.meter, tick));
+    const existing = (this.song.keyChanges ?? []).find((c) => c.tick === bar);
+    const items: MenuItem[] = [];
+    if (existing) items.push({ label: this.t("keyChangeRemove"), run: () => (this.editor.closeMenus(), this.removeKeyChange(bar)) });
+    if (bar === 0) items.push({ label: this.t("keyChangeFirstBar"), header: true });
+    items.push(...this.keyItems(keyAt(this.song, bar), (key) => this.setKeyFrom(bar, key)));
+    this.editor.openMenu(x, y, items);
+  }
+
+  /** Right click on the bar numbers: tempo and key changes there (H4). */
+  barMenu(tick: number, x: number, y: number): void {
+    const bar = barStart(this.song.meter, barAt(this.song.meter, tick));
+    const close = (fn: () => void) => () => (this.editor.closeMenus(), fn());
+    this.editor.openMenu(x, y, [
+      ...this.tempoAddItems(this.beatAt(tick)),
+      ...(bar > 0 ? [{ label: this.t("keyChangeHere"), run: close(() => this.keyChangeMenu(bar, x, y)) }] : []),
+    ]);
+  }
+
   meterMenu(x: number, y: number): void {
     const m = this.song.meter;
     this.editor.openMenu(x, y, [
@@ -466,26 +654,11 @@ export class SongActions {
     ]);
   }
 
-  keyMenu(x: number, y: number): void {
-    const k = this.song.key;
-    const items: MenuItem[] = [];
-    for (const mode of ["major", "minor"] as const) {
-      items.push({ label: this.t(mode === "major" ? "keysMajor" : "keysMinor"), header: true });
-      for (let fifths = -6; fifths <= 6; fifths++) {
-        const key = { fifths, mode };
-        const name = keyName(key, this.lang);
-        items.push({
-          label: name,
-          active: k.fifths === fifths && k.mode === mode,
-          run: () => {
-            this.editor.closeMenus();
-            if (k.fifths === fifths && k.mode === mode) return;
-            void this.run(this.h("hKey", { key: name }), [{ type: "setSongProperties", props: { key } }]);
-          },
-        });
-      }
-    }
-    this.editor.openMenu(x, y, items);
+  /** The top bar's key: the key in force where the playhead or the cursor is (H4). */
+  keyMenu(x: number, y: number, at = 0): void {
+    const inForce = [...(this.song.keyChanges ?? [])].reverse().find((c) => c.tick <= at);
+    const from = inForce?.tick ?? 0;
+    this.editor.openMenu(x, y, this.keyItems(keyAt(this.song, from), (key) => this.setKeyFrom(from, key)));
   }
 
   setTitle(title: string): void {
@@ -612,7 +785,13 @@ export class SongActions {
 
   formMenu(tick: number, x: number, y: number): void {
     const bar = barStart(this.song.meter, barAt(this.song.meter, tick));
-    this.editor.openMenu(x, y, [{ label: this.t("addAnnotation"), run: () => (this.editor.closeMenus(), this.type({ kind: "annotation", id: null, tick: bar })) }]);
+    const close = (fn: () => void) => () => (this.editor.closeMenus(), fn());
+    this.editor.openMenu(x, y, [
+      { label: this.t("addAnnotation"), run: close(() => this.type({ kind: "annotation", id: null, tick: bar })) },
+      { label: "", separator: true },
+      ...this.tempoAddItems(this.beatAt(tick)),
+      ...(bar > 0 ? [{ label: this.t("keyChangeHere"), run: close(() => this.keyChangeMenu(bar, x, y)) }] : []),
+    ]);
   }
 
   annotationMenu(id: string, x: number, y: number): void {

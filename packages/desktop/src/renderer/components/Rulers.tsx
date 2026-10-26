@@ -8,7 +8,8 @@
  * Harmony: double click types the chord of the beat under the mouse; Enter or Tab goes on to the next bar.
  */
 import { useState } from "react";
-import { type Song, barAt, barStart, barTicks, orderedSections } from "@fourhands/core";
+import { type Song, barAt, barStart, barTicks, bpmAt, keyAt, orderedSections, tempoMarks } from "@fourhands/core";
+import { keyName } from "../music.js";
 import type { Translate } from "../../shared/i18n.js";
 import { useActions, useApp } from "../context.js";
 import { type RollView, endTick, tickToX, xToTick } from "../roll/geometry.js";
@@ -332,6 +333,136 @@ export function HarmonyRuler({ song, v, t }: RulerProps) {
         </div>
       )}
       {items}
+    </div>
+  );
+}
+
+/** Whether the Tempo ruler shows (H4): the song changes tempo, or a change is being typed. */
+export function hasTempoRuler(song: Song, typingTempo: boolean): boolean {
+  return typingTempo || (song.tempoChanges ?? []).length > 0;
+}
+
+/** Whether the Key ruler shows (H4): the song changes key. */
+export function hasKeyRuler(song: Song): boolean {
+  return (song.keyChanges ?? []).length > 0;
+}
+
+/**
+ * Tempo changes (H4, Fran 26/10/2026): each change reads where it happens, like a marking on a
+ * score: "60" for a jump, "rit." or "accel." over the bars where it glides and the tempo it
+ * reaches, "⌒ 2×" for a fermata. Double click writes one at the beat under the mouse (or rewrites
+ * the one clicked); right click opens its menu.
+ */
+export function TempoRuler({ song, v, t }: RulerProps) {
+  const actions = useActions();
+  const typing = actions.typing?.kind === "tempoChange" ? actions.typing : null;
+  const marks = tempoMarks(song);
+  const end = endTick(v);
+  // What is in force at the left edge, dimmed, until the first mark in view (like a clef at the start of a line).
+  const edgeBpm = Math.round(bpmAt(song, v.startTick) * 100) / 100;
+  const firstX = Math.min(...marks.filter((m) => (m.kind === "ramp" ? m.from : m.tick) >= v.startTick).map((m) => tickToX(v, m.kind === "ramp" ? m.from : m.tick)), Infinity);
+  const inRamp = marks.some((m) => m.kind === "ramp" && m.from < v.startTick && m.tick > v.startTick);
+  // A jump right where a ramp starts: the ramp's words go after the jump's value.
+  const jumpAt = new Set(marks.filter((m) => m.kind === "jump").map((m) => m.tick));
+  jumpAt.add(0);
+
+  const markAt = (target: EventTarget) => {
+    const el = (target as HTMLElement).closest<HTMLElement>(".tmark");
+    return el ? Number(el.dataset.tick) : null;
+  };
+  const rowDouble = (e: React.MouseEvent<HTMLDivElement>) => {
+    if ((e.target as HTMLElement).closest("input")) return;
+    const on = markAt(e.target);
+    if (on !== null) actions.type({ kind: "tempoChange", tick: on, editing: on });
+    else actions.type({ kind: "tempoChange", tick: Math.max(1, actions.beatAt(xToTick(v, localX(e)))), editing: null });
+  };
+  const rowMenu = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    actions.tempoMenu(xToTick(v, localX(e)), markAt(e.target), e.clientX, e.clientY);
+  };
+
+  const items: React.ReactNode[] = [];
+  marks.forEach((m, i) => {
+    if (typing?.editing === m.tick) return;
+    const next = marks[i + 1]?.tick ?? Infinity;
+    const from = m.kind === "ramp" ? m.from : m.tick;
+    const to = m.kind === "fermata" ? m.end : m.kind === "ramp" ? m.tick : Math.min(next, end);
+    if (to < v.startTick || from > end) return;
+    const left = Math.max(0, tickToX(v, from) + (m.kind === "ramp" && jumpAt.has(from) && from >= v.startTick ? 52 : 0));
+    if (m.kind === "ramp") {
+      const width = Math.max(18, tickToX(v, m.tick) - left);
+      items.push(
+        <span key={m.tick} data-tick={m.tick} className={`tmark tramp ${m.slower ? "slower" : "faster"}`} style={{ left, width }} title={`${t(m.slower ? "rampSlower" : "rampFaster")} → ${m.bpm} · ${t("bar")} ${barAt(song.meter, m.tick)}`}>
+          <span className="tword">{t(m.slower ? "rampSlower" : "rampFaster")}</span>
+          <span className="tline" />
+          <span className="tval mono">{m.bpm}</span>
+        </span>,
+      );
+    } else if (m.kind === "fermata") {
+      items.push(
+        <span key={m.tick} data-tick={m.tick} className="tmark tferm" style={{ left, width: Math.max(44, tickToX(v, m.end) - left) }} title={`${t("fermataWord")} ×${m.factor} · ${t("bar")} ${barAt(song.meter, m.tick)}`}>
+          ⌒ <span className="mono">{m.factor}×</span>
+        </span>,
+      );
+    } else {
+      items.push(
+        <span key={m.tick} data-tick={m.tick} className="tmark tjump" style={{ left, width: Math.max(28, Math.min(tickToX(v, to), marks[i + 1]?.kind === "ramp" ? tickToX(v, m.tick) + 52 : Infinity) - left) }} title={`♩ = ${m.bpm} · ${t("bar")} ${barAt(song.meter, m.tick)}`}>
+          <span className="mono">♩ {m.bpm}</span>
+        </span>,
+      );
+    }
+  });
+  if (typing) {
+    items.push(
+      <InlineEdit
+        key={`tempo-${typing.tick}`}
+        className="ruler"
+        style={{ left: Math.max(0, tickToX(v, typing.tick)), width: 180 }}
+        value={typing.editing !== null ? actions.tempoChangeText(typing.editing) : ""}
+        placeholder={t("tempoChangeHint")}
+        title={t("tempoChangeHint")}
+        maxLength={24}
+        onCommit={(text) => (actions.saveTempoChange(typing.editing, typing.tick, text), actions.type(null))}
+        onCancel={() => actions.type(null)}
+      />,
+    );
+  }
+  return (
+    <div className="rfill" onDoubleClick={rowDouble} onContextMenu={rowMenu}>
+      {!inRamp && firstX > 56 && (
+        <span className="tstart mono" title={`♩ = ${edgeBpm}`}>
+          ♩ {edgeBpm}
+        </span>
+      )}
+      {items}
+    </div>
+  );
+}
+
+/** Key changes (H4): the key from each change on, until the next one. Right click or double click: its menu. */
+export function KeyRuler({ song, v, t }: RulerProps) {
+  const actions = useActions();
+  const { lang } = useApp();
+  const changes = song.keyChanges ?? [];
+  const end = endTick(v);
+  const open = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const el = (e.target as HTMLElement).closest<HTMLElement>(".kchange");
+    actions.keyChangeMenu(el ? Number(el.dataset.tick) : xToTick(v, localX(e)), e.clientX, e.clientY);
+  };
+  return (
+    <div className="rfill" onContextMenu={open} onDoubleClick={open}>
+      {Math.min(...changes.filter((c) => c.tick >= v.startTick).map((c) => tickToX(v, c.tick)), Infinity) > 90 && <span className="kstart">{keyName(keyAt(song, v.startTick), lang)}</span>}
+      {changes.map((c, i) => {
+        const next = changes[i + 1]?.tick ?? Infinity;
+        if (next <= v.startTick || c.tick >= end) return null;
+        const left = tickToX(v, c.tick);
+        return (
+          <span key={c.tick} data-tick={c.tick} className="kchange" style={{ left, width: Math.min(v.width, tickToX(v, Math.min(next, end))) - left }} title={`${keyName(c.key, lang)} · ${t("bar")} ${barAt(song.meter, c.tick)}`}>
+            {keyName(c.key, lang)}
+          </span>
+        );
+      })}
     </div>
   );
 }

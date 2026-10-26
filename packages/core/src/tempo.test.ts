@@ -5,7 +5,7 @@ import { parseSongFile, serializeSong } from "./file.js";
 import { exportMidi, importMidi, tempoEvents } from "./midi.js";
 import { USER, barStart, emptySong } from "./model.js";
 import { MusicError, keyChangesText, parseKeyChanges, parseTempoChanges, tempoChangesText } from "./notation.js";
-import { bpmAt, keyAt, secondsAt, secondsBetween, steadyTempo, tickAtSeconds } from "./tempo.js";
+import { bpmAt, keyAt, secondsAt, secondsBetween, steadyTempo, tempoMarks, tickAtSeconds } from "./tempo.js";
 import { PPQ } from "./time.js";
 
 const BAR = 4 * PPQ;
@@ -75,6 +75,16 @@ describe("tempo map (H4)", () => {
     d.transact({ actor: USER, label: "t" }, (tx) => setTempoChanges(tx, points.slice(0, 3)));
     expect(tempoChangesText(d.song)).toBe("2.1 100\n3.1 rit 60\n4.1 accel 120");
     expect(parseTempoChanges(d.song, tempoChangesText(d.song))).toEqual(d.song.tempoChanges);
+  });
+
+  it("reads as marks on a ruler: jumps, ramps and fermatas", () => {
+    const d = doc();
+    d.transact({ actor: USER, label: "t" }, (tx) => setTempoChanges(tx, parseTempoChanges(d.song, "2.1 100\n3.1 rit 60\n5.3 fermata 3")));
+    expect(tempoMarks(d.song)).toEqual([
+      { kind: "jump", tick: BAR, bpm: 100 },
+      { kind: "ramp", tick: 2 * BAR, from: BAR, bpm: 60, slower: true },
+      { kind: "fermata", tick: 4 * BAR + 2 * PPQ, end: 4 * BAR + 3 * PPQ, factor: 3 },
+    ]);
   });
 
   it("explains what is wrong in a line", () => {

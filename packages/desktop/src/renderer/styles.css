@@ -109,6 +109,18 @@ input.inline.mixval { height: 16px; padding: 0 2px; font-size: 10px; text-align:
 .flag { position: absolute; top: 2px; height: 18px; line-height: 18px; font-size: 11px; color: var(--text-on-light); background: var(--flag); border-radius: 3px 9px 9px 3px; padding: 0 8px; white-space: nowrap; }
 .chord { position: absolute; top: 0; bottom: 0; border-left: 1px solid var(--line-control); padding-left: 6px; font-size: 12px; line-height: 23px; color: var(--text); white-space: nowrap; overflow: hidden; box-sizing: border-box; }
 .barn { position: absolute; top: 0; bottom: 0; border-left: 1px solid var(--line-strong); padding-left: 4px; font-size: 11px; line-height: 23px; color: var(--text-2); }
+/* H4: Tempo and Key rulers, like the harmony ruler: a mark where the change happens, spanning its bars. */
+.rrow.tempo, .rrow.keys { cursor: text; }
+.tmark, .kchange { position: absolute; top: 0; bottom: 0; border-left: 1px solid var(--line-control); padding-left: 6px; font-size: 12px; line-height: 23px; color: var(--text); white-space: nowrap; overflow: hidden; box-sizing: border-box; cursor: pointer; }
+.tstart, .kstart { position: absolute; left: 0; top: 0; padding-left: 6px; font-size: 12px; line-height: 23px; color: var(--text-2); white-space: nowrap; pointer-events: none; }
+.tramp { display: flex; align-items: center; gap: 6px; padding-right: 6px; border-left-style: dashed; }
+.tramp .tword { color: var(--text-2); }
+.tramp .tline { flex: 1; min-width: 6px; height: 0; border-top: 1px dashed var(--line-on); }
+.tramp.slower .tline { transform: translateY(3px) rotate(1.5deg); }
+.tramp.faster .tline { transform: translateY(-3px) rotate(-1.5deg); }
+.tramp .tval { color: var(--text); }
+.tferm { color: var(--text); }
+.tmark:hover, .kchange:hover { background: var(--bg-section); }
 .loopband { position: absolute; top: 0; height: 4px; background: var(--loop); opacity: .7; }
 .empty { position: absolute; inset: 0; display: flex; align-items: center; gap: 10px; color: var(--text-2); font-size: 12px; padding-left: 10px; white-space: nowrap; }
 .empty button { height: 24px; padding: 0 10px; border-radius: 6px; border: 1px dashed var(--line-on); background: transparent; color: var(--text); font-size: 12px; cursor: pointer; }

@@ -131,3 +131,33 @@ export function keysIn(song: KeySong, from: number, to: number): { tick: number;
   for (const c of song.keyChanges ?? []) if (c.tick > from && c.tick < to) out.push({ tick: c.tick, key: c.key });
   return out;
 }
+
+/** How a tempo change reads on a ruler: a jump, a ramp arriving at a tempo, or a fermata. */
+export type TempoMark =
+  | { kind: "jump"; tick: number; bpm: number }
+  | { kind: "ramp"; tick: number; from: number; bpm: number; slower: boolean }
+  | { kind: "fermata"; tick: number; end: number; factor: number };
+
+/**
+ * The tempo changes as marks. A fermata is two points written by `parseTempoChanges`: slower for a
+ * span of at most a bar, then exactly the tempo from before. Each mark keeps the tick of its first point.
+ */
+export function tempoMarks(song: TempoSong & Pick<Song, "meter">): TempoMark[] {
+  const points = tempoPoints(song);
+  const bar = (PPQ * 4 * song.meter.numerator) / song.meter.denominator;
+  const out: TempoMark[] = [];
+  for (let i = 1; i < points.length; i++) {
+    const p = points[i]!;
+    const before = points[i - 1]!;
+    const next = points[i + 1];
+    if (!p.ramp && next && !next.ramp && next.tempo === before.tempo && p.tempo > before.tempo && next.tick - p.tick <= bar) {
+      out.push({ kind: "fermata", tick: p.tick, end: next.tick, factor: Math.round((p.tempo / before.tempo) * 100) / 100 });
+      i++;
+      continue;
+    }
+    const bpm = Math.round((60_000_000 / p.tempo) * 100) / 100;
+    if (p.ramp) out.push({ kind: "ramp", tick: p.tick, from: before.tick, bpm, slower: p.tempo > before.tempo });
+    else out.push({ kind: "jump", tick: p.tick, bpm });
+  }
+  return out;
+}
