@@ -3,17 +3,17 @@
  * items 4–6). Draws, and passes the pointer to the Editor (editor.ts).
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { CURVE_DEFAULT, type Note, barAt } from "@fourhands/core";
+import { CURVE_DEFAULT, type Note, barAt, keyAt } from "@fourhands/core";
 import { activeTrack, notesByTrack, trackColors, useApp, useSize, useSong, useView } from "../context.js";
 import { durationName, noteName, scalePitchClasses } from "../music.js";
 import { hitTest } from "../roll/edit.js";
 import { drawCurve, drawGrid, drawKeyboard, drawNotes, drawPedal, drawStroke, drawVelocity, prepare } from "../roll/draw.js";
 import { T } from "../theme.js";
-import { type RollView, yToPitch } from "../roll/geometry.js";
+import { type RollView, xToTick, yToPitch } from "../roll/geometry.js";
 import { type Editor, modKey } from "../editor.js";
 import type { AudioLayer } from "../audio-layer.js";
 import { AiOverlay } from "./AiPresence.js";
-import { AnnotationRuler, BarRuler, FormRuler, HarmonyRuler, NOTE_LANE, annotationLanes, hasAnnotationRuler } from "./Rulers.js";
+import { AnnotationRuler, BarRuler, FormRuler, HarmonyRuler, KeyRuler, NOTE_LANE, TempoRuler, annotationLanes, hasAnnotationRuler, hasKeyRuler, hasTempoRuler } from "./Rulers.js";
 import { useActions } from "../context.js";
 import { CURSORS } from "../cursors.js";
 
@@ -134,7 +134,8 @@ export function RollArea({ v, editor, audio, playhead, onResize, onWheel, onKeyP
         else if (song.notes[id]?.shapedBy.by === "ai") fresh.set(id, age);
       }
       if (notes) {
-        drawGrid(notes, v, song.meter, view.scale ? scalePitchClasses(song.key) : null);
+        // H4: the scale of the key in force in the middle of the view.
+        drawGrid(notes, v, song.meter, view.scale ? scalePitchClasses(keyAt(song, v.startTick + v.width / v.pxPerTick / 2)) : null);
         drawNotes(notes, v, {
           notes: own,
           ghosts,
@@ -183,7 +184,10 @@ export function RollArea({ v, editor, audio, playhead, onResize, onWheel, onKeyP
   const actionsForNotes = useActions();
   const notesShown = hasAnnotationRuler(song, actionsForNotes.typing?.kind === "annotation");
   const notesHeight = 6 + NOTE_LANE * annotationLanes(song, v);
-  const rows = `${formEmpty ? 30 : 24}px ${notesShown ? `${notesHeight}px ` : ""}${harmonyEmpty ? 30 : 24}px 24px minmax(0, 1fr) 64px`;
+  // H4: Tempo and Key rulers only when the song changes tempo or key (or a change is being typed).
+  const tempoShown = hasTempoRuler(song, actionsForNotes.typing?.kind === "tempoChange");
+  const keyShown = hasKeyRuler(song);
+  const rows = `${formEmpty ? 30 : 24}px ${notesShown ? `${notesHeight}px ` : ""}${tempoShown ? "24px " : ""}${keyShown ? "24px " : ""}${harmonyEmpty ? 30 : 24}px 24px minmax(0, 1fr) 64px`;
   const from = barAt(song.meter, v.startTick);
   const to = barAt(song.meter, v.startTick + v.width / v.pxPerTick);
 
@@ -205,6 +209,22 @@ export function RollArea({ v, editor, audio, playhead, onResize, onWheel, onKeyP
           </div>
         </>
       )}
+      {tempoShown && (
+        <>
+          <div className="rlab">{t("tempoRuler")}</div>
+          <div className="rrow tempo">
+            <TempoRuler song={song} v={v} t={t} />
+          </div>
+        </>
+      )}
+      {keyShown && (
+        <>
+          <div className="rlab">{t("keyRuler")}</div>
+          <div className="rrow keys">
+            <KeyRuler song={song} v={v} t={t} />
+          </div>
+        </>
+      )}
       <div className="rlab" style={{ height: "auto" }}>
         {t("harmony")}
       </div>
@@ -221,6 +241,7 @@ export function RollArea({ v, editor, audio, playhead, onResize, onWheel, onKeyP
         onPointerMove={(e) => e.currentTarget.hasPointerCapture(e.pointerId) && editor.rulerMove(local(e).x)}
         onPointerUp={(e) => editor.rulerUp(local(e).x)}
         onDoubleClick={() => editor.clearLoop()}
+        onContextMenu={(e) => (e.preventDefault(), actionsForNotes.barMenu(xToTick(v, local(e).x), e.clientX, e.clientY))}
       >
         <BarRuler song={song} v={v} />
       </div>
@@ -333,7 +354,7 @@ function NoteLabel({ note, x, y, width }: { note: Note | undefined; x: number; y
   const view = useView();
   const song = useSong();
   if (!note) return null;
-  const parts = [noteName(note.pitch, view.noteNames, song.key), `${t("velocity").toLowerCase()} ${note.velocity}`, durationName(note.duration, lang)];
+  const parts = [noteName(note.pitch, view.noteNames, keyAt(song, note.start)), `${t("velocity").toLowerCase()} ${note.velocity}`, durationName(note.duration, lang)];
   return (
     <div className="notetip" role="tooltip" style={x > width - 240 ? { right: width - x + 12, top: Math.max(4, y - 30) } : { left: x + 12, top: Math.max(4, y - 30) }}>
       {parts.join(" · ")}

@@ -6,10 +6,10 @@
  * Without a SoundFont (the browser harness) everything runs silently on the same clock, so the
  * transport can still be tested.
  */
-import { type Song, barTicks, beatTicks, songEnd } from "@fourhands/core";
+import { PPQ, type Song, barTicks, beatTicks, bpmAt, secondsBetween, songEnd, tickAfter } from "@fourhands/core";
 import type { SynthEvent } from "../shared/messages.js";
 import type { SoundOut } from "./router.js";
-import { type LoopRange, METRONOME_CHANNEL, type SoundResolver, clickEvents, curveResetEvents, curveStateEvents, noteEvents, secondsPerTick, setupEvents, windowPieces } from "./schedule.js";
+import { type LoopRange, METRONOME_CHANNEL, type SoundResolver, clickEvents, curveResetEvents, curveStateEvents, noteEvents, setupEvents, windowPieces } from "./schedule.js";
 
 const LOOKAHEAD = 0.2;
 const TICK_MS = 25;
@@ -41,17 +41,24 @@ export class Player {
   onLive: ((kind: "on" | "off", note: LiveNote) => void) | null = null;
   onLiveCc: ((cc: number, value: number, tick: number | null) => void) | null = null;
   onStop: (() => void) | null = null;
-  private anchor = 0;
+  /** Audio time when the song starts sounding (linear tick 0), after the count-in. */
+  private startTime = 0;
+  /** Seconds per tick during the count-in: the tempo where playback starts. */
+  private countSpt = 0;
   private countInTicks = 0;
   private done = 0;
   private doneSong = 0;
   /** The loop in force: the song's loop region (shared context), read again every 25 ms. */
   private loop: LoopRange | null = null;
   private noLoop = false;
-  /** Where the playhead mapping starts: song tick `anchorSong` at linear tick `anchorLinear`. */
+  /**
+   * Where the playhead mapping starts: song tick `anchorSong` at linear tick `anchorLinear`, which
+   * sounds at audio time `anchorTime`. From there, time follows the song's tempo map (H4) along
+   * the loop. The anchor moves forward at every window, so the walks stay short.
+   */
   private anchorLinear = 0;
   private anchorSong = 0;
-  private spt = 0;
+  private anchorTime = 0;
   private timer: ReturnType<typeof setInterval> | null = null;
   private listeners = new Set<() => void>();
   private held = new Map<number, { ch: number; pitch: number }>();
@@ -104,18 +111,19 @@ export class Player {
     this.stopTimer();
     if (!this.setupDone) this.setup();
     const song = this.song();
-    this.spt = secondsPerTick(song);
     this.noLoop = !!options.noLoop;
     this.loop = this.currentLoop();
     if (this.loop && (from < this.loop.start || from >= this.loop.end) && !options.countIn) from = this.loop.start;
     this.startTick = from;
     this.countInTicks = Math.round((options.countIn ?? 0) * barTicks(song.meter));
     this.metronome = options.metronome ?? this.metronome;
-    this.anchor = this.now() + START_DELAY;
+    this.countSpt = 60 / (PPQ * bpmAt(song, from));
+    this.startTime = this.now() + START_DELAY + this.countInTicks * this.countSpt;
     this.done = -this.countInTicks;
     this.doneSong = from;
     this.anchorLinear = 0;
     this.anchorSong = from;
+    this.anchorTime = this.startTime;
     this.playing = true;
     this.needCurveState = true;
     this.schedule();
@@ -141,7 +149,37 @@ export class Player {
 
   /** Linear ticks since playback started (negative during the count-in). */
   private elapsed(): number {
-    return (this.now() - this.anchor) / this.spt - this.countInTicks;
+    return this.linearAt(this.now());
+  }
+
+  /** Audio time of a linear tick: the count-in at the starting tempo, then the tempo map along the loop. */
+  private timeAt(linear: number): number {
+    if (linear < 0) return this.startTime + linear * this.countSpt;
+    const song = this.song();
+    const ahead = linear - this.anchorLinear;
+    if (ahead < 0) return this.anchorTime - secondsBetween(song, Math.max(0, this.anchorSong + ahead), this.anchorSong);
+    let t = this.anchorTime;
+    for (const piece of windowPieces(this.anchorSong, ahead, this.loop)) t += secondsBetween(song, piece.from, piece.to);
+    return t;
+  }
+
+  /** The linear tick sounding at an audio time (the inverse of `timeAt`). */
+  private linearAt(time: number): number {
+    if (time < this.startTime) return (time - this.startTime) / this.countSpt;
+    const song = this.song();
+    let left = time - this.anchorTime;
+    let pos = this.anchorSong;
+    let linear = this.anchorLinear;
+    if (left < 0) return linear - (pos - tickAfter(song, pos, left));
+    const loop = this.loop;
+    while (loop && pos < loop.end) {
+      const room = secondsBetween(song, pos, loop.end);
+      if (left < room) break;
+      left -= room;
+      linear += loop.end - pos;
+      pos = loop.start;
+    }
+    return linear + (tickAfter(song, pos, left) - pos);
   }
 
   /** Song tick under the playhead, or null when stopped. During the count-in, the start tick. */
@@ -184,8 +222,10 @@ export class Player {
     const linear = Math.max(0, this.elapsed());
     const doneAt = Math.max(0, this.done);
     const posNow = this.songTickAt(linear);
+    const timeNow = this.timeAt(linear);
     this.anchorSong = posNow;
     this.anchorLinear = linear;
+    this.anchorTime = timeNow;
     this.loop = next;
     // Recompute where the already scheduled window ends under the new loop.
     this.doneSong = this.songTickAt(doneAt);
@@ -194,10 +234,10 @@ export class Player {
   private schedule(): void {
     const song = this.song();
     if (this.done >= 0) this.followLoop();
-    const horizon = (this.now() + LOOKAHEAD - this.anchor) / this.spt - this.countInTicks;
+    const horizon = this.linearAt(this.now() + LOOKAHEAD);
     if (horizon <= this.done) return;
     const events: { time: number; ev: SynthEvent }[] = [];
-    const at = (linear: number) => this.anchor + (linear + this.countInTicks) * this.spt;
+    const at = (linear: number) => this.timeAt(linear);
 
     // Count-in: clicks only, before the song starts (linear ticks from -countIn to 0).
     if (this.done < 0) {
@@ -229,6 +269,13 @@ export class Player {
       this.done = horizon;
     }
     this.engine?.sched(events);
+    // Move the anchor up to the scheduled point: what comes next is measured from there.
+    if (this.done > this.anchorLinear) {
+      const time = this.timeAt(this.done);
+      this.anchorSong = this.songTickAt(this.done);
+      this.anchorLinear = this.done;
+      this.anchorTime = time;
+    }
 
     // Without a loop, stop one bar after the last note (unless recording, which keeps going).
     if (!this.loop && !this.metronome) {

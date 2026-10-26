@@ -12,8 +12,10 @@
 import midiFile from "midi-file";
 import type { MidiData, MidiEvent } from "midi-file";
 import {
+  type KeyChange,
   type Note,
   type Section,
+  type TempoPoint,
   type Song,
   type Track,
   USER,
@@ -29,6 +31,7 @@ import {
   songEnd,
 } from "./model.js";
 import { PPQ } from "./time.js";
+import { secondsBetween, tempoPoints } from "./tempo.js";
 
 const { parseMidi, writeMidi } = midiFile;
 
@@ -178,10 +181,32 @@ export function importMidi(bytes: ArrayLike<number>, options: { title?: string }
       taken.delete(key);
     }
   }
-  if (conductor.some((t) => t.tick > 0 && (t.event.type === "setTempo" || t.event.type === "timeSignature"))) {
-    warnings.push("The file changes tempo or meter: the changes are kept for export, but the MVP works with the first ones.");
-  }
   const bar = barTicks(song.meter);
+  // Tempo and key changes after the start (H4): into the model, one per tick; anything else stays as it came.
+  const tempoChanges: TempoPoint[] = [];
+  const keyChanges: KeyChange[] = [];
+  for (const t of conductor) {
+    if (taken.has(t) || t.tick === 0) continue;
+    const tick = toTicks(t.tick);
+    if (t.event.type === "setTempo" && tick > (tempoChanges.at(-1)?.tick ?? 0) && Number.isInteger(tick)) {
+      tempoChanges.push({ tick, tempo: t.event.microsecondsPerBeat });
+      taken.add(t);
+    } else if (
+      t.event.type === "keySignature" &&
+      Math.abs(t.event.key) <= 7 &&
+      (t.event.scale === 0 || t.event.scale === 1) &&
+      tick % bar === 0 &&
+      tick > (keyChanges.at(-1)?.tick ?? 0)
+    ) {
+      keyChanges.push({ tick, key: { fifths: t.event.key, mode: t.event.scale === 1 ? "minor" : "major" } });
+      taken.add(t);
+    }
+  }
+  if (tempoChanges.length) song.tempoChanges = tempoChanges;
+  if (keyChanges.length) song.keyChanges = keyChanges;
+  if (conductor.some((t) => t.tick > 0 && t.event.type === "timeSignature")) {
+    warnings.push("The file changes meter: the changes are kept for export, but the MVP works with the first meter.");
+  }
   for (const t of conductor) {
     if (taken.has(t) || t.event.type === "endOfTrack") continue;
     const tick = toTicks(t.tick);
@@ -349,6 +374,30 @@ interface OutEvent {
  * conductor — name, meter, key, section markers, tempo, other events;
  * tracks — name, meta events, note-offs, bank select, program, other channel events, note-ons.
  */
+/** A ramp leaves the file as steps this long (a sixteenth): MIDI has no gliding tempo. */
+const RAMP_STEP = PPQ / 4;
+
+/**
+ * The tempo events to write: one per tempo point, and a ramp as steps whose tempo keeps each
+ * step's real duration, so the file lasts exactly what the song lasts.
+ */
+export function tempoEvents(song: Song): { tick: number; tempo: number }[] {
+  const points = tempoPoints(song);
+  const out: { tick: number; tempo: number }[] = [];
+  points.forEach((p, i) => {
+    const next = points[i + 1];
+    if (!next?.ramp) {
+      out.push({ tick: p.tick, tempo: p.tempo });
+      return;
+    }
+    for (let a = p.tick; a < next.tick; a += RAMP_STEP) {
+      const b = Math.min(next.tick, a + RAMP_STEP);
+      out.push({ tick: a, tempo: Math.round((secondsBetween(song, a, b) * 1_000_000 * PPQ) / (b - a)) });
+    }
+  });
+  return out;
+}
+
 const RANK = {
   name: 0,
   meta: 1,
@@ -408,8 +457,11 @@ export function exportMidi(song: Song): Uint8Array {
       event: { meta: true, type: "timeSignature", numerator: song.meter.numerator, denominator: song.meter.denominator, metronome: 24, thirtyseconds: 8 },
     },
     { tick: 0, rank: RANK.key, order: 0, event: { meta: true, type: "keySignature", key: song.key.fifths, scale: song.key.mode === "minor" ? 1 : 0 } },
-    { tick: 0, rank: RANK.tempo, order: 0, event: { meta: true, type: "setTempo", microsecondsPerBeat: song.tempo } },
   ];
+  for (const c of song.keyChanges ?? []) {
+    conductor.push({ tick: c.tick, rank: RANK.key, order: 0, event: { meta: true, type: "keySignature", key: c.key.fifths, scale: c.key.mode === "minor" ? 1 : 0 } });
+  }
+  for (const t of tempoEvents(song)) conductor.push({ tick: t.tick, rank: RANK.tempo, order: 0, event: { meta: true, type: "setTempo", microsecondsPerBeat: t.tempo } });
   orderedSections(song).forEach((s, i) =>
     conductor.push({ tick: barStart(song.meter, s.startBar), rank: RANK.marker, order: i, event: { meta: true, type: "marker", text: s.name } }),
   );

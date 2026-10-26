@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { addNotes, moveNotes, updateNotes } from "./commands.js";
 import { SongDocument } from "./document.js";
 import { MidiFileError, exportMidi, importMidi } from "./midi.js";
-import { USER, notesOf, orderedSections, orderedTracks } from "./model.js";
+import { USER, barStart, notesOf, orderedSections, orderedTracks } from "./model.js";
 import { DILATACION } from "./test-support/dilatacion.js";
 import { PPQ } from "./time.js";
 
@@ -76,9 +76,13 @@ describe("Dilatacion.mid (H1 closing test)", () => {
     ]);
     expect(Object.keys(song.notes)).toHaveLength(1024);
     expect(song.notes.n1).toMatchObject({ pitch: 45, start: 0, duration: 4 * PPQ, velocity: 40, createdBy: USER, shapedBy: USER });
-    // The final ritardando is kept for export.
-    expect(song.conductorEvents.map((e) => e.event.type)).toEqual(["setTempo", "setTempo"]);
-    expect(warnings).toHaveLength(1);
+    // The final ritardando (H4): into the tempo map, so it plays; nothing left to warn about.
+    expect(song.tempoChanges).toEqual([
+      { tick: barStart(song.meter, 51), tempo: 909_091 },
+      { tick: barStart(song.meter, 52), tempo: 1_034_483 },
+    ]);
+    expect(song.conductorEvents).toEqual([]);
+    expect(warnings).toHaveLength(0);
   });
 
   it("keeps the edits when exported", () => {

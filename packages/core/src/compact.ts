@@ -14,6 +14,7 @@
  */
 import { type KeySignature, type Meter, type Note, type Song, barAt, barStart, beatTicks, idNumber, orderedTracks } from "./model.js";
 import { EIGHTH_TRIPLET, PPQ, SIXTEENTH, nominalGridPosition } from "./time.js";
+import { keyAt } from "./tempo.js";
 
 const SHARPS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 const FLATS = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"];
@@ -111,7 +112,7 @@ function formatPlaced(song: Song, p: Placed): string {
   const beat = beatTicks(song.meter);
   const parts = [
     p.note.id,
-    pitchName(p.note.pitch, song.key),
+    pitchName(p.note.pitch, keyAt(song, p.note.start)),
     formatPosition(song.meter, p.start),
     formatDuration(p.duration),
     `v${p.note.velocity}`,

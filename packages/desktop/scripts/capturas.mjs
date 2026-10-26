@@ -17,6 +17,25 @@ fs.mkdirSync(outDir, { recursive: true });
 const BAR = 3840;
 const view = (o) => encodeURIComponent(JSON.stringify(o));
 const sketchView = (width, bars) => view({ startTick: 16 * BAR, pxPerTick: width / bars / BAR, scrollY: (127 - 86) * 15 });
+/** Tempo and key changes for the H4 shots: 72 at 41.3, accel. to 80 at 43, 72 at 45, rit. to 58 at 49, fermata at 50.3, C major from 45. */
+async function tempoSong(page) {
+  await page.evaluate((bar) => {
+    const us = (b) => Math.round(60_000_000 / b);
+    window.fhTest.replica.run("x", [
+      { type: "setTempoChanges", points: [
+        { tick: 40 * bar + 1920, tempo: us(72) },
+        { tick: 42 * bar, tempo: us(80), ramp: true },
+        { tick: 44 * bar, tempo: us(72) },
+        { tick: 48 * bar, tempo: us(58), ramp: true },
+        { tick: 49 * bar + 1920, tempo: us(58) * 2 },
+        { tick: 49 * bar + 2880, tempo: us(58) },
+      ] },
+      { type: "setKeyChanges", changes: [{ tick: 44 * bar, key: { fifths: 0, mode: "major" } }] },
+    ]);
+  }, BAR);
+  await page.waitForTimeout(300);
+}
+
 /** Claude writes four cello notes in c. 21–22 as one intervention, and ends it. */
 async function aiIntervention(page) {
   await page.evaluate((bar) => {
@@ -121,6 +140,27 @@ export const SHOTS = [
     await page.waitForTimeout(200);
     await page.locator(".thdr").nth(1).click({ button: "right", position: { x: 120, y: 12 } });
     await page.getByRole("menuitem", { name: /^Mezcla/ }).click();
+  } },
+  // H4: tempo and key changes. Bars 41–52 of the sketch: an accelerando, a jump, a ritardando, a fermata and a key change.
+  { name: "tempo_reglas", q: `?song=boceto&view=${view({ startTick: 40 * BAR, pxPerTick: (1440 - 288 - 72) / 12 / BAR, scrollY: (127 - 86) * 15 })}`, act: tempoSong },
+  { name: "tempo_escribir", q: `?song=boceto&view=${view({ startTick: 40 * BAR, pxPerTick: (1440 - 288 - 72) / 12 / BAR, scrollY: (127 - 86) * 15 })}`, act: async (page) => {
+    await tempoSong(page);
+    await page.locator(".rrow.tempo .rfill").dblclick({ position: { x: 300, y: 12 } });
+    await page.keyboard.type("rit 60");
+  } },
+  { name: "tempo_menu_regla", q: `?song=boceto&view=${view({ startTick: 40 * BAR, pxPerTick: (1440 - 288 - 72) / 12 / BAR, scrollY: (127 - 86) * 15 })}`, act: async (page) => {
+    await tempoSong(page);
+    await page.locator(".tmark.tramp").first().click({ button: "right" });
+  } },
+  { name: "tempo_menu_compases", q: `?song=boceto&view=${sketchView(1440 - 288 - 72, 12)}`, act: async (page) => {
+    await page.locator(".rrow.bars").click({ button: "right", position: { x: 420, y: 12 } });
+  } },
+  { name: "tempo_barra_superior", q: `?song=boceto&view=${view({ startTick: 40 * BAR, pxPerTick: (1440 - 288 - 72) / 12 / BAR, scrollY: (127 - 86) * 15 })}`, act: async (page) => {
+    await tempoSong(page);
+    await page.evaluate((bar) => window.fhTest.replica.setContext({ cursor: 50 * bar }), BAR);
+    await page.waitForTimeout(300);
+    await page.locator(".topbar .fbtn").first().hover();
+    await page.waitForTimeout(900);
   } },
   { name: "reverb_escribir", q: `?song=boceto&view=${sketchView(1440 - 288 - 72, 12)}`, act: async (page) => {
     await page.locator(".thdr").nth(1).click({ button: "right", position: { x: 120, y: 12 } });

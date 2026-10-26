@@ -12,12 +12,15 @@ import {
   barStart,
   bpm,
   formatPosition,
+  keyChangesText,
   keyText,
   notesOf,
   orderedSections,
   orderedTracks,
   pitchName,
+  secondsAt,
   songBars,
+  tempoChangesText,
 } from "@fourhands/core";
 import { GM_NOTES, PALETTE, type PaletteItem, instrumentName } from "../../shared/instruments.js";
 import type { BankPreset, SoundProfile } from "../../shared/soundbank-info.js";
@@ -75,7 +78,7 @@ export interface OverviewExtras {
 
 export function overviewText(song: Song, extras: OverviewExtras = { open: [] }): string {
   const total = songBars(song);
-  const seconds = Math.round(((total * song.meter.numerator * (4 / song.meter.denominator)) / bpm(song)) * 60);
+  const seconds = Math.round(secondsAt(song, barStart(song.meter, total + 1)));
   const lines = [
     `Four Hands · r${song.revision} · "${song.title}"`,
     `Tempo ${Math.round(bpm(song) * 100) / 100} BPM · ${song.meter.numerator}/${song.meter.denominator} · ${keyText(song.key)} · ${total} bar${total === 1 ? "" : "s"} (about ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")})`,
@@ -83,6 +86,11 @@ export function overviewText(song: Song, extras: OverviewExtras = { open: [] }):
   // The concept first: the intention and the limits every change is measured against.
   if (song.concept) lines.push(`Concept (by ${song.concept.author.by === "user" ? "the user" : "an AI"}; reread it before changing anything): ${song.concept.text}`);
   else lines.push("Concept: none yet. For a new piece, write one with set_song_properties concept: the intention in a line, then the limits (duration, tempo, where the sound will go).");
+  // H4: tempo and key along the song (set_tempo_changes, set_key_changes).
+  const tempoChanges = tempoChangesText(song);
+  if (tempoChanges) lines.push(`Tempo changes: ${tempoChanges.split("\n").join(" · ")}`);
+  const keyChanges = keyChangesText(song);
+  if (keyChanges) lines.push(`Key changes: ${keyChanges.split("\n").join(" · ")}`);
   const sections = orderedSections(song);
   lines.push(sections.length ? `Form: ${sections.map((s) => `${s.id} ${s.name} ${s.startBar}-${s.endBar}`).join(" · ")}` : "Form: no sections yet");
 

@@ -606,6 +606,28 @@ describe("H3.1: the mix and the track list", () => {
     ok("end_intervention", { intervention_id: id });
   });
 
+  it("set_tempo_changes and set_key_changes write the maps in one undo step; the overview shows them (H4)", () => {
+    const id = begin("Ritardando final y modulación");
+    const before = ok("get_song_overview");
+    // Dilatación already ends with a ritardando: it shows, and it is what undo brings back.
+    expect(before).toContain("Tempo changes: 51.1 66 · 52.1 58");
+    const original = structuredClone(session.song.tempoChanges);
+    const text = ok("set_tempo_changes", { intervention_id: id, changes: "49.1 rit 60\n52.3 fermata" });
+    expect(text).toMatch(/^Tempo changes: 49\.1 rit 60 · 52\.3 30 · 52\.4 60\. The music lasts \d+:\d\d \(was \d+:\d\d\)/);
+    expect(session.song.tempoChanges).toHaveLength(3);
+    expect(ok("set_key_changes", { intervention_id: id, changes: "Coro C major" })).toContain("Key changes: c. 37 C major");
+    expect(fail("set_tempo_changes", { intervention_id: id, changes: "3.1 accel 30" })).toMatch(/Line 1.*accelerando/);
+    expect(fail("set_key_changes", { intervention_id: id, changes: "1 C major" })).toMatch(/set_song_properties/);
+    const overview = ok("get_song_overview");
+    expect(overview).toContain("Tempo changes: 49.1 rit 60 · 52.3 30 · 52.4 60");
+    expect(overview).toContain("Key changes: c. 37 C major");
+    expect(overview).not.toBe(before);
+    ok("end_intervention", { intervention_id: id });
+    session.handle({ type: "undo" });
+    expect(session.song.tempoChanges).toEqual(original);
+    expect("keyChanges" in session.song).toBe(false);
+  });
+
   it("set_mix rejects the whole call when a line is wrong", () => {
     const id = begin("Mezcla");
     const revision = session.song.revision;

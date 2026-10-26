@@ -25,6 +25,24 @@ export interface Meter {
 }
 
 /** Key signature as MIDI stores it: number of sharps (positive) or flats (negative), and the mode. */
+/**
+ * A tempo from a tick on. With `ramp`, the tempo glides there from the previous point (linear in
+ * BPM): a ritardando or an accelerando. Without it, it changes at once. A fermata is two points:
+ * slower at the held note, the old tempo again after it.
+ */
+export interface TempoPoint {
+  tick: number;
+  /** Microseconds per quarter note, like `Song.tempo`. */
+  tempo: number;
+  ramp?: true;
+}
+
+/** A key from a bar line on. */
+export interface KeyChange {
+  tick: number;
+  key: KeySignature;
+}
+
 export interface KeySignature {
   fifths: number;
   mode: "major" | "minor";
@@ -208,10 +226,18 @@ export interface Song {
   title: string;
   /** What the song is for and its limits; every AI reads it first. Absent until someone writes it. */
   concept?: SongConcept;
-  /** Microseconds per quarter note, exactly as MIDI stores it. Use `bpm()` to show it. */
+  /**
+   * Microseconds per quarter note at the start, exactly as MIDI stores it. Use `bpm()` to show it.
+   * Later changes are in `tempoChanges` (tempo.ts reads both).
+   */
   tempo: number;
+  /** Tempo changes after the start (H4, Fran 26/10/2026), sorted by tick. Absent: one tempo. */
+  tempoChanges?: TempoPoint[];
   meter: Meter;
+  /** The key at the start. Later changes are in `keyChanges`. */
   key: KeySignature;
+  /** Key changes after the start (H4, Fran 26/10/2026), sorted by tick, on bar lines. Absent: one key. */
+  keyChanges?: KeyChange[];
   /** Current revision (`r1532`). Every transaction, undo and redo increases it. */
   revision: number;
   /** Next number per id prefix. Ids are never reused within a song (ARQUITECTURA.md, 4.3). */

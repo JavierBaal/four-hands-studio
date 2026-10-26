@@ -22,8 +22,8 @@ function savedText(t: ReturnType<typeof useApp>["t"], file: FileState, now: numb
   return now - file.savedAt < 2500 ? t("savedJust") : t("savedAll");
 }
 
-/** The position field follows the playhead at ~15 frames per second while playing. */
-function Position({ audio }: { audio: AudioLayer }) {
+/** Where the user is: the playhead while playing (~15 times a second), else the cursor. */
+function usePlace(audio: AudioLayer): number {
   const song = useSong();
   const [tick, setTick] = useState<number | null>(null);
   useSyncExternalStore(audio.subscribe, audio.getVersion);
@@ -35,7 +35,60 @@ function Position({ audio }: { audio: AudioLayer }) {
     const id = setInterval(() => setTick(audio.player.position()), 66);
     return () => clearInterval(id);
   }, [audio.player.playing]);
-  return <span className="fval mono">{transportPosition(song.meter, tick ?? song.context.cursor)}</span>;
+  return tick ?? song.context.cursor;
+}
+
+/** The position field follows the playhead. */
+function Position({ audio }: { audio: AudioLayer }) {
+  const song = useSong();
+  return <span className="fval mono">{transportPosition(song.meter, usePlace(audio))}</span>;
+}
+
+/** Tempo and key where the user is (H4): with changes along the song, they follow the playhead. */
+function TempoField({ audio }: { audio: AudioLayer }) {
+  const { t } = useApp();
+  const actions = useActions();
+  const song = useSong();
+  const place = usePlace(audio);
+  const bpm = Math.round(actions.tempoAt(place));
+  const steady = (song.tempoChanges ?? []).length === 0;
+  const hint = steady ? t("tempo") : t("tempoAtHint", { bpm: Math.round(60_000_000 / song.tempo) });
+  return actions.typing?.kind === "tempo" ? (
+    <InlineEdit
+      className="field"
+      value={String(bpm)}
+      inputMode="numeric"
+      maxLength={3}
+      title={hint}
+      onCommit={(v) => (actions.setTempoAt(place, Number(v.replace(",", "."))), actions.type(null))}
+      onCancel={() => actions.type(null)}
+    />
+  ) : (
+    <button className="fbtn" title={hint} onClick={() => actions.type({ kind: "tempo" })}>
+      <span className="fval mono">{bpm}</span>
+    </button>
+  );
+}
+
+function KeyField({ audio }: { audio: AudioLayer }) {
+  const { t, lang } = useApp();
+  const actions = useActions();
+  const song = useSong();
+  const place = usePlace(audio);
+  const hint = (song.keyChanges ?? []).length === 0 ? t("key") : t("keyAtHint");
+  return (
+    <button
+      className="fbtn"
+      title={hint}
+      aria-haspopup="menu"
+      onClick={(e) => {
+        const r = e.currentTarget.getBoundingClientRect();
+        actions.keyMenu(r.left, r.bottom + 4, place);
+      }}
+    >
+      <span className="fval">{keyName(actions.keyAt(place), lang)}</span>
+    </button>
+  );
 }
 
 /** "Grabando en Piano · entrada 2… 1…" (capture 07), refreshed while it counts in. */
@@ -63,7 +116,6 @@ export function TopBar({ audio }: { audio: AudioLayer }) {
   useSyncExternalStore(audio.subscribe, audio.getVersion);
   const p = audio.player;
   const file = replica.file;
-  const bpm = Math.round(60_000_000 / song.tempo);
   const recording = audio.take !== null;
   const sound =
     audio.status === "loading" ? t("soundLoading") : audio.status === "none" ? t("soundMissing") : audio.status === "error" ? t("soundFailed") : null;
@@ -127,21 +179,7 @@ export function TopBar({ audio }: { audio: AudioLayer }) {
       </div>
       <div className="field">
         <span className="flabel">{t("tempo")}</span>
-        {actions.typing?.kind === "tempo" ? (
-          <InlineEdit
-            className="field"
-            value={String(bpm)}
-            inputMode="numeric"
-            maxLength={3}
-            title={t("tempo")}
-            onCommit={(v) => (actions.setTempo(Number(v.replace(",", "."))), actions.type(null))}
-            onCancel={() => actions.type(null)}
-          />
-        ) : (
-          <button className="fbtn" title={t("tempo")} onClick={() => actions.type({ kind: "tempo" })}>
-            <span className="fval mono">{bpm}</span>
-          </button>
-        )}
+        <TempoField audio={audio} />
       </div>
       <div className="field">
         <span className="flabel">{t("meter")}</span>
@@ -161,17 +199,7 @@ export function TopBar({ audio }: { audio: AudioLayer }) {
       </div>
       <div className="field fhide">
         <span className="flabel">{t("key")}</span>
-        <button
-          className="fbtn"
-          title={t("key")}
-          aria-haspopup="menu"
-          onClick={(e) => {
-            const r = e.currentTarget.getBoundingClientRect();
-            actions.keyMenu(r.left, r.bottom + 4);
-          }}
-        >
-          <span className="fval">{keyName(song.key, lang)}</span>
-        </button>
+        <KeyField audio={audio} />
       </div>
       {actions.typing?.kind === "title" ? (
         <div className="ttl">

@@ -19,6 +19,8 @@ const NEED_INTERVENTION = [
   "set_harmony",
   "set_sections",
   "set_song_properties",
+  "set_tempo_changes",
+  "set_key_changes",
   "add_track",
   "update_track",
   "set_mix",

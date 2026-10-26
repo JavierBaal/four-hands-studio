@@ -7,7 +7,7 @@
 import type { HistoryEntry } from "./document.js";
 import { type Authorship, type Note, type Song, bpm, orderedSections, orderedTracks } from "./model.js";
 import { barHarmony, formatNote } from "./compact.js";
-import { barsOf, keyText, songBars } from "./notation.js";
+import { barsOf, keyChangesText, keyText, songBars, tempoChangesText } from "./notation.js";
 
 export interface ChangesOptions {
   /** How the AI asked for it: "since your last call", "since r120". */
@@ -147,6 +147,12 @@ export function changesText(before: Song, after: Song, options: ChangesOptions):
   if (before.meter.numerator !== after.meter.numerator || before.meter.denominator !== after.meter.denominator)
     songLines.push(`  meter: ${before.meter.numerator}/${before.meter.denominator} → ${after.meter.numerator}/${after.meter.denominator}`);
   if (keyText(before.key) !== keyText(after.key)) songLines.push(`  key: ${keyText(before.key)} → ${keyText(after.key)}`);
+  const tempoBefore = tempoChangesText(before);
+  const tempoAfter = tempoChangesText(after);
+  if (tempoBefore !== tempoAfter) songLines.push(`  tempo changes: ${tempoBefore ? tempoBefore.split("\n").join(" · ") : "none"} → ${tempoAfter ? tempoAfter.split("\n").join(" · ") : "none"}`);
+  const keysBefore = keyChangesText(before);
+  const keysAfter = keyChangesText(after);
+  if (keysBefore !== keysAfter) songLines.push(`  key changes: ${keysBefore ? keysBefore.split("\n").join(" · ") : "none"} → ${keysAfter ? keysAfter.split("\n").join(" · ") : "none"}`);
   if ((before.concept?.text ?? "") !== (after.concept?.text ?? ""))
     songLines.push(after.concept ? `  concept (${who(after.concept.author, aiName)}): ${after.concept.text}` : "  concept removed");
   if (songLines.length) lines.push("", "Song:", ...songLines);
