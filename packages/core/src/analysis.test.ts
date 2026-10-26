@@ -220,8 +220,50 @@ describe("analysisText", () => {
     const s = song(["Piano"], [["t1", 60, 0, 4]]);
     const text = analysisText(s, { ...whole(s, 1), label: "c. 1" });
     expect(text).toMatch(/^Analysis of c\. 1, all tracks \(r0\)/);
-    expect(text).toMatch(/Nothing found for: leftovers, low register, crowded register, identical repeats, harmonic loops/);
+    expect(text).toMatch(/Nothing found for: leftovers, low register, crowded register, tracks sharing a register, identical repeats, harmonic loops/);
+    expect(text).toMatch(/crossed parts, parallel 5ths and octaves\./);
     expect(text).toMatch(/cannot hear sounds/);
+  });
+
+  it("finds two tracks in one register and one place in the stereo, and not when panned apart (H4)", () => {
+    // Violas and clarinet around E4 for two bars, both in the centre.
+    const s = song(["Violas", "Clarinete"], [["t1", 64, 0, 4], ["t1", 64, 4, 4], ["t2", 65, 0, 4], ["t2", 62, 4, 4]]);
+    const found = checks(s, 2).filter((f) => f.check === "masking");
+    expect(found).toHaveLength(1);
+    expect(found[0]!.text).toMatch(/^c\. 1–2 · Violas, Clarinete around E4 · pan C and C · vol 80 and 80$/);
+    s.tracks.t2!.pan = -0.5;
+    expect(checks(s, 2).filter((f) => f.check === "masking")).toHaveLength(0);
+    // A single bar is a passing meeting, not a register shared.
+    const one = song(["Violas", "Clarinete"], [["t1", 64, 0, 4], ["t2", 65, 0, 4]]);
+    expect(checks(one, 1).filter((f) => f.check === "masking")).toHaveLength(0);
+  });
+
+  it("finds a lower part crossing above the one usually above it (H4)", () => {
+    // Cello around C3, violas around C4; in beat 3 the cello climbs to E4 over the violas' C4.
+    const s = song(["Chelo", "Violas"], [
+      ["t1", 48, 0, 1], ["t1", 50, 1, 1], ["t1", 64, 2, 1], ["t1", 47, 3, 1],
+      ["t2", 60, 0, 1], ["t2", 62, 1, 1], ["t2", 60, 2, 1], ["t2", 59, 3, 1],
+    ]);
+    const found = checks(s, 1).filter((f) => f.check === "crossings");
+    expect(found).toHaveLength(1);
+    expect(found[0]!.text).toMatch(/^c\. 1 · Chelo above Violas \(E4 over C4\) ×1 · n3$/);
+  });
+
+  it("finds parallel fifths and octaves between two lines, and calls a long run a doubling (H4)", () => {
+    // Bass and tenor: C3/G3 → D3/A3 (5ths), then E3/B3 → F3/C4 (contrary... no: oblique) .
+    const s = song(["Bajo", "Tenor"], [
+      ["t1", 48, 0, 1], ["t1", 50, 1, 1], ["t1", 52, 2, 1], ["t1", 53, 3, 1],
+      ["t2", 55, 0, 1], ["t2", 57, 1, 1], ["t2", 55, 2, 1], ["t2", 57, 3, 1],
+    ]);
+    const found = checks(s, 1).filter((f) => f.check === "parallels");
+    expect(found.map((f) => f.text)).toEqual(["c. 1 · Bajo, Tenor · parallel 5ths ×1"]);
+    // Five notes together at the octave: a doubling, said once, not five slips.
+    const d = song(["Violines", "Flauta"], [0, 1, 2, 3, 4].flatMap((b) => [["t1", 60 + b, b, 1], ["t2", 72 + b, b, 1]] as [string, number, number, number][]));
+    const dd = checks(d, 2).filter((f) => f.check === "parallels");
+    expect(dd.map((f) => f.text)).toEqual(["c. 1–2 · Violines, Flauta move together at the octave or unison for 5 notes (a doubling)"]);
+    // Chords are not lines: a piano's block chords are left out.
+    const chords = song(["Piano", "Bajo"], [["t1", 60, 0, 1], ["t1", 64, 0, 1], ["t1", 62, 1, 1], ["t1", 65, 1, 1], ["t2", 48, 0, 1], ["t2", 50, 1, 1]]);
+    expect(checks(chords, 1).filter((f) => f.check === "parallels")).toHaveLength(0);
   });
 
   it("stays short on a whole real song", () => {

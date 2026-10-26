@@ -628,6 +628,21 @@ describe("H3.1: the mix and the track list", () => {
     expect("keyChanges" in session.song).toBe(false);
   });
 
+  it("logs which intervention corrects which (H4): notes of an earlier one changed or removed", () => {
+    const cello = trackByName("cello").id;
+    const first = begin("Contracanto");
+    const added = ok("add_notes", { intervention_id: first, track: cello, notes: "C3 1.1 1/4\nD3 1.2 1/4\nE3 1.3 1/4" });
+    ok("end_intervention", { intervention_id: first });
+    const [a, b] = [...added.matchAll(/\b(n\d+)\b/g)].map((m) => m[1]!);
+    expect(logs.find((l) => l.type === "ai_intervention_closed" && l.id === first)).not.toHaveProperty("corrects");
+    const second = begin("Limpio el contracanto");
+    ok("edit_notes", { intervention_id: second, changes: `${a} B2` });
+    ok("delete_notes", { intervention_id: second, note_ids: [b] });
+    ok("add_notes", { intervention_id: second, track: cello, notes: "G2 1.4 1/4" });
+    ok("end_intervention", { intervention_id: second });
+    expect(logs.find((l) => l.type === "ai_intervention_closed" && l.id === second)).toMatchObject({ corrects: [{ id: first, notes: 2 }] });
+  });
+
   it("set_mix rejects the whole call when a line is wrong", () => {
     const id = begin("Mezcla");
     const revision = session.song.revision;

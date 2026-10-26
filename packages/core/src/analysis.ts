@@ -14,6 +14,9 @@
  * 6. Outside the instrument's range (the caller says what each track's range is).
  * 7. Outside the key, by pitch class.
  * 8. Long notes on the beat outside the written chord.
+ * 9. Two tracks sharing a register (H4): close middles, close pans, for two bars or more.
+ * 10. Crossed parts (H4): a lower track sounding above the track that is usually above it.
+ * 11. Parallel fifths and octaves (H4) between two lines, and long doublings at the 5th or octave.
  * And first of all: leftovers of earlier versions, and the song concept's limits (a duration or a
  * tempo written in the concept, against the music), when the whole song is analysed.
  *
@@ -44,13 +47,14 @@ export interface Finding {
   text: string;
 }
 
-export type Check = "concept" | "leftovers" | "low" | "crowded" | "repeats" | "loops" | "dynamics" | "abrupt" | "range" | "key" | "harmony";
+export type Check = "concept" | "leftovers" | "low" | "crowded" | "masking" | "repeats" | "loops" | "dynamics" | "abrupt" | "range" | "key" | "harmony" | "crossings" | "parallels";
 
 const HEADINGS: Record<Check, string> = {
   concept: "Against the limits in the song concept",
   leftovers: "Left over from earlier versions (the song reads longer or fuller than the music)",
   low: "Low register (intervals too close for their height blur into a buzz)",
   crowded: "Crowded register (parts in the same octave mask each other)",
+  masking: "Two tracks in the same register and the same place in the stereo (one hides the other; register, pan or volume tells them apart)",
   repeats: "Identical repeats (the same bars, note for note)",
   loops: "Harmonic loops (the same chords over and over)",
   dynamics: "Formula dynamics",
@@ -58,9 +62,11 @@ const HEADINGS: Record<Check, string> = {
   range: "Outside the instrument's usual range (or the keys a bank's sound has samples for)",
   key: "Outside the key",
   harmony: "Long notes on the beat outside the written chord",
+  crossings: "Crossed parts (a track sounding above the one usually above it)",
+  parallels: "Parallel fifths and octaves between two lines (they matter in classical or chorale-like writing; a doubling is often meant)",
 };
 
-const CHECKS: readonly Check[] = ["concept", "leftovers", "low", "crowded", "repeats", "loops", "dynamics", "abrupt", "range", "key", "harmony"];
+const CHECKS: readonly Check[] = ["concept", "leftovers", "low", "crowded", "masking", "repeats", "loops", "dynamics", "abrupt", "range", "key", "harmony", "crossings", "parallels"];
 
 /**
  * Lowest comfortable bottom note (MIDI) for each interval in semitones, 1 to 11.
@@ -224,6 +230,197 @@ function crowded(ctx: Ctx): string[] {
   return [...groups.entries()]
     .sort((a, b) => b[1].bars.length - a[1].bars.length)
     .map(([key, g]) => `${barList(g.bars)} · ${key.split(",").length} tracks centred between ${pitchName(g.low, song.key)} and ${pitchName(g.high, song.key)} · ${names(song, key.split(","))}`);
+}
+
+// ---------------------------------------------------------------------------
+// 9. Two tracks in one register (H4: "para que la IA mezcle con criterio")
+
+/** Middles closer than this, in semitones, share a register. */
+const MASK_SEMITONES = 3;
+/** Pans closer than this (−1…1) sit in the same place. */
+const MASK_PAN = 0.3;
+
+function panLabel(pan: number): string {
+  const p = Math.round(pan * 100);
+  return p === 0 ? "C" : p < 0 ? `L${-p}` : `R${p}`;
+}
+
+function masking(ctx: Ctx): string[] {
+  const { song } = ctx;
+  const bt = barTicks(song.meter);
+  const fromBar = barAt(song.meter, ctx.start);
+  const toBar = barAt(song.meter, ctx.end - 1);
+  const pairs = new Map<string, { bars: number[]; mids: number[] }>();
+  for (let bar = fromBar; bar <= toBar; bar++) {
+    const s = barStart(song.meter, bar);
+    const e = s + bt;
+    const byTrack = new Map<string, number[]>();
+    for (const n of ctx.heard) {
+      if (!audible(ctx, n) || n.start >= e || n.start + n.duration <= s) continue;
+      const list = byTrack.get(n.trackId) ?? [];
+      list.push(n.pitch);
+      byTrack.set(n.trackId, list);
+    }
+    const mids = [...byTrack.entries()].map(([trackId, pitches]) => ({ trackId, mid: median(pitches) }));
+    for (let i = 0; i < mids.length; i++) {
+      for (let j = i + 1; j < mids.length; j++) {
+        const a = mids[i]!;
+        const b = mids[j]!;
+        if (!ctx.wanted.has(a.trackId) && !ctx.wanted.has(b.trackId)) continue;
+        if (Math.abs(a.mid - b.mid) > MASK_SEMITONES) continue;
+        if (Math.abs(song.tracks[a.trackId]!.pan - song.tracks[b.trackId]!.pan) >= MASK_PAN) continue;
+        const key = [a.trackId, b.trackId].sort((x, y) => song.trackOrder.indexOf(x) - song.trackOrder.indexOf(y)).join(",");
+        const entry = pairs.get(key) ?? { bars: [], mids: [] };
+        entry.bars.push(bar);
+        entry.mids.push((a.mid + b.mid) / 2);
+        pairs.set(key, entry);
+      }
+    }
+  }
+  return [...pairs.entries()]
+    .filter(([, g]) => g.bars.length >= 2)
+    .sort((a, b) => b[1].bars.length - a[1].bars.length)
+    .map(([key, g]) => {
+      const [x, y] = key.split(",") as [string, string];
+      const tx = song.tracks[x]!;
+      const ty = song.tracks[y]!;
+      return `${barList(g.bars)} · ${names(song, [x, y])} around ${pitchName(Math.round(g.mids.reduce((x, y) => x + y, 0) / g.mids.length), song.key)} · pan ${panLabel(tx.pan)} and ${panLabel(ty.pan)} · vol ${Math.round(tx.volume * 100)} and ${Math.round(ty.volume * 100)}`;
+    });
+}
+
+// ---------------------------------------------------------------------------
+// 10 and 11. Voice leading between tracks (H4)
+
+/** A track's notes sounding at a tick (the last 32nd of a note is legato, not sound). */
+function soundingAt(notes: readonly Note[], tick: number): Note[] {
+  return notes.filter((n) => n.start <= tick && tick < n.start + Math.max(1, n.duration - TAIL));
+}
+
+/** Melodic tracks of the range, audible, ordered from the lowest middle pitch to the highest. */
+function linesByRegister(ctx: Ctx): { trackId: string; mid: number; notes: Note[] }[] {
+  const by = new Map<string, Note[]>();
+  for (const n of ctx.heard) {
+    if (!audible(ctx, n)) continue;
+    const list = by.get(n.trackId) ?? [];
+    list.push(n);
+    by.set(n.trackId, list);
+  }
+  return [...by.entries()]
+    .filter(([, notes]) => notes.length >= 2)
+    .map(([trackId, notes]) => ({ trackId, mid: median(notes.map((n) => n.pitch)), notes: notes.sort((a, b) => a.start - b.start) }))
+    .sort((a, b) => a.mid - b.mid);
+}
+
+/** Lines: tracks that mostly play one note at a time (chords and pads interleave by nature). */
+function melodicLines(ctx: Ctx): ReturnType<typeof linesByRegister> {
+  return linesByRegister(ctx).filter((t) => {
+    const starts = new Map<number, number>();
+    for (const n of t.notes) starts.set(n.start, (starts.get(n.start) ?? 0) + 1);
+    const single = [...starts.values()].filter((c) => c === 1).length;
+    return single / starts.size >= 0.8;
+  });
+}
+
+/** Middles this far apart, in semitones, are two registers that should not swap. */
+const CROSS_SEMITONES = 5;
+
+function crossings(ctx: Ctx): string[] {
+  const { song } = ctx;
+  const tracks = melodicLines(ctx);
+  const out: { count: number; text: string }[] = [];
+  for (let i = 0; i + 1 < tracks.length; i++) {
+    const low = tracks[i]!;
+    const high = tracks[i + 1]!;
+    // Parts that share a register cross all the time; that is check 9, not a crossing.
+    if (high.mid - low.mid < CROSS_SEMITONES) continue;
+    if (!ctx.wanted.has(low.trackId) && !ctx.wanted.has(high.trackId)) continue;
+    const ticks = [...new Set([...low.notes, ...high.notes].map((n) => n.start))].filter((t) => t >= ctx.start && t < ctx.end).sort((a, b) => a - b);
+    const bars: number[] = [];
+    const hits: string[] = [];
+    let example = "";
+    for (const t of ticks) {
+      const lo = soundingAt(low.notes, t);
+      const hi = soundingAt(high.notes, t);
+      if (!lo.length || !hi.length) continue;
+      const top = lo.reduce((a, b) => (b.pitch > a.pitch ? b : a));
+      const bottom = hi.reduce((a, b) => (b.pitch < a.pitch ? b : a));
+      if (top.pitch <= bottom.pitch) continue;
+      bars.push(barAt(song.meter, t));
+      if (!hits.includes(top.id)) hits.push(top.id);
+      if (!example) example = `${pitchName(top.pitch, keyAt(song, t))} over ${pitchName(bottom.pitch, keyAt(song, t))}`;
+    }
+    if (bars.length === 0) continue;
+    out.push({
+      count: bars.length,
+      text: `${barList(bars)} · ${song.tracks[low.trackId]!.name} above ${song.tracks[high.trackId]!.name} (${example}) ×${bars.length} · ${ids(hits)}`,
+    });
+  }
+  return out.sort((a, b) => b.count - a.count).map((o) => o.text);
+}
+
+/** A run this long at the same perfect interval is a doubling, not a slip. */
+const DOUBLING_RUN = 4;
+
+function parallels(ctx: Ctx): string[] {
+  const { song } = ctx;
+  const lines = melodicLines(ctx);
+  const out: { count: number; text: string }[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    for (let j = i + 1; j < lines.length; j++) {
+      const a = lines[i]!;
+      const b = lines[j]!;
+      if (!ctx.wanted.has(a.trackId) && !ctx.wanted.has(b.trackId)) continue;
+      // Common attacks: both lines move to a new note at the same time.
+      const bStarts = new Map<number, Note>();
+      for (const n of b.notes) bStarts.set(n.start, n);
+      const common: { tick: number; low: Note; high: Note; ia: number; ib: number }[] = [];
+      const indexB = new Map(b.notes.map((n, k) => [n.id, k]));
+      a.notes.forEach((n, ia) => {
+        const m = bStarts.get(n.start);
+        if (m && n.start >= ctx.start && n.start < ctx.end) common.push({ tick: n.start, low: n, high: m, ia, ib: indexB.get(m.id)! });
+      });
+      const slips = { fifths: [] as number[], octaves: [] as number[] };
+      const doublings: { kind: number; from: number; to: number; length: number }[] = [];
+      // A run of parallel moves at one interval: `moves` moves from common attack `from` on.
+      let run: { kind: number; from: number; moves: number } | null = null;
+      const close = (lastIndex: number) => {
+        if (run && run.moves + 1 >= DOUBLING_RUN) doublings.push({ kind: run.kind, from: common[run.from]!.tick, to: common[lastIndex]!.tick, length: run.moves + 1 });
+        run = null;
+      };
+      for (let k = 1; k < common.length; k++) {
+        const p = common[k - 1]!;
+        const c = common[k]!;
+        const before = Math.abs(p.high.pitch - p.low.pitch) % 12;
+        const now = Math.abs(c.high.pitch - c.low.pitch) % 12;
+        const moveA = c.low.pitch - p.low.pitch;
+        const moveB = c.high.pitch - p.high.pitch;
+        // Only from one note to the next in both lines: an arpeggio meeting the bass on each downbeat is texture, not voice leading.
+        const adjacent = c.ia === p.ia + 1 && c.ib === p.ib + 1;
+        const parallel = adjacent && before === now && (now === 7 || now === 0) && moveA !== 0 && Math.sign(moveA) === Math.sign(moveB);
+        if (!parallel) {
+          close(k - 1);
+          continue;
+        }
+        if (run && (run as { kind: number }).kind !== now) close(k - 1);
+        if (!run) run = { kind: now, from: k - 1, moves: 0 };
+        (run as { moves: number }).moves++;
+        (now === 7 ? slips.fifths : slips.octaves).push(barAt(song.meter, c.tick));
+      }
+      close(common.length - 1);
+      const pair = names(song, [a.trackId, b.trackId]);
+      for (const d of doublings) {
+        const span = Array.from({ length: barAt(song.meter, d.to) - barAt(song.meter, d.from) + 1 }, (_, k) => barAt(song.meter, d.from) + k);
+        out.push({ count: 0, text: `${barList(span)} · ${pair} move together at the ${d.kind === 7 ? "5th" : "octave or unison"} for ${d.length} notes (a doubling)` });
+      }
+      // Single slips: parallels not inside a long doubling.
+      const inDoubling = (bar: number) => doublings.some((d) => bar >= barAt(song.meter, d.from) && bar <= barAt(song.meter, d.to));
+      const f = slips.fifths.filter((bar) => !inDoubling(bar));
+      const o = slips.octaves.filter((bar) => !inDoubling(bar));
+      if (f.length) out.push({ count: f.length, text: `${barList(f)} · ${pair} · parallel 5ths ×${f.length}` });
+      if (o.length) out.push({ count: o.length, text: `${barList(o)} · ${pair} · parallel octaves or unisons ×${o.length}` });
+    }
+  }
+  return out.sort((a, b) => b.count - a.count).map((o) => o.text);
 }
 
 // ---------------------------------------------------------------------------
@@ -650,6 +847,7 @@ export function analyze(song: Song, options: AnalyzeOptions): Finding[] {
     leftovers,
     low: lowRegister,
     crowded,
+    masking,
     repeats,
     loops,
     dynamics,
@@ -657,6 +855,8 @@ export function analyze(song: Song, options: AnalyzeOptions): Finding[] {
     range: instrumentRange,
     key,
     harmony,
+    crossings,
+    parallels,
   };
   const out: Finding[] = [];
   for (const check of CHECKS) for (const text of run[check](ctx)) out.push({ check, text });
@@ -697,5 +897,8 @@ const CHECK_NAMES: Record<Check, string> = {
   range: "instrument ranges",
   key: "notes outside the key",
   harmony: "notes outside the chord",
+  masking: "tracks sharing a register",
+  crossings: "crossed parts",
+  parallels: "parallel 5ths and octaves",
 };
 

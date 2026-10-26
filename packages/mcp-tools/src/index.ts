@@ -15,7 +15,7 @@
 import { z } from "zod";
 
 /** Bumped whenever a tool, its parameters or its meaning changes. The app refuses other bridges. */
-export const TOOLS_VERSION = 15;
+export const TOOLS_VERSION = 16;
 
 /**
  * Track colours by name (H3.2). The app's palette (desktop/src/shared/track-colors.ts) has the same
@@ -170,7 +170,9 @@ export const TOOLS: readonly ToolDefinition[] = [
       "chords, sections or annotations left after the last note and empty tracks (leftovers of earlier versions), " +
       "the song concept's limits (a duration or tempo written in it, against the music), close intervals too low (mud), too many notes below C3, four or more parts crowded in one octave, bars or blocks repeated identically three or more times, the same chord progression looped three or more times, " +
       "straight velocity ramps and long runs of one velocity, several tracks stopping at the same bar line or a sharp drop in loudness, " +
-      "notes outside the instrument's usual range (or the keys a bank's sound has samples for), notes outside the key, and long notes on the beat outside the written chord. " +
+      "notes outside the instrument's usual range (or the keys a bank's sound has samples for), notes outside the key (the key in force there), long notes on the beat outside the written chord, " +
+      "two tracks in the same register and the same place in the stereo (with their pan and volume: what to change to mix with judgement), a lower part crossing above the one usually above it, " +
+      "and parallel fifths and octaves between two lines (a long run is reported once, as a doubling). " +
       "It describes, it does not judge: a finding can be exactly what the music wants. " +
       "Use it after writing anything substantial and before handing the turn back, and when the user asks for your opinion. " +
       `tracks: only those parts are reported, but every unmuted track counts as heard around them. range: ${RANGE_HELP} Default: all. Read-only.`,

@@ -18,7 +18,7 @@ Small, surgical edits (one note, one velocity) don't need a full review, but sti
 ## How
 
 1. **Start with `analyze`** on the range you touched (or `all` after a whole draft). Read its shape line first: if notes per bar and tracks stay the same for most of the piece, it has no arc, whatever else is right. Then its leftovers: clean them before anything else.
-2. **Read what you touched and its surroundings.** `read_notes` over the bars you wrote plus one bar before and after, all tracks, and use the findings of `analyze` as a checklist: it measures what you would otherwise estimate.
+2. **Read what you touched and its surroundings.** `read_notes` over the bars you wrote plus one bar before and after, all tracks, and use the findings of `analyze` as a checklist: it measures what you would otherwise estimate. Two tracks sharing a register and a pan is a mix question (separate them by octave, pan or volume, or let one lead); crossed parts and parallel fifths or octaves matter when the style is voice-led (chorale, classical, neoclassical strings), much less in a pad or a doubled riff.
 3. **Go through the checklist below.** For each item, look at the actual notes.
 4. **Fix what is clearly wrong** in a new, small intervention named for what it fixes ("Limpiar el grave, c. 29-36"). Don't silently rewrite the music; fix mechanics.
 5. **Tell the user in two or three short lines** what you checked, what you fixed, and the one or two things only their ears can judge (a sound you don't know, a balance you can't hear). Don't list everything that was fine.

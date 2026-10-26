@@ -139,6 +139,10 @@ interface Intervention {
   start: number | null;
   end: number | null;
   closed: null | { how: "ai" | "user" | "timeout" | "song"; revision: number };
+  /** The first note id this intervention can create (ids only grow): to tell its own notes apart. */
+  firstNote: number;
+  /** Notes of earlier interventions this one changed or removed, by intervention (the corrections log, H4). */
+  corrects: Map<string, number>;
 }
 
 interface Connection {
@@ -170,6 +174,11 @@ function parseRevision(text: string | undefined): number | null {
 export class AiDesk {
   private readonly connections = new Map<string, Connection>();
   private readonly interventions = new Map<string, Intervention>();
+  /**
+   * Which intervention wrote each note, for notes written in this session (H4, the corrections log:
+   * "qué intervención corrige a cuál", to measure whether the skills reduce corrections).
+   */
+  private readonly noteOrigin = new Map<string, string>();
   /** Notes the user changed or deleted, with the revision of that change. */
   private readonly userTouched = new Map<string, number>();
   private window: WindowInfo = DEFAULT_WINDOW;
@@ -214,6 +223,7 @@ export class AiDesk {
     this.snapshots.clear();
     this.recent = [];
     this.interventions.clear();
+    this.noteOrigin.clear();
     this.userTouched.clear();
     this.mark = null;
     this.watch();
@@ -515,6 +525,10 @@ export class AiDesk {
     iv.removed += counts.removed ?? 0;
     const song = this.song;
     for (const id of noteIds) {
+      // Corrections log: a note another intervention wrote, changed or removed by this one.
+      const origin = this.noteOrigin.get(id);
+      if (origin && origin !== iv.id) iv.corrects.set(origin, (iv.corrects.get(origin) ?? 0) + 1);
+      else if (!origin && song.notes[id] && Number(id.slice(1)) >= iv.firstNote) this.noteOrigin.set(id, iv.id);
       const n = song.notes[id] ?? before?.get(id);
       if (!n) continue;
       const start = n.start;
@@ -554,7 +568,8 @@ export class AiDesk {
         ...this.recent,
       ].slice(0, RECENT_MAX);
     }
-    this.options.log?.({ type: "ai_intervention_closed", id: iv.id, how, added: iv.added, changed: iv.changed, removed: iv.removed });
+    const corrects = [...iv.corrects.entries()].map(([id, notes]) => ({ id, notes }));
+    this.options.log?.({ type: "ai_intervention_closed", id: iv.id, how, added: iv.added, changed: iv.changed, removed: iv.removed, ...(corrects.length ? { corrects } : {}) });
     this.emit();
   }
 
@@ -793,6 +808,8 @@ export class AiDesk {
         start: null,
         end: null,
         closed: null,
+        firstNote: song.counters.n,
+        corrects: new Map(),
       };
       iv.timer = this.setTimer(() => this.close(iv, "timeout"), this.options.autoCloseMs ?? 5 * 60_000);
       this.interventions.set(id, iv);
