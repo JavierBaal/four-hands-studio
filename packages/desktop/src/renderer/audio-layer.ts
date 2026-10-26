@@ -90,14 +90,14 @@ export class AudioLayer {
       this.finishTake();
       if (this.status === "ready") this.bridge.log({ type: "playback_stats", ...this.stats });
     };
-    // Resend programs, volume and pan when a track changes.
+    // Resend programs, volume, pan and reverb when a track changes.
     this.replica.subscribe(() => {
       // Anything new on top of the AI's step: back to the song as it is.
       const last = this.replica.undo.lastAi;
       if (this.before && last?.revision !== this.before.revision) this.resetCompare();
       const sig = this.replica.song.trackOrder.map((id) => {
         const tr = this.replica.song.tracks[id];
-        return tr ? `${tr.channel}:${tr.program}:${tr.volume}:${tr.pan}:${tr.sound ? `${tr.sound.bank}/${tr.sound.bankMSB}/${tr.sound.program}` : ""}` : "";
+        return tr ? `${tr.channel}:${tr.program}:${tr.volume}:${tr.pan}:${tr.reverb ?? 0}:${tr.sound ? `${tr.sound.bank}/${tr.sound.bankMSB}/${tr.sound.program}` : ""}` : "";
       }).join("|");
       if (sig !== this.trackSignature) {
         this.trackSignature = sig;
@@ -552,9 +552,9 @@ export class AudioLayer {
   }
 
   /** A fader moving: hear it now; the song gets the value on release. */
-  previewMix(trackId: string, volume: number, pan: number): void {
+  previewMix(trackId: string, volume: number, pan: number, reverb?: number): void {
     const track = this.replica.song.tracks[trackId];
-    if (track) this.player.previewMix(track.channel, volume, pan);
+    if (track) this.player.previewMix(track.channel, volume, pan, reverb);
   }
 
   audition(pitch: number, velocity: number): void {

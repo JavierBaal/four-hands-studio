@@ -28,7 +28,7 @@ describe("get_changes_since: what changed between two versions", () => {
     doc.transact({ actor: USER, label: "acorde" }, (tx) => setChord(tx, 20 * BAR, "Dm9"));
     doc.transact({ actor: USER, label: "tempo" }, (tx) => setSongProperties(tx, { tempo: 750_000 }));
     doc.transact({ actor: USER, label: "sección" }, (tx) => addSection(tx, { name: "Coda", startBar: 53, endBar: 56 }));
-    doc.transact({ actor: USER, label: "mezcla" }, (tx) => updateTrack(tx, cello.id, { volume: 0.5 }));
+    doc.transact({ actor: USER, label: "mezcla" }, (tx) => updateTrack(tx, cello.id, { volume: 0.5, reverb: 0.3 }));
     doc.transact({ actor: USER, label: "nota" }, (tx) => addAnnotation(tx, { start: 0, end: BAR, trackIds: [], text: "más aire" }));
     const text = changesText(before, doc.song, { since: "since your last call", history: doc.history.slice(from), aiName: () => "Claude" });
     expect(text).toMatch(/^Four Hands · changes r\d+ → r\d+ \(since your last call\)/);
@@ -43,6 +43,7 @@ describe("get_changes_since: what changed between two versions", () => {
     expect(text).toContain("tempo: 72 → 80 BPM");
     expect(text).toContain("+ Coda c. 53–56");
     expect(text).toContain("vol 80 → 50");
+    expect(text).toContain("rev 0 → 30");
     expect(text).toContain('+ "más aire" c. 1 (user)');
   });
 

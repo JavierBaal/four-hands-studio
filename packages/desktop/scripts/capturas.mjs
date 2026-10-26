@@ -113,7 +113,23 @@ export const SHOTS = [
   } },
   { name: "h32_tarjeta_mezcla", q: `?song=boceto&view=${sketchView(1440 - 288 - 72, 12)}`, act: async (page) => {
     await page.locator(".thdr").nth(1).click({ button: "right", position: { x: 120, y: 12 } });
-    await page.getByRole("menuitem", { name: /Volumen/ }).click();
+    await page.getByRole("menuitem", { name: /^Mezcla/ }).click();
+  } },
+  // H4: reverb send in the mix card, at 35, and typing it.
+  { name: "reverb_tarjeta_mezcla", q: `?song=boceto&view=${sketchView(1440 - 288 - 72, 12)}`, act: async (page) => {
+    await page.evaluate(() => window.fhTest.replica.run("x", [{ type: "updateTrack", id: window.fhTest.replica.song.trackOrder[1], changes: { reverb: 0.35 } }]));
+    await page.waitForTimeout(200);
+    await page.locator(".thdr").nth(1).click({ button: "right", position: { x: 120, y: 12 } });
+    await page.getByRole("menuitem", { name: /^Mezcla/ }).click();
+  } },
+  { name: "reverb_escribir", q: `?song=boceto&view=${sketchView(1440 - 288 - 72, 12)}`, act: async (page) => {
+    await page.locator(".thdr").nth(1).click({ button: "right", position: { x: 120, y: 12 } });
+    await page.getByRole("menuitem", { name: /^Mezcla/ }).click();
+    await page.locator(".qdialog .mixtype").nth(2).click();
+    await page.keyboard.type("40");
+  } },
+  { name: "reverb_menu_pista", q: `?song=boceto&view=${sketchView(1440 - 288 - 72, 12)}`, act: async (page) => {
+    await page.locator(".thdr").nth(1).click({ button: "right", position: { x: 120, y: 12 } });
   } },
   { name: "notas_en_carriles", q: `?song=boceto&view=${sketchView(1440 - 288 - 72, 12)}`, act: async (page) => {
     await page.evaluate((bar) => window.fhTest.replica.run("x", [

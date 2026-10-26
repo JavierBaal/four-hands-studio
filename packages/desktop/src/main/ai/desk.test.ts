@@ -593,6 +593,19 @@ describe("H3.1: the mix and the track list", () => {
     expect(orderedTracks(session.song).map((t) => ({ v: t.volume, p: t.pan, m: t.mute }))).toEqual(before);
   });
 
+  it("set_mix and update_track set the reverb send, and the overview shows it (H4)", () => {
+    const id = begin("Los violines más lejos");
+    const text = ok("set_mix", { intervention_id: id, mix: "t1 rev 35\nt2 vol 70 reverb 20" });
+    expect(text).toContain("t1 Organo · mix vol 80 pan C rev 35");
+    expect(session.song.tracks.t1!.reverb).toBe(0.35);
+    expect(session.song.tracks.t2).toMatchObject({ volume: 0.7, reverb: 0.2 });
+    expect(ok("update_track", { intervention_id: id, track: "t1", reverb: 0 })).toContain("reverb 0");
+    expect("reverb" in session.song.tracks.t1!).toBe(false);
+    expect(fail("set_mix", { intervention_id: id, mix: "t1 rev 120" })).toMatch(/reverb goes from 0 \(dry\) to 100/);
+    expect(ok("get_song_overview")).toMatch(/t2 .*mix vol 70 pan C rev 20/);
+    ok("end_intervention", { intervention_id: id });
+  });
+
   it("set_mix rejects the whole call when a line is wrong", () => {
     const id = begin("Mezcla");
     const revision = session.song.revision;

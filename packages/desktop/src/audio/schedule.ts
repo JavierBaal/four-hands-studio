@@ -97,7 +97,7 @@ export function clickEvents(song: Song, from: number, to: number): TickEvent[] {
 /** Bank select and preset a track plays with, when it is not the default bank's General MIDI program. */
 export type SoundResolver = (track: Track) => { bank: number; prog: number } | null;
 
-/** Programs (with their bank), volume and pan of every track, to send before playing. */
+/** Programs (with their bank), volume, pan and reverb send of every track, to send before playing. */
 export function setupEvents(song: Song, soundFor: SoundResolver = () => null): SynthEvent[] {
   const out: SynthEvent[] = [{ kind: "prog", ch: METRONOME_CHANNEL, prog: METRONOME_PROGRAM, bank: 0 }];
   for (const id of song.trackOrder) {
@@ -108,6 +108,8 @@ export function setupEvents(song: Song, soundFor: SoundResolver = () => null): S
     else if (t.program !== null && t.channel !== 9) out.push({ kind: "prog", ch: t.channel, prog: t.program, bank: 0 });
     out.push({ kind: "cc", ch: t.channel, cc: 7, value: Math.round(t.volume * 127) });
     out.push({ kind: "cc", ch: t.channel, cc: 10, value: Math.round(64 + t.pan * 63) });
+    // Always sent, 0 included: a track whose reverb goes back to 0 must sound dry again.
+    out.push({ kind: "cc", ch: t.channel, cc: 91, value: Math.round((t.reverb ?? 0) * 127) });
   }
   return out;
 }

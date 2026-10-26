@@ -177,9 +177,11 @@ input.inline.mixval { height: 16px; padding: 0 2px; font-size: 10px; text-align:
 .qrow { display: flex; align-items: center; gap: 10px; color: var(--text); }
 .qrow > span:first-child { min-width: 64px; color: var(--text-2); }
 .qrow select { flex: 1; height: 28px; background: var(--bg-control); color: var(--text); border: 1px solid var(--line-control); border-radius: 6px; font: inherit; }
-.qrow input[type="range"] { flex: 1; accent-color: var(--author-user); }
+.qrow input[type="range"] { flex: 1; min-width: 0; accent-color: var(--author-user); }
 .qrow input[type="checkbox"] { accent-color: var(--author-user); margin: 0; }
 .qval { min-width: 44px; text-align: right; color: var(--text-2); }
+/* H4: the three values of the mix card in one column, so the sliders line up ("−12,5 dB" fits). */
+.qdialog .qval.mixtype { min-width: 66px; }
 .qbtns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
 .btn { height: 36px; padding: 0 16px; border-radius: 8px; cursor: pointer; border: 1px solid var(--line-strong); background: transparent; color: var(--text); }
 .btn.pri { background: var(--text); color: var(--text-on-light); border-color: var(--text); font-weight: 600; }

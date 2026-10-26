@@ -389,8 +389,15 @@ await settle();
 s1 = await song();
 check("track reordered", s1.trackOrder.indexOf(added.id) === s1.trackOrder.length - 2, JSON.stringify(s1.trackOrder));
 await page.locator(".thdr").first().click({ button: "right" });
-await menuItem("Volumen y panorama…").click();
+await menuItem("Mezcla…").click();
 check("mixer opens", (await page.locator(".qdialog[role=dialog]").count()) === 1);
+// H4: the reverb send is typed in its row and lands in the song in one undo step.
+const mixTrack = (await song()).trackOrder[0];
+await page.locator(".qdialog .mixtype").nth(2).click();
+await page.locator(".qdialog input.inline").fill("35");
+await page.keyboard.press("Enter");
+await settle();
+check("mixer sets reverb", (await song()).tracks[mixTrack].reverb === 0.35, (await song()).tracks[mixTrack].reverb);
 await page.keyboard.press("Escape");
 check("mixer closes with Esc", (await page.locator(".qdialog[role=dialog]").count()) === 0);
 

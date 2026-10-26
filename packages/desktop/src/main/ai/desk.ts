@@ -1201,13 +1201,15 @@ export class AiDesk {
       if (volume !== undefined) changes.volume = Math.max(0, Math.min(100, volume)) / 100;
       const pan = this.num(args, "pan");
       if (pan !== undefined) changes.pan = Math.max(-100, Math.min(100, pan)) / 100;
+      const reverb = this.num(args, "reverb");
+      if (reverb !== undefined) changes.reverb = Math.max(0, Math.min(100, reverb)) / 100;
       if (args.mute !== undefined) {
         if (typeof args.mute !== "boolean") throw new MusicError("'mute' is true or false");
         changes.mute = args.mute;
       }
       const colorText = this.str(args, "color", false);
       if (colorText !== undefined) changes.color = colorIndex(colorText);
-      if (Object.keys(changes).length === 0) throw new MusicError("Say what to change: name, instrument, sound, volume, pan, mute or color");
+      if (Object.keys(changes).length === 0) throw new MusicError("Say what to change: name, instrument, sound, volume, pan, reverb, mute or color");
       this.write(iv, (tx) => updateTrack(tx, trackId, changes));
       iv.trackIds.add(trackId);
       iv.other.push(`track ${this.song.tracks[trackId]!.name}`);
@@ -1369,17 +1371,17 @@ export class AiDesk {
     return { bank: bank.id, program: preset.program, bankMSB: preset.bankMSB, name: preset.name };
   }
 
-  /** "Violines vol 80 pan L25 mute": the track is what is left after the settings, read from the end. */
-  private mixLine(text: string): { trackId: string; changes: { volume?: number; pan?: number; mute?: boolean } } {
+  /** "Violines vol 80 pan L25 rev 30 mute": the track is what is left after the settings, read from the end. */
+  private mixLine(text: string): { trackId: string; changes: { volume?: number; pan?: number; reverb?: number; mute?: boolean } } {
     const tokens = text.split(/\s+/);
-    const changes: { volume?: number; pan?: number; mute?: boolean } = {};
+    const changes: { volume?: number; pan?: number; reverb?: number; mute?: boolean } = {};
     const value = (raw: string | undefined, what: string): string => {
       if (raw === undefined) throw new MusicError(`'${what}' needs a value`);
       return raw;
     };
     // Settings are pairs ("vol 70", "pan L30") or words ("mute"); scan for the first one.
-    const first = tokens.findIndex((t) => /^(vol|volume|pan|mute|unmute)$/i.test(t));
-    if (first <= 0) throw new MusicError("write the track first, then 'vol', 'pan', 'mute' or 'unmute'");
+    const first = tokens.findIndex((t) => /^(vol|volume|pan|rev|reverb|mute|unmute)$/i.test(t));
+    if (first <= 0) throw new MusicError("write the track first, then 'vol', 'pan', 'rev', 'mute' or 'unmute'");
     const trackId = this.track(tokens.slice(0, first).join(" "));
     for (let i = first; i < tokens.length; i++) {
       const key = tokens[i]!.toLowerCase();
@@ -1396,8 +1398,12 @@ export class AiDesk {
         const v = m[1] ? 0 : m[2] ? (m[2] === "L" ? -1 : 1) * Number(m[3]) : Number(m[4]);
         if (Math.abs(v) > 100) throw new MusicError("pan goes from -100 (left) to 100 (right)");
         changes.pan = v / 100;
+      } else if (key === "rev" || key === "reverb") {
+        const v = Number(value(tokens[++i], key));
+        if (!(v >= 0 && v <= 100)) throw new MusicError("reverb goes from 0 (dry) to 100");
+        changes.reverb = v / 100;
       } else {
-        throw new MusicError(`'${tokens[i]}' is not 'vol', 'pan', 'mute' or 'unmute'`);
+        throw new MusicError(`'${tokens[i]}' is not 'vol', 'pan', 'rev', 'mute' or 'unmute'`);
       }
     }
     if (Object.keys(changes).length === 0) throw new MusicError("nothing to change");
@@ -1439,6 +1445,6 @@ function describeTrack(song: Song, id: string): string {
   if (t.sound) parts.push(`sound "${t.sound.name}" from ${t.sound.bank}`);
   else if (t.program === null || t.channel === 9) parts.push("drums");
   else parts.push(`program ${t.program}`);
-  parts.push(`volume ${Math.round(t.volume * 100)}`, `pan ${Math.round(t.pan * 100)}`, `color ${trackColorId(t.color)}`);
+  parts.push(`volume ${Math.round(t.volume * 100)}`, `pan ${Math.round(t.pan * 100)}`, `reverb ${Math.round((t.reverb ?? 0) * 100)}`, `color ${trackColorId(t.color)}`);
   return parts.join(" · ");
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dbToVolume, formatDb, formatPan, parseDb, parsePan, volumeToDb } from "./mix.js";
+import { dbToVolume, formatDb, formatPan, formatReverb, parseDb, parsePan, parseReverb, volumeToDb } from "./mix.js";
 import { trackColorByName, trackColorId, TRACK_PALETTE } from "./track-colors.js";
 import { TRACK_COLOR_COUNT } from "@fourhands/core";
 
@@ -63,5 +63,16 @@ describe("track colours by name (H3.2)", () => {
     expect(trackColorByName("brezo")).toBe(9);
     expect(trackColorByName("rojo")).toBeNull();
     expect(trackColorId(8)).toBe("water");
+  });
+});
+
+describe("reverb send (H4)", () => {
+  it("shows and reads 0 to 100", () => {
+    expect(formatReverb(0)).toBe("0");
+    expect(formatReverb(0.35)).toBe("35");
+    expect(parseReverb("35")).toBe(0.35);
+    expect(parseReverb("40 %")).toBe(0.4);
+    expect(parseReverb("150")).toBe(1);
+    expect(parseReverb("mucha")).toBeNull();
   });
 });
