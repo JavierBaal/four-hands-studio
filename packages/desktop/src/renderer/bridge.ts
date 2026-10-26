@@ -3,7 +3,7 @@
  * stand-in that runs the core directly, for the browser harness and the interface tests.
  */
 import { SongDocument, USER, runCommands, type Song } from "@fourhands/core";
-import { type AiState, type AiTone, DEFAULT_AI_TONE, type FileState, type MenuAction, NO_AI, type PatchMessage, type Reply, type Request, type SkillCardInfo, type SkillImportResult, type Snapshot, type SoundBankInfo, type ViewInfo, lastAiOf } from "../shared/protocol.js";
+import { type AiApply, type AiState, type AiTone, DEFAULT_AI_APPLY, DEFAULT_AI_TONE, type FileState, type MenuAction, NO_AI, type PatchMessage, type Reply, type Request, type SkillCardInfo, type SkillImportResult, type Snapshot, type SoundBankInfo, type ViewInfo, lastAiOf, proposalsOf } from "../shared/protocol.js";
 
 export interface AppInfo {
   soundFont: string | null;
@@ -56,6 +56,9 @@ export interface Bridge {
   /** Tu IA > Opiniones: how the AI gives its opinions. */
   aiTone(): Promise<AiTone>;
   setAiTone(tone: AiTone): Promise<AiTone>;
+  /** Tu IA > Lo que escribe (H4). */
+  aiApply(): Promise<AiApply>;
+  setAiApply(mode: AiApply): Promise<AiApply>;
   /** MIDI out (H4): the port chosen for the tracks that sound in another program. */
   midiOutPort(): Promise<string | null>;
   setMidiOutPort(name: string | null): Promise<string | null>;
@@ -86,7 +89,7 @@ export function memoryBridge(
   const fileListeners = new Set<(s: FileState) => void>();
   let historySent = 0;
   const file: FileState = { name: options.name ?? song.title, path: `/${song.title}.fourhands`, savedAt: now(), dirty: false, error: null, provisional: false };
-  const undoState = () => ({ canUndo: doc.canUndo, canRedo: doc.canRedo, undoLabel: doc.undoLabel, redoLabel: doc.redoLabel, lastAi: lastAiOf(doc) });
+  const undoState = () => ({ canUndo: doc.canUndo, canRedo: doc.canRedo, undoLabel: doc.undoLabel, redoLabel: doc.redoLabel, lastAi: lastAiOf(doc), proposals: proposalsOf(doc) });
   doc.subscribe((patch) => {
     const history = doc.history.slice(historySent);
     historySent = doc.history.length;
@@ -99,6 +102,7 @@ export function memoryBridge(
   const closed: string[] = [];
   let skills: SkillCardInfo[] = structuredClone(options.skills ?? []);
   let tone: AiTone = DEFAULT_AI_TONE;
+  let apply: AiApply = DEFAULT_AI_APPLY;
   let outPort: string | null = null;
   const on = <T>(set: Set<T>, l: T) => {
     set.add(l);
@@ -121,6 +125,12 @@ export function memoryBridge(
             return { ok: true, results: [] };
           case "setContext":
             doc.setContext(r.changes);
+            return { ok: true, results: [] };
+          case "acceptProposal":
+            doc.acceptProposal(r.id, USER, r.label);
+            return { ok: true, results: [] };
+          case "discardProposal":
+            doc.discardProposal(r.id);
             return { ok: true, results: [] };
         }
       } catch (error) {
@@ -175,6 +185,8 @@ export function memoryBridge(
     songBefore: async () => (doc.lastAiStep ? doc.songBeforeLastStep() : null),
     aiTone: async () => tone,
     setAiTone: async (next) => (tone = next),
+    aiApply: async () => apply,
+    setAiApply: async (next) => (apply = next),
     midiOutPort: async () => outPort,
     setMidiOutPort: async (name) => (outPort = name),
     exportMidi: () => console.log("[fh] export MIDI"),

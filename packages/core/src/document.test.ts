@@ -237,6 +237,69 @@ describe("track reverb (H4): a send per track", () => {
   });
 });
 
+describe("proposals (H4, proposal mode)", () => {
+  const claude = ai("claude-ai");
+  function proposed() {
+    const { doc, t } = docWithTrack();
+    doc.transact({ actor: claude, label: "Contracanto", group: "i1" }, (tx) => addNotes(tx, t, [{ pitch: 62, start: 0, duration: PPQ, velocity: 70 }]));
+    doc.closeGroup("i1");
+    return { doc, t, p: doc.liftLastStep("i1")! };
+  }
+
+  it("lift the AI's finished intervention out of the song, with its history entry", () => {
+    const { doc, p } = proposed();
+    expect(p).toMatchObject({ id: "i1", label: "Contracanto", stale: false });
+    expect(notesOf(doc.song)).toHaveLength(0);
+    expect(doc.history.at(-1)).toMatchObject({ kind: "propose", label: "Contracanto", author: claude });
+    expect(doc.proposals).toHaveLength(1);
+    // It is not an undo step: undo does not bring it back.
+    expect(doc.lastAiStep).toBeNull();
+    expect(notesOf(doc.songWithProposal("i1")!)).toHaveLength(1);
+  });
+
+  it("accept: back in the song, the user's step, the notes still the AI's; undo takes it out again", () => {
+    const { doc } = proposed();
+    doc.acceptProposal("i1", USER, "aceptaste: Contracanto");
+    expect(notesOf(doc.song)).toHaveLength(1);
+    expect(notesOf(doc.song)[0]!.createdBy).toEqual(claude);
+    expect(doc.history.at(-1)).toMatchObject({ kind: "edit", actor: USER, author: claude });
+    expect(doc.proposals).toHaveLength(0);
+    doc.undo(USER);
+    expect(notesOf(doc.song)).toHaveLength(0);
+  });
+
+  it("discard: gone, the song untouched", () => {
+    const { doc } = proposed();
+    const rev = doc.song.revision;
+    expect(doc.discardProposal("i1")).toBe(true);
+    expect(doc.proposals).toHaveLength(0);
+    expect(doc.song.revision).toBe(rev);
+  });
+
+  it("go stale when the user changes what they touch, and then cannot be accepted", () => {
+    const { doc, t } = docWithTrack();
+    const [id] = doc.transact({ actor: USER, label: "nota" }, (tx) => addNotes(tx, t, [{ pitch: 60, start: 0, duration: PPQ, velocity: 80 }]));
+    doc.transact({ actor: claude, label: "Más fuerte", group: "i2" }, (tx) => updateNotes(tx, [{ id: id!, velocity: 110 }]));
+    doc.closeGroup("i2");
+    doc.liftLastStep("i2");
+    // Another note: unrelated, still fresh.
+    doc.transact({ actor: USER, label: "otra" }, (tx) => addNotes(tx, t, [{ pitch: 64, start: PPQ, duration: PPQ, velocity: 80 }]));
+    expect(doc.proposals[0]!.stale).toBe(false);
+    doc.transact({ actor: USER, label: "la muevo" }, (tx) => moveNotes(tx, [id!], { semitones: 2 }));
+    expect(doc.proposals[0]!.stale).toBe(true);
+    expect(() => doc.acceptProposal("i2", USER, "x")).toThrow(CommandError);
+  });
+
+  it("stay in the song when the intervention was split by an edit of the user's", () => {
+    const { doc, t } = docWithTrack();
+    doc.transact({ actor: claude, label: "A", group: "i3" }, (tx) => addNotes(tx, t, [{ pitch: 62, start: 0, duration: PPQ, velocity: 70 }]));
+    doc.transact({ actor: USER, label: "yo" }, (tx) => addNotes(tx, t, [{ pitch: 60, start: PPQ, duration: PPQ, velocity: 70 }]));
+    doc.closeGroup("i3");
+    expect(doc.liftLastStep("i3")).toBeNull();
+    expect(notesOf(doc.song)).toHaveLength(2);
+  });
+});
+
 describe("commands", () => {
   it("validate their input with readable errors", () => {
     const { doc, t } = docWithTrack();

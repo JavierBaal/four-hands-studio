@@ -3,7 +3,7 @@
  * The song lives in the main process; the window keeps a replica updated with patches and
  * sends every change as a list of commands (one gesture = one transaction = one undo step).
  */
-import type { CommandData, CommandResult, HistoryEntry, Patch, SharedContext, Song, SongDocument } from "@fourhands/core";
+import type { CommandData, CommandResult, HistoryEntry, Op, Patch, SharedContext, Song, SongDocument } from "@fourhands/core";
 import type { BankPreset } from "./soundbank-info.js";
 
 /** A sound bank the user installed (sound-library.ts). */
@@ -41,6 +41,23 @@ export interface UndoState {
    * hear the song with and without it. Null once anything else is on top.
    */
   lastAi: { label: string; client: string; revision: number } | null;
+  /** Pending proposals (H4, proposal mode): what each would do, to draw and hear it before accepting. */
+  proposals?: ProposalInfo[];
+}
+
+/** A pending proposal as the window receives it. */
+export interface ProposalInfo {
+  id: string;
+  label: string;
+  client: string;
+  /** The user changed what it touches since: it can only be discarded. */
+  stale: boolean;
+  /** What accepting would do to the song (core operations). */
+  ops: Op[];
+}
+
+export function proposalsOf(doc: SongDocument): ProposalInfo[] {
+  return doc.proposals.map((p) => ({ id: p.id, label: p.label, client: p.author.by === "ai" ? p.author.client : "", stale: p.stale, ops: structuredClone(p.ops) }));
 }
 
 export interface Snapshot extends UndoState {
@@ -61,7 +78,10 @@ export type Request =
   | { type: "run"; label: string; commands: CommandData[] }
   | { type: "undo" }
   | { type: "redo" }
-  | { type: "setContext"; changes: Partial<SharedContext> };
+  | { type: "setContext"; changes: Partial<SharedContext> }
+  /** Proposal mode (H4): accept (the label goes to the history) or discard a pending proposal. */
+  | { type: "acceptProposal"; id: string; label: string }
+  | { type: "discardProposal"; id: string };
 
 export type Reply = { ok: true; results: CommandResult[] } | { ok: false; error: string };
 
@@ -176,6 +196,8 @@ export const CH = {
   songBefore: "fh:song-before",
   aiTone: "fh:ai-tone",
   aiToneSet: "fh:ai-tone-set",
+  aiApply: "fh:ai-apply",
+  aiApplySet: "fh:ai-apply-set",
   midiOut: "fh:midi-out",
   midiOutSet: "fh:midi-out-set",
   exportMidi: "fh:export-midi",
@@ -187,6 +209,10 @@ export const CH = {
  */
 export type AiTone = "direct" | "gentle";
 export const DEFAULT_AI_TONE: AiTone = "direct";
+
+/** Tu IA > Lo que escribe (H4): straight into the song (default) or as a proposal. */
+export type AiApply = "direct" | "proposal";
+export const DEFAULT_AI_APPLY: AiApply = "direct";
 
 /** A skill as the window shows it (Skills de la IA). */
 export interface SkillCardInfo {

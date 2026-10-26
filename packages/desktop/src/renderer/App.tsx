@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { Note } from "@fourhands/core";
 import { ActivityPanel, Rail } from "./components/ActivityPanel.js";
-import { AiCompareBar, AiWritingBar } from "./components/AiPresence.js";
+import { AiCompareBar, AiProposalBar, AiWritingBar } from "./components/AiPresence.js";
 import { MidiOutPanel } from "./components/MidiOutPanel.js";
 import { Arrangement } from "./components/Arrangement.js";
 import { ContextMenu, QuantizeDialog } from "./components/Menus.js";
@@ -127,7 +127,8 @@ export function App({ audio, onEditor }: AppProps) {
           audio.toggleRecord();
           return true;
         case "compare":
-          if (!replica.undo.lastAi) return false;
+          // B: the pending proposal first (H4, proposal mode), else the last AI intervention.
+          if (!replica.undo.lastAi && !replica.undo.proposals?.some((p) => !p.stale)) return false;
           audio.toggleCompare();
           return true;
         case "pianoMode":
@@ -391,6 +392,7 @@ export function App({ audio, onEditor }: AppProps) {
         <Rail />
       </div>
       <AiWritingBar />
+      <AiProposalBar audio={audio} />
       <AiCompareBar audio={audio} />
       {overlayMenus.menu && <ContextMenu {...overlayMenus.menu} onClose={() => editor.closeMenus()} />}
       {overlayMenus.quantizeDialog && <QuantizeDialog editor={editor} {...overlayMenus.quantizeDialog} />}

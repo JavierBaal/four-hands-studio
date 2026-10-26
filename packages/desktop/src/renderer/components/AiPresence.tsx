@@ -12,6 +12,7 @@ import type { AudioLayer } from "../audio-layer.js";
 import type { AiWriting } from "../../shared/protocol.js";
 import { useApp, useAi, useSong } from "../context.js";
 import { barRange } from "../music.js";
+import { currentProposal, proposalCounts } from "../proposals.js";
 import type { RollView } from "../roll/geometry.js";
 
 /** Takes the user to a place: the piano roll slides there (a bar of margin) and opens the track. */
@@ -114,11 +115,13 @@ export function AiCompareBar({ audio }: { audio: AudioLayer }) {
   useSong();
   useSyncExternalStore(audio.subscribe, audio.getVersion);
   const last = replica.undo.lastAi;
+  // A pending proposal has its own bar.
+  const proposalShown = (replica.undo.proposals?.length ?? 0) > 0;
   const [hidden, setHidden] = useState<number | null>(null);
   useEffect(() => {
     if (!last) setHidden(null);
   }, [last?.revision]);
-  if (!last || ai.writing.length > 0 || hidden === last.revision) return null;
+  if (!last || ai.writing.length > 0 || hidden === last.revision || proposalShown) return null;
   const name = ai.clients.find((c) => c.client === last.client)?.name ?? (last.client.startsWith("claude") || last.client.startsWith("local-agent") ? "Claude" : last.client);
   const without = audio.compare === "without";
   return (
@@ -151,6 +154,55 @@ export function AiCompareBar({ audio }: { audio: AudioLayer }) {
         <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
           <path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
         </svg>
+      </button>
+    </div>
+  );
+}
+
+/**
+ * H4, proposal mode (off by default; Tu IA > Lo que escribe): the AI's finished intervention waits
+ * outside the song, drawn with a dashed outline. The bar of sketches 01 and 07: Con / Sin (B),
+ * Aceptar, Descartar, and "desactualizada" when the user changed what it touches.
+ */
+export function AiProposalBar({ audio }: { audio: AudioLayer }) {
+  const { t, replica } = useApp();
+  const ai = useAi();
+  const song = useSong();
+  useSyncExternalStore(audio.subscribe, audio.getVersion);
+  const proposals = replica.undo.proposals ?? [];
+  const p = currentProposal(proposals);
+  if (!p || ai.writing.length > 0) return null;
+  const name = ai.clients.find((c) => c.client === p.client)?.name ?? (p.client.startsWith("claude") || p.client.startsWith("local-agent") ? "Claude" : p.client);
+  const c = proposalCounts(song, p);
+  const parts = [c.added && t("propAdds", { n: c.added }), c.changed && t("propChanges", { n: c.changed }), c.removed && t("propRemoves", { n: c.removed })].filter(Boolean).join(", ");
+  const what = parts ? t("propNotes", { parts: parts.charAt(0).toUpperCase() + parts.slice(1) }) : t("propOther");
+  const without = audio.proposalListen === "without";
+  const run = (r: Parameters<typeof replica.request>[0]) => void replica.request(r);
+  return (
+    <div className={p.stale ? "aibar cmpbar propbar stale" : without ? "aibar cmpbar propbar sin" : "aibar cmpbar propbar"} role="region" aria-label={t("propRegion")}>
+      <div className="pdesc">
+        <b>{t("propTitle", { name })}</b> · {p.label}
+        {proposals.length > 1 && <span className="pmore"> · {t("propMore", { n: proposals.length - 1 })}</span>}
+        <div className="pmeta">{p.stale ? t("propStale") : without ? t("propMetaWithout") : t("propMeta", { what })}</div>
+      </div>
+      {!p.stale && (
+        <>
+          <div className="seg" role="group" aria-label={t("propGroup")}>
+            <button className={without ? "segb" : "segb on"} aria-pressed={!without} onClick={() => audio.setProposalListen("with")}>
+              {t("cmpWith")}
+            </button>
+            <button className={without ? "segb on" : "segb"} aria-pressed={without} onClick={() => audio.setProposalListen("without")}>
+              {t("cmpWithout")}
+            </button>
+          </div>
+          <span className="kbd" aria-hidden="true">B</span>
+          <button className="btn pri" onClick={() => run({ type: "acceptProposal", id: p.id, label: t("hAccept", { label: p.label }) })}>
+            {t("propAccept")}
+          </button>
+        </>
+      )}
+      <button className="btn aibtn" onClick={() => run({ type: "discardProposal", id: p.id })}>
+        {t("propDiscard")}
       </button>
     </div>
   );

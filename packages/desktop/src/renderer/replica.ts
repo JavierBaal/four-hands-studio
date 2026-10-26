@@ -4,7 +4,7 @@
  * as a patch, the same way the AI's changes arrive.
  */
 import { type CommandData, type HistoryEntry, type SharedContext, type Song, applyOp } from "@fourhands/core";
-import type { FileState, PatchMessage, Reply, UndoState } from "../shared/protocol.js";
+import type { FileState, PatchMessage, Reply, Request, UndoState } from "../shared/protocol.js";
 import type { Bridge } from "./bridge.js";
 
 export class Replica {
@@ -35,7 +35,7 @@ export class Replica {
     this.song = s.song;
     this.history = s.history;
     this.file = s.file;
-    this.undo = { canUndo: s.canUndo, canRedo: s.canRedo, undoLabel: s.undoLabel, redoLabel: s.redoLabel, lastAi: s.lastAi ?? null };
+    this.undo = { canUndo: s.canUndo, canRedo: s.canRedo, undoLabel: s.undoLabel, redoLabel: s.redoLabel, lastAi: s.lastAi ?? null, proposals: s.proposals ?? [] };
     this.fresh.clear();
     this.bump();
   }
@@ -48,7 +48,7 @@ export class Replica {
     this.song.revision = m.patch.revision;
     if (m.replacesLast) this.history.splice(-1, 1, ...m.history);
     else this.history.push(...m.history);
-    this.undo = { canUndo: m.canUndo, canRedo: m.canRedo, undoLabel: m.undoLabel, redoLabel: m.redoLabel, lastAi: m.lastAi ?? null };
+    this.undo = { canUndo: m.canUndo, canRedo: m.canRedo, undoLabel: m.undoLabel, redoLabel: m.redoLabel, lastAi: m.lastAi ?? null, proposals: m.proposals ?? [] };
     this.bump();
   }
 
@@ -79,6 +79,15 @@ export class Replica {
 
   redoLast(): Promise<Reply> {
     return this.bridge.request({ type: "redo" });
+  }
+
+  /** Proposal mode (H4): accept or discard a pending proposal. */
+  request(r: Extract<Request, { type: "acceptProposal" | "discardProposal" }>): Promise<Reply> {
+    return this.bridge.request(r).then((reply) => {
+      if (!reply.ok) this.bridge.log({ type: "proposal_failed", request: r.type, error: reply.error });
+      else this.bridge.log({ type: r.type === "acceptProposal" ? "proposal_accepted" : "proposal_discarded", id: r.id });
+      return reply;
+    });
   }
 
   setContext(changes: Partial<SharedContext>): Promise<Reply> {

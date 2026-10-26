@@ -13,7 +13,8 @@
  *   the answer says what changed (ESQUEMA_MCP.md, 5.2).
  * - Several AIs can be connected at once; each one has at most one open intervention.
  *
- * H3 applies changes directly. Proposals (H4) will change what end_intervention does, not the tools.
+ * H3 applies changes directly. Proposal mode (H4, off by default: Tu IA > Lo que escribe) only
+ * changes what closing does: the intervention leaves the song and waits as a proposal.
  */
 import { TRACK_PALETTE, trackColorByName, trackColorId } from "../../shared/track-colors.js";
 import {
@@ -85,7 +86,7 @@ import {
   CURVE_KINDS,
 } from "@fourhands/core";
 import { NAMED_PROGRAMS, PALETTE } from "../../shared/instruments.js";
-import type { AiClientInfo, AiMark, AiRecent, AiState, AiTone, AiWriting, PatchMessage, SoundBankInfo } from "../../shared/protocol.js";
+import type { AiApply, AiClientInfo, AiMark, AiRecent, AiState, AiTone, AiWriting, PatchMessage, SoundBankInfo } from "../../shared/protocol.js";
 import type { SongSession } from "../session.js";
 import type { BankPreset } from "../../shared/soundbank-info.js";
 import { SkillError, type SkillSource, skillText, skillsFooter, skillsListText } from "./skills.js";
@@ -111,6 +112,8 @@ export interface AiDeskOptions {
   onState?: (state: AiState) => void;
   /** Tu IA > Opiniones: how the user wants opinions given. */
   tone?: () => AiTone;
+  /** Tu IA > Lo que escribe (H4): straight in (default) or as a proposal the user accepts. */
+  apply?: () => AiApply;
   log?: (entry: Record<string, unknown>) => void;
 }
 
@@ -138,7 +141,7 @@ interface Intervention {
   trackIds: Set<string>;
   start: number | null;
   end: number | null;
-  closed: null | { how: "ai" | "user" | "timeout" | "song"; revision: number };
+  closed: null | { how: "ai" | "user" | "timeout" | "song"; revision: number; proposal?: boolean };
   /** The first note id this intervention can create (ids only grow): to tell its own notes apart. */
   firstNote: number;
   /** Notes of earlier interventions this one changed or removed, by intervention (the corrections log, H4). */
@@ -550,7 +553,9 @@ export class AiDesk {
     if (iv.closed) return;
     this.clearTimer(iv.timer);
     if (how !== "song") this.session.document.closeGroup(iv.id);
-    iv.closed = { how, revision: this.song.revision };
+    // Proposal mode: what it wrote leaves the song and waits for the user (if it can: see liftLastStep).
+    const proposal = how !== "song" && this.options.apply?.() === "proposal" && this.session.document.liftLastStep(iv.id) !== null;
+    iv.closed = proposal ? { how, revision: this.song.revision, proposal: true } : { how, revision: this.song.revision };
     if (how !== "song" && iv.added + iv.changed + iv.removed + iv.other.length > 0) {
       this.recent = [
         {
@@ -569,7 +574,7 @@ export class AiDesk {
       ].slice(0, RECENT_MAX);
     }
     const corrects = [...iv.corrects.entries()].map(([id, notes]) => ({ id, notes }));
-    this.options.log?.({ type: "ai_intervention_closed", id: iv.id, how, added: iv.added, changed: iv.changed, removed: iv.removed, ...(corrects.length ? { corrects } : {}) });
+    this.options.log?.({ type: "ai_intervention_closed", id: iv.id, how, added: iv.added, changed: iv.changed, removed: iv.removed, ...(corrects.length ? { corrects } : {}), ...(proposal ? { proposal: true } : {}) });
     this.emit();
   }
 
@@ -651,6 +656,8 @@ export class AiDesk {
         mine: mine ? { id: mine.id, description: mine.description } : null,
         others,
         tone: this.options.tone?.() ?? "direct",
+        apply: this.options.apply?.() ?? "direct",
+        proposals: this.session.document.proposals.map((p) => ({ id: p.id, label: p.label, stale: p.stale })),
         changed: this.changedLine(conn.client),
       });
     },
@@ -826,6 +833,15 @@ export class AiDesk {
     end_intervention: (conn, args) => {
       const iv = this.intervention(conn, args);
       this.close(iv, "ai");
+      if (iv.closed?.proposal) {
+        return (
+          `Intervention ${iv.id} closed: ${this.summary(iv)}. The user reviews changes as proposals: it left the song and waits, drawn with a dashed outline, ` +
+          `until they accept or discard it (they hear it with and without it). Don't build on it until it is accepted; get_user_context lists pending proposals. The song is at ${this.rev()}.`
+        );
+      }
+      if (this.options.apply?.() === "proposal") {
+        return `Intervention ${iv.id} closed: ${this.summary(iv)}. It stays in the song (the user edited while you wrote, so it could not wait as a proposal); it is one undo step. The song is at ${this.rev()}.`;
+      }
       return `Intervention ${iv.id} closed: ${this.summary(iv)}. It is one undo step for the user. The song is at ${this.rev()}.`;
     },
 

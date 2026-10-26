@@ -108,7 +108,7 @@ const song = z.object({
 
 const historyEntry = z.object({
   revision: int.min(1),
-  kind: z.enum(["edit", "undo", "redo"]),
+  kind: z.enum(["edit", "undo", "redo", "propose"]),
   actor: authorship,
   author: authorship,
   label: z.string(),

@@ -24,7 +24,7 @@ import {
 } from "@fourhands/core";
 import { GM_NOTES, PALETTE, type PaletteItem, instrumentName } from "../../shared/instruments.js";
 import type { BankPreset, SoundProfile } from "../../shared/soundbank-info.js";
-import type { AiTone, SoundBankInfo } from "../../shared/protocol.js";
+import type { AiApply, AiTone, SoundBankInfo } from "../../shared/protocol.js";
 
 /** What the window tells the main process about what the user sees (not part of the song). */
 export interface WindowInfo {
@@ -151,6 +151,10 @@ export interface ContextExtras {
   others: string[];
   /** How the user wants opinions given (Tu IA > Opiniones). */
   tone?: AiTone;
+  /** Tu IA > Lo que escribe (H4). */
+  apply?: AiApply;
+  /** Pending proposals (proposal mode). */
+  proposals?: { id: string; label: string; stale: boolean }[];
   /** What changed since this AI's last call (null on its first call). */
   changed?: string | null;
 }
@@ -196,6 +200,14 @@ export function userContextText(song: Song, win: WindowInfo, extras: ContextExtr
   if (extras.others.length) lines.push(`Other AI connected: ${extras.others.join(", ")}`);
   if (extras.changed) lines.push(extras.changed);
   lines.push(toneText(extras.tone ?? "direct"));
+  lines.push(
+    extras.apply === "proposal"
+      ? "Changes: as proposals. When you end an intervention, what you wrote leaves the song and waits for the user to accept or discard it."
+      : "Changes: straight into the song (the user hears them with and without, and can undo).",
+  );
+  if (extras.proposals?.length) {
+    lines.push(`Pending proposals: ${extras.proposals.map((p) => `${p.id} "${p.label}"${p.stale ? " (out of date: the user changed what it touches)" : ""}`).join(" · ")}`);
+  }
   return lines.join("\n");
 }
 

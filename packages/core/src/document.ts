@@ -22,7 +22,8 @@ export interface Patch {
 
 export interface HistoryEntry {
   revision: number;
-  kind: "edit" | "undo" | "redo";
+  /** "propose": an AI's finished intervention left the song and became a proposal (H4, proposal mode). */
+  kind: "edit" | "undo" | "redo" | "propose";
   /** Who did it: for an accepted proposal, the user. */
   actor: Authorship;
   /** Who the changed notes belong to: for an accepted proposal, the AI that wrote it. */
@@ -31,6 +32,28 @@ export interface HistoryEntry {
   label: string;
   /** Milliseconds since the epoch. */
   at: number;
+}
+
+/**
+ * A pending proposal (H4, proposal mode, off by default): an AI intervention that left the song when
+ * it ended. Accepting applies `ops` again (the user as actor, the AI as author); discarding drops it.
+ * It goes stale when anything later changes what it touches: then it can only be discarded.
+ */
+export interface Proposal {
+  /** The intervention's id ("i4"). */
+  id: string;
+  label: string;
+  author: Authorship;
+  /** What the intervention did, to apply again on accept. */
+  ops: Op[];
+  /** Revision when it became a proposal. */
+  revision: number;
+  stale: boolean;
+}
+
+/** What an operation touches, to tell when a later change collides with a proposal: "notes.n12", "tempoChanges". */
+function touchKey(path: Path): string {
+  return path.length >= 2 ? `${path[0]}.${path[1]}` : String(path[0]);
 }
 
 export class CommandError extends Error {
@@ -101,6 +124,11 @@ export class Transaction {
     return `${prefix}${n}`;
   }
 
+  /** Applies a recorded operation again (accepting a proposal). Throws if its place is gone. */
+  apply(op: Op): void {
+    this.record(clone(op));
+  }
+
   private record(op: Op): void {
     const inverse = applyOp(this.song, op);
     this.ops.push(op);
@@ -132,6 +160,8 @@ export interface TransactionMeta {
 export interface SongDocumentOptions {
   now?: () => number;
   history?: HistoryEntry[];
+  /** Pending proposals saved with the song. */
+  proposals?: Proposal[];
 }
 
 /**
@@ -141,6 +171,8 @@ export interface SongDocumentOptions {
 export class SongDocument {
   readonly song: Song;
   readonly history: HistoryEntry[];
+  /** Pending proposals, oldest first (H4). */
+  readonly proposals: Proposal[];
   private readonly undoStack: UndoStep[] = [];
   private readonly redoStack: UndoStep[] = [];
   private readonly listeners = new Set<(patch: Patch) => void>();
@@ -154,6 +186,66 @@ export class SongDocument {
     this.song = song;
     this.now = options.now ?? Date.now;
     this.history = options.history ? [...options.history] : [];
+    this.proposals = options.proposals ? structuredClone(options.proposals) : [];
+  }
+
+  /**
+   * Proposal mode: the last step, an AI intervention of group `group` that has ended, leaves the
+   * song and becomes a proposal. Null when it cannot: it is not the last step (someone edited in
+   * the middle) or it changed nothing; then it stays in the song as it is.
+   */
+  liftLastStep(group: string): Proposal | null {
+    const top = this.undoStack.at(-1);
+    if (!top || top.group !== group || top === this.openStep || top.author.by !== "ai") return null;
+    this.undoStack.pop();
+    const ops = [...top.inverses].reverse();
+    for (const op of ops) applyOp(this.song, op);
+    this.openStep = null;
+    this.commit("propose", top.actor, top.author, top.label, ops);
+    const proposal: Proposal = { id: group, label: top.label, author: top.author, ops: clone(top.ops), revision: this.song.revision, stale: false };
+    this.proposals.push(proposal);
+    this.emit({ revision: this.song.revision, ops: [] });
+    return clone(proposal);
+  }
+
+  /** Accepts a pending proposal: one undo step, the user as actor and the AI as author. */
+  acceptProposal(id: string, actor: Authorship, label: string): void {
+    const p = this.proposals.find((x) => x.id === id);
+    if (!p) throw new CommandError(`There is no proposal ${id}`);
+    if (p.stale) throw new CommandError("The proposal is out of date: what it touches changed after it was made");
+    try {
+      this.transact({ actor, author: p.author, label }, (tx) => {
+        for (const op of p.ops) tx.apply(op);
+      });
+    } catch (error) {
+      p.stale = true;
+      this.emit({ revision: this.song.revision, ops: [] });
+      throw error;
+    }
+    this.proposals.splice(this.proposals.indexOf(p), 1);
+    this.emit({ revision: this.song.revision, ops: [] });
+  }
+
+  /** Drops a pending proposal. The song does not change. */
+  discardProposal(id: string): boolean {
+    const i = this.proposals.findIndex((x) => x.id === id);
+    if (i < 0) return false;
+    this.proposals.splice(i, 1);
+    this.emit({ revision: this.song.revision, ops: [] });
+    return true;
+  }
+
+  /** The song with a proposal applied (a copy), to hear it before accepting. Null if it no longer applies. */
+  songWithProposal(id: string): Song | null {
+    const p = this.proposals.find((x) => x.id === id);
+    if (!p) return null;
+    const copy = structuredClone(this.song);
+    try {
+      for (const op of p.ops) applyOp(copy, op);
+    } catch {
+      return null;
+    }
+    return copy;
   }
 
   get canUndo(): boolean {
@@ -287,6 +379,11 @@ export class SongDocument {
   }
 
   private commit(kind: HistoryEntry["kind"], actor: Authorship, author: Authorship, label: string, ops: Op[], merge = false): void {
+    // A change to what a pending proposal touches makes it stale (it would no longer apply as made).
+    if (this.proposals.length) {
+      const keys = new Set(ops.map((op) => touchKey(op.path)));
+      for (const p of this.proposals) if (!p.stale && p.ops.some((op) => keys.has(touchKey(op.path)))) p.stale = true;
+    }
     this.song.revision += 1;
     const entry: HistoryEntry = { revision: this.song.revision, kind, actor, author, label, at: this.now() };
     if (merge) this.history[this.history.length - 1] = entry;

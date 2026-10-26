@@ -35,6 +35,20 @@ describe(".fourhands", () => {
     expect(serializeSong(opened)).toBe(text);
   });
 
+  it("keeps pending proposals (H4)", () => {
+    const doc = sampleDoc();
+    doc.transact({ actor: claude, label: "Contracanto", group: "i9" }, (tx) => addNotes(tx, "t1", [{ pitch: 64, start: 2 * PPQ, duration: PPQ, velocity: 60 }]));
+    doc.closeGroup("i9");
+    doc.liftLastStep("i9");
+    const text = serializeSong({ song: doc.song, history: doc.history, proposals: doc.proposals });
+    const opened = parseSongFile(text);
+    expect(opened.proposals).toEqual(doc.proposals);
+    expect(opened.history.at(-1)!.kind).toBe("propose");
+    const again = new SongDocument(opened.song, { history: opened.history, proposals: opened.proposals as typeof doc.proposals });
+    again.acceptProposal("i9", USER, "aceptaste");
+    expect(Object.values(again.song.notes).some((n) => n.pitch === 64)).toBe(true);
+  });
+
   it("keeps the reverb of a track and opens files without it", () => {
     const doc = sampleDoc();
     doc.transact({ actor: USER, label: "Reverb" }, (tx) => updateTrack(tx, "t1", { reverb: 0.35 }));

@@ -14,6 +14,7 @@ import {
   type CommandData,
   type CommandResult,
   type HistoryEntry,
+  type Proposal,
   type SharedContext,
   type Song,
   SongDocument,
@@ -25,7 +26,7 @@ import {
   runCommands,
   serializeSong,
 } from "@fourhands/core";
-import { type FileState, type PatchMessage, type Reply, type Request, type Snapshot, type UndoState, lastAiOf } from "../shared/protocol.js";
+import { type FileState, type PatchMessage, type Reply, type Request, type Snapshot, type UndoState, lastAiOf, proposalsOf } from "../shared/protocol.js";
 import { backup, uniquePath, writeAtomic } from "./files.js";
 
 export const SONG_EXT = ".fourhands";
@@ -186,6 +187,14 @@ export class SongSession {
         case "setContext":
           this.doc.setContext(request.changes as Partial<SharedContext>);
           return { ok: true, results: [] };
+        case "acceptProposal":
+          this.doc.acceptProposal(request.id, USER, request.label);
+          return { ok: true, results: [] };
+        case "discardProposal":
+          this.doc.discardProposal(request.id);
+          // The song does not change, but the file keeps pending proposals: save it.
+          this.markDirty();
+          return { ok: true, results: [] };
         default:
           return { ok: false, error: `Unknown request: ${(request as { type?: unknown }).type}` };
       }
@@ -217,7 +226,7 @@ export class SongSession {
   }
 
   private undoState(): UndoState {
-    return { canUndo: this.doc.canUndo, canRedo: this.doc.canRedo, undoLabel: this.doc.undoLabel, redoLabel: this.doc.redoLabel, lastAi: lastAiOf(this.doc) };
+    return { canUndo: this.doc.canUndo, canRedo: this.doc.canRedo, undoLabel: this.doc.undoLabel, redoLabel: this.doc.redoLabel, lastAi: lastAiOf(this.doc), proposals: proposalsOf(this.doc) };
   }
 
   private markDirty(): void {
@@ -247,7 +256,7 @@ export class SongSession {
 
   private async write(): Promise<void> {
     const file = this.file;
-    const text = serializeSong({ song: this.doc.song, history: this.doc.history, proposals: [] });
+    const text = serializeSong({ song: this.doc.song, history: this.doc.history, proposals: this.doc.proposals });
     try {
       const last = this.lastBackup.get(file);
       if (last === undefined || this.now() - last >= (this.options.backupEveryMs ?? 5 * 60_000)) {
@@ -296,5 +305,5 @@ async function loadSource(options: SessionOptions, source: string): Promise<{ do
     return { doc: new SongDocument(song, { now }), file, imported: true };
   }
   const opened = parseSongFile(await fs.promises.readFile(source, "utf8"));
-  return { doc: new SongDocument(opened.song, { now, history: opened.history }), file: source, imported: false };
+  return { doc: new SongDocument(opened.song, { now, history: opened.history, proposals: opened.proposals as Proposal[] }), file: source, imported: false };
 }

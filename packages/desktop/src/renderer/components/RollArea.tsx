@@ -9,6 +9,7 @@ import { durationName, noteName, scalePitchClasses } from "../music.js";
 import { hitTest } from "../roll/edit.js";
 import { drawCurve, drawGrid, drawKeyboard, drawNotes, drawPedal, drawStroke, drawVelocity, prepare } from "../roll/draw.js";
 import { T } from "../theme.js";
+import { currentProposal, proposalNotes } from "../proposals.js";
 import { type RollView, xToTick, yToPitch } from "../roll/geometry.js";
 import { type Editor, modKey } from "../editor.js";
 import type { AudioLayer } from "../audio-layer.js";
@@ -120,6 +121,10 @@ export function RollArea({ v, editor, audio, playhead, onResize, onWheel, onKeyP
 
   const selected = useMemo(() => new Set(song.context.selection), [replica.version]);
 
+  // H4, proposal mode: the notes of the pending proposal, with a dashed outline (DIRECCION_ARTISTICA.md, 2.6).
+  const pending = currentProposal(replica.undo.proposals);
+  const proposed = useMemo(() => (pending && !pending.stale && track ? proposalNotes(song, pending, track.id) : []), [replica.version, pending, track?.id]);
+
   useEffect(() => {
     let frame = 0;
     const draw = () => {
@@ -149,6 +154,7 @@ export function RollArea({ v, editor, audio, playhead, onResize, onWheel, onKeyP
           playhead,
           fresh,
           drift: overlay.drift,
+          proposal: proposed,
         });
         if (overlay.marquee) {
           // Rubber band: dashed, neutral (no token of its own; uses the selected-note ring colour).
