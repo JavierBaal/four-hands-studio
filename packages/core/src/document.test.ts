@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { addNotes, addSection, addTrack, deleteNotes, moveNotes, removeTrack, setChord, setCurve, setSongProperties, updateNotes, updateTrack } from "./commands.js";
 import { CommandError, type Patch, SongDocument } from "./document.js";
+import { parseSongFile, serializeSong } from "./file.js";
 import { TRACK_COLOR_COUNT, USER, ai, barAt, barStart, beatTicks, curveValueAt, emptySong, notesOf } from "./model.js";
 import { EIGHTH_TRIPLET, PPQ, SIXTEENTH, nominalGridPosition } from "./time.js";
 
@@ -215,6 +216,40 @@ describe("track output (H4): inside Four Hands or out to another program", () =>
     expect("output" in doc.song.tracks[t]!).toBe(false);
     doc.undo(USER);
     expect(doc.song.tracks[t]!.output).toBe("external");
+  });
+});
+
+describe("track output through a plugin (fase 2, prueba S2)", () => {
+  const kontakt = { id: "VST3-Kontakt 8-abc-123", name: "Kontakt 8" };
+
+  it("needs the plugin, keeps it when going back inside, and undoes", () => {
+    const { doc, t } = docWithTrack();
+    expect(() => doc.transact({ actor: USER, label: "x" }, (tx) => updateTrack(tx, t, { output: "plugin" }))).toThrow(CommandError);
+    doc.transact({ actor: USER, label: "Kontakt" }, (tx) => updateTrack(tx, t, { output: "plugin", plugin: kontakt }));
+    expect(doc.song.tracks[t]!.output).toBe("plugin");
+    expect(doc.song.tracks[t]!.plugin).toEqual(kontakt);
+    // Back inside: the choice stays, so going back to the plugin needs no new choice.
+    doc.transact({ actor: USER, label: "dentro" }, (tx) => updateTrack(tx, t, { output: "internal" }));
+    expect("output" in doc.song.tracks[t]!).toBe(false);
+    expect(doc.song.tracks[t]!.plugin).toEqual(kontakt);
+    doc.transact({ actor: USER, label: "otra vez" }, (tx) => updateTrack(tx, t, { output: "plugin" }));
+    expect(doc.song.tracks[t]!.output).toBe("plugin");
+    // It cannot lose its plugin while the plugin plays it.
+    expect(() => doc.transact({ actor: USER, label: "x" }, (tx) => updateTrack(tx, t, { plugin: null }))).toThrow(CommandError);
+    doc.undo(USER);
+    expect("output" in doc.song.tracks[t]!).toBe(false);
+    doc.undo(USER);
+    expect(doc.song.tracks[t]!.output).toBe("plugin");
+    doc.undo(USER);
+    expect("plugin" in doc.song.tracks[t]!).toBe(false);
+  });
+
+  it("travels in the .fourhands file", () => {
+    const { doc, t } = docWithTrack();
+    doc.transact({ actor: USER, label: "Kontakt" }, (tx) => updateTrack(tx, t, { output: "plugin", plugin: kontakt }));
+    const back = parseSongFile(serializeSong({ song: doc.song, history: doc.history, proposals: [] }));
+    expect(back.song.tracks[t]!.output).toBe("plugin");
+    expect(back.song.tracks[t]!.plugin).toEqual(kontakt);
   });
 });
 

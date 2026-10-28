@@ -2,6 +2,7 @@
  * The window's door to the main process (exposed by the preload as `window.fh`), plus an in-page
  * stand-in that runs the core directly, for the browser harness and the interface tests.
  */
+import { ENGINE_OFF, type EngineLoadResult, type EngineMidiEvent, type EnginePlugin, type EngineStatus } from "../shared/engine.js";
 import { SongDocument, USER, runCommands, type Song } from "@fourhands/core";
 import { type AiApply, type AiState, type AiTone, DEFAULT_AI_APPLY, DEFAULT_AI_TONE, type FileState, type MenuAction, NO_AI, type PatchMessage, type Reply, type Request, type SkillCardInfo, type SkillImportResult, type Snapshot, type SoundBankInfo, type ViewInfo, lastAiOf, proposalsOf } from "../shared/protocol.js";
 
@@ -64,6 +65,17 @@ export interface Bridge {
   setMidiOutPort(name: string | null): Promise<string | null>;
   /** File > Export MIDI (to drag into the DAW and get its tracks with their names). */
   exportMidi(): void;
+  /** The native engine (fase 2, prueba S2). */
+  engineStatus(): Promise<EngineStatus>;
+  onEngineStatus(listener: (status: EngineStatus) => void): () => void;
+  /** The plugins the engine knows; `scan` looks for them on the computer first (slow). */
+  enginePlugins(scan: boolean): Promise<{ plugins: EnginePlugin[]; error?: string }>;
+  onEngineScanning(listener: (file: string) => void): () => void;
+  engineLoad(slot: number, id: string): Promise<EngineLoadResult>;
+  /** Opens the plugin's own window. False if it has none (or is not loaded). */
+  engineShow(slot: number): Promise<boolean>;
+  engineMidi(events: EngineMidiEvent[]): void;
+  enginePanic(): void;
 }
 
 export function windowBridge(): Bridge | null {
@@ -81,8 +93,10 @@ export function memoryBridge(
     sounds?: SoundBankInfo[];
     soundBank?: (id: string) => Promise<ArrayBuffer | null>;
     skills?: SkillCardInfo[];
+    /** Plugins of a pretend engine (interface tests); absent: the engine is "missing". */
+    enginePlugins?: EnginePlugin[];
   } = {},
-): Bridge & { doc: SongDocument; setAi(state: AiState): void; closed: string[] } {
+): Bridge & { doc: SongDocument; setAi(state: AiState): void; closed: string[]; engine: { loaded: Map<number, string>; midi: EngineMidiEvent[]; shown: number[] } } {
   const now = options.now ?? Date.now;
   const doc = new SongDocument(song, { now });
   const patchListeners = new Set<(m: PatchMessage) => void>();
@@ -104,6 +118,9 @@ export function memoryBridge(
   let tone: AiTone = DEFAULT_AI_TONE;
   let apply: AiApply = DEFAULT_AI_APPLY;
   let outPort: string | null = null;
+  const fakePlugins = options.enginePlugins;
+  const engineState: EngineStatus = fakePlugins ? { state: "ready", device: "Prueba · 48000 Hz", latency: 0.02, generation: 1 } : { ...ENGINE_OFF, state: "missing" };
+  const engine = { loaded: new Map<number, string>(), midi: [] as EngineMidiEvent[], shown: [] as number[] };
   const on = <T>(set: Set<T>, l: T) => {
     set.add(l);
     return () => void set.delete(l);
@@ -190,6 +207,23 @@ export function memoryBridge(
     midiOutPort: async () => outPort,
     setMidiOutPort: async (name) => (outPort = name),
     exportMidi: () => console.log("[fh] export MIDI"),
+    engine,
+    engineStatus: async () => ({ ...engineState }),
+    onEngineStatus: () => () => {},
+    enginePlugins: async () => (fakePlugins ? { plugins: structuredClone(fakePlugins) } : { plugins: [], error: "The engine is not built on this computer" }),
+    onEngineScanning: () => () => {},
+    engineLoad: async (slot, id) => {
+      const p = fakePlugins?.find((x) => x.id === id);
+      if (!p) return { ok: false, error: `Unknown plugin: ${id}` };
+      engine.loaded.set(slot, id);
+      return { ok: true, name: p.name };
+    },
+    engineShow: async (slot) => {
+      engine.shown.push(slot);
+      return engine.loaded.has(slot);
+    },
+    engineMidi: (events) => void engine.midi.push(...structuredClone(events)),
+    enginePanic: () => {},
     save: () => {
       file.savedAt = now();
       for (const l of fileListeners) l({ ...file });

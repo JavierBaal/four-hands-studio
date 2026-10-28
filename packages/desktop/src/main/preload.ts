@@ -43,6 +43,14 @@ const CH = {
   midiOut: "fh:midi-out",
   midiOutSet: "fh:midi-out-set",
   exportMidi: "fh:export-midi",
+  engineStatus: "fh:engine-status",
+  engineStatusChanged: "fh:engine-status-changed",
+  enginePlugins: "fh:engine-plugins",
+  engineScanning: "fh:engine-scanning",
+  engineLoad: "fh:engine-load",
+  engineShow: "fh:engine-show",
+  engineMidi: "fh:engine-midi",
+  enginePanic: "fh:engine-panic",
 } as const;
 
 function listen(channel: string, listener: (value: unknown) => void): () => void {
@@ -89,4 +97,12 @@ contextBridge.exposeInMainWorld("fh", {
   midiOutPort: () => ipcRenderer.invoke(CH.midiOut),
   setMidiOutPort: (name: string | null) => ipcRenderer.invoke(CH.midiOutSet, name),
   exportMidi: () => ipcRenderer.send(CH.exportMidi),
+  engineStatus: () => ipcRenderer.invoke(CH.engineStatus),
+  onEngineStatus: (l: (v: unknown) => void) => listen(CH.engineStatusChanged, l),
+  enginePlugins: (scan: boolean) => ipcRenderer.invoke(CH.enginePlugins, scan),
+  onEngineScanning: (l: (v: unknown) => void) => listen(CH.engineScanning, l),
+  engineLoad: (slot: number, id: string) => ipcRenderer.invoke(CH.engineLoad, slot, id),
+  engineShow: (slot: number) => ipcRenderer.invoke(CH.engineShow, slot),
+  engineMidi: (events: unknown[]) => ipcRenderer.send(CH.engineMidi, events),
+  enginePanic: () => ipcRenderer.send(CH.enginePanic),
 });

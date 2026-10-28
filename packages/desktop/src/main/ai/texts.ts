@@ -115,6 +115,7 @@ export function overviewText(song: Song, extras: OverviewExtras = { open: [] }):
     if (track.solo) parts.push("solo (the user is listening to it alone)");
     if (track.pedal.length) parts.push(`${track.pedal.length} pedal spans`);
     if (track.output === "external") parts.push("sounds outside Four Hands (MIDI out to the user's DAW, e.g. Studio One with Kontakt): the built-in sound and its profile do not apply, ask what instrument plays it");
+    if (track.output === "plugin" && track.plugin) parts.push(`plays through the plugin ${track.plugin.name} (hosted by Four Hands): the built-in sound and its profile do not apply, ask what instrument is loaded in it`);
     if (track.curves?.expression?.length) parts.push("expression curve (CC11)");
     if (track.curves?.modulation?.length) parts.push("modulation curve (CC1)");
     lines.push(parts.join(" · "));
