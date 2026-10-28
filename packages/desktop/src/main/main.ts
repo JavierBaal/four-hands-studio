@@ -18,6 +18,8 @@ import { AiServer } from "./ai/server.js";
 import { connectClaude, findMcpb } from "./ai/connect.js";
 import { type SessionOptions, SongSession } from "./session.js";
 import { SoundLibrary } from "./sound-library.js";
+import { EngineHost } from "./engine/host.js";
+import type { EngineLoadResult, EngineMidiEvent, EnginePlugin } from "../shared/engine.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url)); // packages/desktop/dist
 const packageDir = path.resolve(here, "..");
@@ -39,6 +41,7 @@ let library: SoundLibrary | null = null;
 let desk: AiDesk | null = null;
 let aiServer: AiServer | null = null;
 let skills: SkillLibrary | null = null;
+let engine: EngineHost | null = null;
 
 // ---------------------------------------------------------------------------
 // Places on disk
@@ -105,6 +108,39 @@ function makeLibrary(): SoundLibrary {
 function soundFontCandidates(): string[] {
   const files = [...library!.files().values()];
   return soundFontPath ? [soundFontPath, ...files] : files;
+}
+
+/**
+ * The native engine (fase 2, prueba S2), if it has been built: FH_ENGINE, the copy that
+ * «Compilar motor.bat» leaves in <project>/motor, or the build folder of the repo.
+ */
+function findEngine(): string | null {
+  const exe = process.platform === "win32" ? "Four Hands Engine.exe" : "Four Hands Engine";
+  const candidates = [
+    process.env.FH_ENGINE,
+    projectRoot && path.join(projectRoot, "motor", exe),
+    path.join(repoRoot, "engine", "build", "FourHandsEngine_artefacts", "Release", exe),
+  ].filter((p): p is string => !!p);
+  return candidates.find((p) => fs.existsSync(p)) ?? null;
+}
+
+function engineHost(): EngineHost {
+  engine ??= new EngineHost({
+    command: () => {
+      const exe = findEngine();
+      return exe ? [exe] : null;
+    },
+    cacheFile: path.join(dataDir(), "motor", "plugins.xml"),
+    log: appendLog,
+    onStatus: (status) => win?.webContents.send(CH.engineStatusChanged, status),
+    onScanning: (file) => win?.webContents.send(CH.engineScanning, file),
+  });
+  return engine;
+}
+
+function pluginsOf(reply: Record<string, unknown>): EnginePlugin[] {
+  const list = Array.isArray(reply.list) ? (reply.list as EnginePlugin[]) : [];
+  return list.map((p) => ({ id: String(p.id), name: String(p.name), vendor: String(p.vendor ?? ""), category: String(p.category ?? ""), format: String(p.format ?? ""), instrument: !!p.instrument }));
 }
 
 function logFile(): string {
@@ -469,6 +505,43 @@ function registerIpc(): void {
     writeSettings({ midiOutPort: next });
     return next;
   });
+  // The native engine (prueba S2): plugins, loading them, their windows, MIDI.
+  ipcMain.handle(CH.engineStatus, () => engineHost().current);
+  ipcMain.handle(CH.enginePlugins, async (_e, scan: unknown) => {
+    try {
+      const started = Date.now();
+      // Besides the system's VST3 folders: <project>/motor/plugins-prueba, where «Compilar motor.bat»
+      // leaves the test instrument.
+      const extra = [projectRoot && path.join(projectRoot, "motor", "plugins-prueba")].filter((p): p is string => !!p && fs.existsSync(p));
+      const plugins = pluginsOf(await engineHost().request(scan ? { type: "scan", paths: extra } : { type: "plugins" }));
+      if (scan) appendLog({ type: "engine_scanned", ms: Date.now() - started, plugins: plugins.length, instruments: plugins.filter((p) => p.instrument).map((p) => p.name) });
+      return { plugins };
+    } catch (error) {
+      return { plugins: [], error: (error as Error).message };
+    }
+  });
+  ipcMain.handle(CH.engineLoad, async (_e, slot: unknown, id: unknown): Promise<EngineLoadResult> => {
+    const started = Date.now();
+    try {
+      const reply = await engineHost().request({ type: "load", slot: Number(slot), id: String(id) });
+      appendLog({ type: "engine_loaded", slot, plugin: reply.name, ms: Date.now() - started });
+      return { ok: true, name: String(reply.name ?? "") };
+    } catch (error) {
+      appendLog({ type: "engine_load_failed", slot, id, error: (error as Error).message });
+      return { ok: false, error: (error as Error).message };
+    }
+  });
+  ipcMain.handle(CH.engineShow, async (_e, slot: unknown) => {
+    try {
+      return !!(await engineHost().request({ type: "show", slot: Number(slot) })).ok;
+    } catch {
+      return false;
+    }
+  });
+  ipcMain.on(CH.engineMidi, (_e, events: EngineMidiEvent[]) => {
+    if (Array.isArray(events) && events.length) engine?.send({ type: "midi", events });
+  });
+  ipcMain.on(CH.enginePanic, () => engine?.send({ type: "panic" }));
   // Tu IA > Opiniones.
   ipcMain.handle(CH.aiTone, () => aiTone());
   ipcMain.handle(CH.aiToneSet, (_e, tone: string) => {
@@ -551,6 +624,7 @@ app.on("before-quit", (event) => {
   event.preventDefault();
   quitting = true;
   desk?.dispose();
+  engine?.stop();
   void Promise.all([songs.flush(), aiServer?.stop()]).finally(() => {
     appendLog({ type: "app_closed" });
     app.quit();

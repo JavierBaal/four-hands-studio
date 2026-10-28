@@ -134,9 +134,12 @@ export interface Track {
   pedal: PedalSpan[];
   /**
    * Where the track sounds (H4, Fran 20/10/2026): "external" sends its MIDI out (to Studio One
-   * through a virtual port) instead of playing the built-in sound. Absent: inside Four Hands.
+   * through a virtual port) instead of playing the built-in sound. "plugin" (fase 2, prueba S2):
+   * a plugin hosted by the native engine plays it (`plugin` says which). Absent: inside Four Hands.
    */
-  output?: "external";
+  output?: "external" | "plugin";
+  /** The plugin that plays the track when `output` is "plugin". */
+  plugin?: TrackPlugin;
   /** Expression (CC11) and modulation (CC1), sorted by tick, one point per tick. Absent: none. */
   curves?: Partial<Record<CurveKind, CcPoint[]>>;
   /** Events of this track the model does not interpret (controllers, pitch bend, text…). */
@@ -149,6 +152,14 @@ export interface Track {
 }
 
 /** A preset of a sound bank installed by the user (a SoundFont file), by its file name. */
+/** A plugin hosted by the engine (VST3). */
+export interface TrackPlugin {
+  /** The engine's identifier for it (format, name, file and id). */
+  id: string;
+  /** "Kontakt 8", as the plugin calls itself. */
+  name: string;
+}
+
 export interface TrackSound {
   /** File name of the bank, e.g. "YDP-GrandPiano-20160804.sf2". */
   bank: string;

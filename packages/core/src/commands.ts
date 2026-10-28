@@ -21,6 +21,7 @@ import {
   type Section,
   type TempoPoint,
   type Track,
+  type TrackPlugin,
   type TrackSound,
   barTicks,
   sameAuthorship,
@@ -207,8 +208,13 @@ export type TrackChanges = Partial<Pick<Track, "name" | "program" | "channel" | 
   reverb?: number;
   /** A preset of another sound bank, or null to go back to the default bank. */
   sound?: TrackSound | null;
-  /** "external": the track's MIDI goes out (Studio One); "internal": the built-in sound plays it. */
-  output?: "internal" | "external";
+  /**
+   * "external": the track's MIDI goes out (Studio One); "internal": the built-in sound plays it;
+   * "plugin": a plugin in the engine plays it (needs `plugin`, now or already on the track).
+   */
+  output?: "internal" | "external" | "plugin";
+  /** The plugin for output "plugin"; null forgets it. */
+  plugin?: TrackPlugin | null;
 };
 
 export function updateTrack(tx: Transaction, id: string, changes: TrackChanges): void {
@@ -222,14 +228,22 @@ export function updateTrack(tx: Transaction, id: string, changes: TrackChanges):
   if (changes.reverb !== undefined) check(changes.reverb >= 0 && changes.reverb <= 1, "Reverb must be between 0 and 1");
   if (changes.name !== undefined) check(changes.name.trim().length > 0, "A track needs a name");
   if (changes.color !== undefined) checkColor(changes.color);
-  const { sound, output, reverb, ...rest } = changes;
+  const { sound, output, reverb, plugin, ...rest } = changes;
   if (reverb !== undefined && reverb !== (track.reverb ?? 0)) {
     if (reverb === 0) tx.remove(["tracks", id, "reverb"]);
     else tx.set(["tracks", id, "reverb"], reverb);
   }
+  if (plugin) {
+    check(plugin.id.trim().length > 0 && plugin.name.trim().length > 0, "A plugin needs its id and name");
+    if (JSON.stringify(track.plugin) !== JSON.stringify(plugin)) tx.set(["tracks", id, "plugin"], { id: plugin.id, name: plugin.name });
+  } else if (plugin === null && track.plugin) {
+    check(output !== "plugin" && (output !== undefined || track.output !== "plugin"), "A track that sounds through a plugin needs it");
+    tx.remove(["tracks", id, "plugin"]);
+  }
   if (output !== undefined) {
-    check(output === "internal" || output === "external", `Invalid output: ${String(output)}`);
-    if (output === "external" && track.output !== "external") tx.set(["tracks", id, "output"], "external");
+    check(output === "internal" || output === "external" || output === "plugin", `Invalid output: ${String(output)}`);
+    if (output === "plugin") check(plugin !== null && (plugin ?? track.plugin) !== undefined, "Choose the plugin that plays the track");
+    if (output !== "internal" && track.output !== output) tx.set(["tracks", id, "output"], output);
     if (output === "internal" && track.output) tx.remove(["tracks", id, "output"]);
   }
   if (sound) {

@@ -47,6 +47,16 @@ async function start(): Promise<void> {
         })),
         { name: "mi-armonia", description: "Cómo armonizo: pedales largos, nunca doblo la tercera y las cadencias se quedan abiertas.", origin: "user", enabled: true, replacesBuiltIn: false, files: 0 },
       ],
+      // A pretend engine with two instruments and an effect (prueba S2); ?engine=0: not built.
+      ...(params.get("engine") === "0"
+        ? {}
+        : {
+            enginePlugins: [
+              { id: "VST3-Kontakt 8-1", name: "Kontakt 8", vendor: "Native Instruments", category: "Instrument|Sampler", format: "VST3", instrument: true },
+              { id: "VST3-Four Hands Test Synth-2", name: "Four Hands Test Synth", vendor: "Four Hands", category: "Instrument|Synth", format: "VST3", instrument: true },
+              { id: "VST3-Ozone 11-3", name: "Ozone 11", vendor: "iZotope", category: "Fx|Mastering", format: "VST3", instrument: false },
+            ],
+          }),
     });
     if (fakeAi) memory.setAi(fakeAi);
     bridge = memory;

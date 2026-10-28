@@ -29,6 +29,8 @@ public:
 
     /** Opens the default output (WASAPI on Windows). Returns an error, or an empty string. */
     juce::String openDevice();
+    /** What openDevice said when it failed (empty if the device is open). */
+    juce::String deviceError() const { return lastDeviceError; }
     /** "Altavoces (Realtek) · 48000 Hz · 480 muestras", or "none". */
     juce::String deviceText() const;
     double outputLatencySeconds() const;
@@ -90,6 +92,7 @@ private:
     void prepare (double rate, int block);
 
     juce::AudioDeviceManager device;
+    juce::String lastDeviceError;
     juce::AudioPluginFormatManager formatManager;
     juce::KnownPluginList knownPlugins;
 

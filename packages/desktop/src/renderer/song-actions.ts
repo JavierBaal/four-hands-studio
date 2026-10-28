@@ -164,25 +164,71 @@ export class SongActions {
     this.changed();
   }
 
-  /** Where a track sounds: in Four Hands, or in the user's DAW through the MIDI out. */
-  setOutput(id: string, output: "internal" | "external"): void {
+  /** Where a track sounds: in Four Hands, in the user's DAW through the MIDI out, or through a plugin. */
+  setOutput(id: string, output: "internal" | "external" | "plugin"): void {
     const track = this.song.tracks[id];
-    if (!track || (track.output === "external") === (output === "external")) return;
+    if (!track || (track.output ?? "internal") === output) return;
+    if (output === "plugin") {
+      if (track.plugin) this.choosePlugin(id, track.plugin);
+      return;
+    }
     const key = output === "external" ? "hOutputDaw" : "hOutputHere";
     void this.run(this.h(key, { name: track.name, ch: track.channel + 1 }), [{ type: "updateTrack", id, changes: { output } }]);
+  }
+
+  /** The track sounds through this plugin of the engine (prueba S2). */
+  choosePlugin(id: string, plugin: { id: string; name: string }): void {
+    const track = this.song.tracks[id];
+    if (!track) return;
+    this.audio?.retryPlugin(track.channel, plugin.id);
+    if (track.output === "plugin" && track.plugin?.id === plugin.id) return;
+    void this.run(this.h("hOutputPlugin", { name: track.name, plugin: plugin.name }), [
+      { type: "updateTrack", id, changes: { output: "plugin", plugin: { id: plugin.id, name: plugin.name } } },
+    ]);
+  }
+
+  /** The instrument plugins the engine knows, to pick one; or look for them first. */
+  private async pluginMenu(id: string, x: number, y: number, scan = false): Promise<void> {
+    const track = this.song.tracks[id];
+    if (!track || !this.bridge) return;
+    const t = this.t;
+    const back = { label: t("soundsBack"), run: () => this.outputMenu(id, x, y) };
+    if (scan) {
+      this.editor.openMenu(x, y, [back, { separator: true }, { label: t("pluginsScanning"), disabled: true }]);
+      this.bridge.log({ type: "engine_scan_asked" });
+    }
+    const { plugins, error } = await this.bridge.enginePlugins(scan);
+    const status = this.audio?.engineStatus.state;
+    if (error) {
+      this.editor.openMenu(x, y, [back, { separator: true }, { label: status === "missing" ? t("engineMissing") : `${t("engineFailed")}: ${error}`, disabled: true }]);
+      return;
+    }
+    const instruments = plugins.filter((p) => p.instrument).sort((a, b) => a.name.localeCompare(b.name));
+    const effects = plugins.length - instruments.length;
+    const close = (fn: () => void) => () => (this.editor.closeMenus(), fn());
+    const items: MenuItem[] = [back, { separator: true }, { label: t("pluginsHeader"), header: true }];
+    if (instruments.length === 0) items.push({ label: t("pluginsNone"), disabled: true });
+    for (const p of instruments) {
+      items.push({ label: p.name, shortcut: p.vendor, active: track.output === "plugin" && track.plugin?.id === p.id, run: close(() => this.choosePlugin(id, p)) });
+    }
+    if (effects > 0) items.push({ label: t("pluginsEffects", { n: effects }), disabled: true });
+    items.push({ separator: true }, { label: t("pluginsScan"), run: () => void this.pluginMenu(id, x, y, true) });
+    this.editor.openMenu(x, y, items);
   }
 
   private outputMenu(id: string, x: number, y: number): void {
     const track = this.song.tracks[id];
     if (!track) return;
     const t = this.t;
-    const pick = (o: "internal" | "external") => () => (this.editor.closeMenus(), this.setOutput(id, o));
+    const pick = (o: "internal" | "external" | "plugin") => () => (this.editor.closeMenus(), this.setOutput(id, o));
     this.editor.openMenu(x, y, [
       { label: t("soundsBack"), run: () => this.trackMenu(id, x, y) },
       { separator: true },
       { label: `${t("trackMenuOutput")} · ${track.name}`, header: true },
       { label: t("outputHere"), active: track.output !== "external", run: pick("internal") },
       { label: t("outputDaw", { ch: track.channel + 1 }), active: track.output === "external", run: pick("external") },
+      ...(track.plugin ? [{ label: track.plugin.name, active: track.output === "plugin", run: pick("plugin") }] : []),
+      { label: t("outputPlugin"), run: () => void this.pluginMenu(id, x, y) },
       { separator: true },
       { label: t("outputSetup"), run: () => this.openMidiOut(true) },
     ]);
@@ -426,7 +472,12 @@ export class SongActions {
       { label: track.name, header: true },
       { label: t("trackMenuInstrument"), run: () => this.paletteMenu(x, y, (item) => this.setInstrument(id, item), track) },
       { label: t("trackMenuMix"), run: () => this.openMixer(id, x, y) },
-      { label: t("trackMenuOutput"), shortcut: track.output === "external" ? t("outputDawShort") : "Four Hands", run: () => this.outputMenu(id, x, y) },
+      {
+        label: t("trackMenuOutput"),
+        shortcut: track.output === "external" ? t("outputDawShort") : track.output === "plugin" && track.plugin ? track.plugin.name : "Four Hands",
+        run: () => this.outputMenu(id, x, y),
+      },
+      ...this.pluginItems(track),
       { label: t("trackMenuColor"), swatch: trackColor(track.color), shortcut: "›", run: () => this.colorMenu(id, x, y) },
       { label: t("trackMenuRename"), run: close(() => this.type({ kind: "trackName", id })) },
       { separator: true },
@@ -435,6 +486,23 @@ export class SongActions {
       { separator: true },
       { label: t("trackMenuDelete"), disabled: order.length <= 1, run: close(() => this.removeTrack(id)) },
     ]);
+  }
+
+  /** For a track that sounds through a plugin: its window, or why it is not sounding. */
+  private pluginItems(track: Track): MenuItem[] {
+    if (track.output !== "plugin" || !track.plugin) return [];
+    const plugin = track.plugin;
+    const problem = this.audio?.pluginProblem;
+    if (problem && problem.name === plugin.name && !this.audio?.pluginReady(track.channel, plugin.id)) {
+      return [{ label: `${this.t("pluginLoadFailed", { plugin: plugin.name })}: ${problem.error}`, disabled: true }];
+    }
+    return [
+      {
+        label: this.t("trackMenuPluginWindow", { plugin: plugin.name }),
+        disabled: !this.audio?.pluginReady(track.channel, plugin.id),
+        run: () => (this.editor.closeMenus(), void this.audio?.showPlugin(track.channel)),
+      },
+    ];
   }
 
   /** The track palette, each colour with its name; the current one is marked. */

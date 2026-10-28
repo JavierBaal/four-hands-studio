@@ -201,6 +201,14 @@ export const CH = {
   midiOut: "fh:midi-out",
   midiOutSet: "fh:midi-out-set",
   exportMidi: "fh:export-midi",
+  engineStatus: "fh:engine-status",
+  engineStatusChanged: "fh:engine-status-changed",
+  enginePlugins: "fh:engine-plugins",
+  engineScanning: "fh:engine-scanning",
+  engineLoad: "fh:engine-load",
+  engineShow: "fh:engine-show",
+  engineMidi: "fh:engine-midi",
+  enginePanic: "fh:engine-panic",
 } as const;
 
 /**

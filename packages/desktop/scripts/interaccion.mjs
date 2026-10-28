@@ -827,6 +827,34 @@ check("the card brings it back to Four Hands", !(await song()).tracks[secondId].
 await page.keyboard.press("Escape");
 await settle();
 
+// Fase 2, prueba S2: a track sounds through a plugin of the engine, from its menu; its window opens.
+await page.locator(".thdr").nth(1).click({ button: "right", position: { x: 120, y: 12 } });
+await page.getByRole("menuitem", { name: /^Suena en/ }).click();
+await page.getByRole("menuitem", { name: /^Un plugin \(prueba S2\)/ }).click();
+await page.waitForSelector('[role="menuitem"]:has-text("Kontakt 8")');
+check("the plugin menu lists the instruments, not the effects", (await page.getByRole("menuitem", { name: /Ozone/ }).count()) === 0 && (await page.getByRole("menuitem", { name: /Efectos \(1\)/ }).count()) === 1);
+await page.getByRole("menuitem", { name: /^Kontakt 8/ }).click();
+await settle();
+const pluginId = (await song()).trackOrder[1];
+check("the track sounds through Kontakt", (await song()).tracks[pluginId].output === "plugin" && (await song()).tracks[pluginId].plugin?.name === "Kontakt 8");
+check("its history label names the plugin", /suena con Kontakt 8/.test(await lastLabel()), await lastLabel());
+check(
+  "the plugin is loaded in the track's slot and its channel leaves the built-in sound",
+  await page.evaluate((id) => {
+    const ch = window.fhTest.replica.song.tracks[id].channel;
+    return window.fhTest.ai.engine.loaded.get(ch) === "VST3-Kontakt 8-1" && window.fhTest.audio.pluginChannels().has(ch);
+  }, pluginId),
+);
+await page.locator(".thdr").nth(1).click({ button: "right", position: { x: 120, y: 12 } });
+await page.getByRole("menuitem", { name: "Abrir ventana de Kontakt 8" }).click();
+await settle();
+check("the track menu opens the plugin's window", await page.evaluate((id) => window.fhTest.ai.engine.shown.includes(window.fhTest.replica.song.tracks[id].channel), pluginId));
+await page.locator(".thdr").nth(1).click({ button: "right", position: { x: 120, y: 12 } });
+await page.getByRole("menuitem", { name: /^Suena en/ }).click();
+await page.getByRole("menuitem", { name: "Four Hands", exact: true }).click();
+await settle();
+check("back to Four Hands, the plugin is remembered for next time", !(await song()).tracks[pluginId].output && (await song()).tracks[pluginId].plugin?.name === "Kontakt 8");
+
 // H4 (20/10/2026): Tu IA > Sus opiniones, direct by default and remembered.
 await page.locator(".askmanage").click();
 await page.waitForSelector(".skillspanel .skill");

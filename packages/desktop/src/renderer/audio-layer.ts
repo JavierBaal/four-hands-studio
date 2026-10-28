@@ -9,7 +9,8 @@ import type { Strings, Translate } from "../shared/i18n.js";
 import { Engine } from "../audio/engine.js";
 import { INITIAL_KEYBOARD, type KeyboardState, keyAction } from "../audio/keyboard.js";
 import { Player } from "../audio/player.js";
-import { type MidiPort, SoundRouter, isOwnLoopback } from "../audio/router.js";
+import { type EnginePort, type MidiPort, SoundRouter, isOwnLoopback } from "../audio/router.js";
+import { ENGINE_OFF, type EngineStatus } from "../shared/engine.js";
 import type { Bridge } from "./bridge.js";
 import type { SoundBankInfo } from "../shared/protocol.js";
 import { activeTrack } from "./context.js";
@@ -80,7 +81,16 @@ export class AudioLayer {
   outName: string | null = null;
   private midiAccess: MIDIAccess | null = null;
   private router: SoundRouter | null = null;
-  private outSides = new Map<string, boolean>();
+  private outSides = new Map<string, string>();
+  /**
+   * The native engine (fase 2, prueba S2): its state, which plugin each slot has, and the last
+   * plugin that could not load (with why). A plugin that failed is not tried again on its own.
+   */
+  engineStatus: EngineStatus = { ...ENGINE_OFF };
+  private engineLoaded = new Map<number, string>();
+  private engineLoading = new Set<string>();
+  private engineRefused = new Set<string>();
+  pluginProblem: { name: string; error: string } | null = null;
   /** Listens to the MIDI inputs again (the output port changed: skip its loopback). */
   private relisten: () => void = () => {};
 
@@ -112,17 +122,18 @@ export class AudioLayer {
       }
       const sig = this.replica.song.trackOrder.map((id) => {
         const tr = this.replica.song.tracks[id];
-        return tr ? `${tr.channel}:${tr.program}:${tr.volume}:${tr.pan}:${tr.reverb ?? 0}:${tr.sound ? `${tr.sound.bank}/${tr.sound.bankMSB}/${tr.sound.program}` : ""}` : "";
+        return tr ? `${tr.output ?? ""}:${tr.channel}:${tr.program}:${tr.volume}:${tr.pan}:${tr.reverb ?? 0}:${tr.sound ? `${tr.sound.bank}/${tr.sound.bankMSB}/${tr.sound.program}` : ""}` : "";
       }).join("|");
       if (sig !== this.trackSignature) {
         this.trackSignature = sig;
         this.player.setup();
         this.ensureBanks();
       }
+      this.ensurePlugins();
       // A track that changed sides stops sounding on the side it left.
       for (const id of this.replica.song.trackOrder) {
         const tr = this.replica.song.tracks[id]!;
-        const out = tr.output === "external";
+        const out = tr.output ?? "internal";
         if (this.outSides.has(id) && this.outSides.get(id) !== out) this.router?.silence(tr.channel);
         this.outSides.set(id, out);
       }
@@ -136,6 +147,78 @@ export class AudioLayer {
     };
     void this.refreshBanks();
     this.bridge.onSoundsChanged(() => void this.refreshBanks());
+    void this.bridge.engineStatus().then((s) => this.engineChanged(s));
+    this.bridge.onEngineStatus((s) => this.engineChanged(s));
+  }
+
+  // -------------------------------------------------------------------------
+  // The native engine (fase 2, prueba S2): tracks that sound through a plugin
+
+  private engineChanged(status: EngineStatus): void {
+    // A new engine (it started, or started again after a crash) has no plugins yet.
+    if (status.generation !== this.engineStatus.generation || status.state !== "ready") this.engineLoaded.clear();
+    this.engineStatus = status;
+    if (status.state === "ready") this.ensurePlugins();
+    this.changed();
+  }
+
+  /** Channels of the tracks that sound through a plugin. */
+  pluginChannels(): Set<number> {
+    const out = new Set<number>();
+    for (const id of this.replica.song.trackOrder) {
+      const t = this.replica.song.tracks[id];
+      if (t?.output === "plugin") out.add(t.channel);
+    }
+    return out;
+  }
+
+  private enginePort(): EnginePort | null {
+    if (this.engineStatus.state !== "ready") return null;
+    return { midi: (events) => this.bridge.engineMidi(events), panic: () => this.bridge.enginePanic(), latency: () => this.engineStatus.latency ?? 0 };
+  }
+
+  /** Each plugin track has its plugin loaded in its slot (the slot is the track's channel). */
+  private ensurePlugins(): void {
+    if (this.engineStatus.state === "missing" || this.engineStatus.state === "starting") return;
+    for (const id of this.replica.song.trackOrder) {
+      const track = this.replica.song.tracks[id];
+      if (track?.output !== "plugin" || !track.plugin) continue;
+      const slot = track.channel;
+      const plugin = track.plugin;
+      const key = `${slot}:${plugin.id}`;
+      if (this.engineLoaded.get(slot) === plugin.id || this.engineLoading.has(key) || this.engineRefused.has(key)) continue;
+      this.engineLoading.add(key);
+      void this.bridge.engineLoad(slot, plugin.id).then((r) => {
+        this.engineLoading.delete(key);
+        if (r.ok) {
+          this.engineLoaded.set(slot, plugin.id);
+          if (this.pluginProblem?.name === plugin.name) this.pluginProblem = null;
+        } else {
+          this.engineRefused.add(key);
+          this.pluginProblem = { name: plugin.name, error: r.error };
+        }
+        this.player.setup();
+        this.changed();
+      });
+    }
+  }
+
+  /** The user chose this plugin for a slot: try it again even if it failed before. */
+  retryPlugin(slot: number, pluginId: string): void {
+    this.engineRefused.delete(`${slot}:${pluginId}`);
+    this.pluginProblem = null;
+  }
+
+  /** "Abrir ventana del instrumento": the plugin's own window, from the engine. */
+  async showPlugin(slot: number): Promise<boolean> {
+    const ok = await this.bridge.engineShow(slot);
+    this.bridge.log({ type: "engine_window", slot, ok });
+    return ok;
+  }
+
+  /** Is the plugin of this track loaded and ready to sound? */
+  pluginReady(slot: number, pluginId: string): boolean {
+    return this.engineStatus.state === "ready" && this.engineLoaded.get(slot) === pluginId;
   }
 
   subscribe = (l: () => void): (() => void) => {
@@ -225,6 +308,8 @@ export class AudioLayer {
         external: () => this.externalChannels(),
         port: () => this.outPort(),
         delayMs: () => engine.outputLatencyMs,
+        plugin: () => this.pluginChannels(),
+        engine: () => this.enginePort(),
       });
       this.player.setEngine(this.router);
       this.ensureBanks();

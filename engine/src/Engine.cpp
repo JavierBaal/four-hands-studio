@@ -48,13 +48,12 @@ Engine::~Engine()
 
 juce::String Engine::openDevice()
 {
-    auto error = device.initialiseWithDefaultDevices (0, 2);
-    if (error.isNotEmpty())
-        return error;
-    if (device.getCurrentAudioDevice() == nullptr)
-        return "There is no audio output device";
-    device.addAudioCallback (this);
-    return {};
+    lastDeviceError = device.initialiseWithDefaultDevices (0, 2);
+    if (lastDeviceError.isEmpty() && device.getCurrentAudioDevice() == nullptr)
+        lastDeviceError = "There is no audio output device";
+    if (lastDeviceError.isEmpty())
+        device.addAudioCallback (this);
+    return lastDeviceError;
 }
 
 juce::String Engine::deviceText() const

@@ -59,3 +59,49 @@ describe("never listen to our own output (loopMIDI feedback, Fran 20/10/2026)", 
     expect(isOwnLoopback("Four Hands", null)).toBe(false);
   });
 });
+
+describe("tracks through a plugin of the engine (prueba S2)", () => {
+  function withEngine() {
+    const inner = { ctx: { currentTime: 10 }, nowed: [] as SynthEvent[], scheduled: [] as { time: number; ev: SynthEvent }[], panics: 0 };
+    const batches: { slot: number; delay: number; data: number[] }[][] = [];
+    let panics = 0;
+    const router = new SoundRouter({
+      inner: { ctx: inner.ctx, now: (ev) => inner.nowed.push(ev), sched: (evs) => inner.scheduled.push(...evs), panic: () => inner.panics++ },
+      external: () => new Set([3]),
+      port: () => null,
+      delayMs: () => 40,
+      plugin: () => new Set([5]),
+      engine: () => ({ midi: (e) => batches.push(e), panic: () => panics++, latency: () => 0.015 }),
+    });
+    return { router, inner, batches, panics: () => panics };
+  }
+
+  it("sends the plugin channels to their slot on MIDI channel 1, in one batch, timed with the built-in sound", () => {
+    const { router, inner, batches } = withEngine();
+    router.sched([
+      { time: 10.5, ev: { kind: "on", ch: 5, note: 48, vel: 80 } },
+      { time: 10.5, ev: { kind: "on", ch: 0, note: 60, vel: 80 } },
+      { time: 11, ev: { kind: "off", ch: 5, note: 48 } },
+      { time: 10.5, ev: { kind: "prog", ch: 5, prog: 42 } },
+    ]);
+    expect(inner.scheduled.map((e) => e.ev)).toEqual([{ kind: "on", ch: 0, note: 60, vel: 80 }]);
+    expect(batches).toHaveLength(1);
+    const [on, off] = batches[0]!;
+    expect(on).toMatchObject({ slot: 5, data: [0x90, 48, 80] });
+    // 0.5 s ahead, plus the built-in sound's 40 ms, minus the engine's own 15 ms.
+    expect(on!.delay).toBeCloseTo(0.525, 6);
+    expect(off).toMatchObject({ slot: 5, data: [0x80, 48, 0] });
+    expect(off!.delay).toBeCloseTo(1.025, 6);
+  });
+
+  it("plays the keyboard at once, and stops the plugin on panic or when the track changes side", () => {
+    const { router, batches, panics } = withEngine();
+    router.now({ kind: "on", ch: 5, note: 50, vel: 70 });
+    expect(batches.at(-1)).toEqual([{ slot: 5, delay: 0, data: [0x90, 50, 70] }]);
+    router.panic();
+    expect(panics()).toBe(1);
+    router.silence(5);
+    expect(batches.at(-1)!.map((e) => e.data[1])).toEqual([64, 123, 120]);
+    expect(batches.at(-1)!.every((e) => e.slot === 5 && e.data[0] === 0xb0)).toBe(true);
+  });
+});

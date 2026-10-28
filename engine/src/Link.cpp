@@ -128,7 +128,8 @@ juce::var Link::handle (const juce::var& m, Connection& from)
                       { "version", 1 },
                       { "device", engine.deviceText() },
                       { "sampleRate", engine.getSampleRate() },
-                      { "latency", engine.outputLatencySeconds() } });
+                      { "latency", engine.outputLatencySeconds() },
+                      { "deviceError", engine.deviceError() } });
 
     if (type == "plugins")
         return pluginList();
