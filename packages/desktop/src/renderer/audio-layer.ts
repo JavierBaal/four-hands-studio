@@ -157,8 +157,14 @@ export class AudioLayer {
   private engineChanged(status: EngineStatus): void {
     // A new engine (it started, or started again after a crash) has no plugins yet.
     if (status.generation !== this.engineStatus.generation || status.state !== "ready") this.engineLoaded.clear();
+    const was = this.engineStatus.state;
     this.engineStatus = status;
     if (status.state === "ready") this.ensurePlugins();
+    // It stopped by itself (a plugin crashed it): start it again with the plugins of the song.
+    if (status.state === "failed" && was === "ready") {
+      this.bridge.log({ type: "engine_restart", error: status.error });
+      setTimeout(() => this.ensurePlugins(), 1000);
+    }
     this.changed();
   }
 
