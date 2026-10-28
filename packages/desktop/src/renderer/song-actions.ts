@@ -35,6 +35,10 @@ import type { Replica } from "./replica.js";
 import { TRACK_PALETTE, trackColor, trackColorIndex } from "./theme.js";
 import { parseDb, parsePan } from "../shared/mix.js";
 
+/** The sections of Ajustes, in their order. */
+export const SETTINGS_SECTIONS = ["ai", "sound", "plugins", "midi", "folders", "advanced"] as const;
+export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
+
 /** What is being typed into right now. */
 export type Typing =
   | { kind: "trackName"; id: string }
@@ -69,12 +73,11 @@ const METERS: [number, number][] = [
 export class SongActions {
   typing: Typing | null = null;
   mixer: { trackId: string; x: number; y: number } | null = null;
-  /** The "Get more sounds" card is open. */
-  soundsHelp = false;
-  /** The "Salida MIDI" card is open (H4). */
-  midiOut = false;
-  /** The "Skills de la IA" card is open. */
-  skillsPanel = false;
+  /**
+   * Ajustes (ESTUDIO_INTERFAZ_2.md, 5.4): the section open, or null when closed. Tu IA, the sound
+   * banks, the plugins, MIDI, the folders and the test tools live here, not in the Help menu.
+   */
+  settings: SettingsSection | null = null;
   /** A short message at the bottom of the window, gone after a few seconds. */
   notice: string | null = null;
   private noticeTimer: ReturnType<typeof setTimeout> | null = null;
@@ -108,13 +111,15 @@ export class SongActions {
     private readonly bridge: Bridge | null = null,
   ) {}
 
-  openSkills(open: boolean): void {
-    this.skillsPanel = open;
-    if (open) {
-      this.soundsHelp = false;
-      this.editor.closeMenus();
-    }
+  openSettings(section: SettingsSection | null): void {
+    this.settings = section;
+    if (section) this.editor.closeMenus();
     this.changed();
+  }
+
+  /** Ajustes › Tu IA (from "Gestionar skills…", the AI chip and the menu). */
+  openSkills(open: boolean): void {
+    this.openSettings(open ? "ai" : null);
   }
 
   /** Files dropped onto the window: ZIPs are skills, the rest go to the sound banks. */
@@ -154,14 +159,9 @@ export class SongActions {
     this.changed();
   }
 
+  /** Ajustes › MIDI. */
   openMidiOut(open: boolean): void {
-    this.midiOut = open;
-    if (open) {
-      this.soundsHelp = false;
-      this.skillsPanel = false;
-      this.editor.closeMenus();
-    }
-    this.changed();
+    this.openSettings(open ? "midi" : null);
   }
 
   /** Where a track sounds: in Four Hands, in the user's DAW through the MIDI out, or through a plugin. */
@@ -234,10 +234,9 @@ export class SongActions {
     ]);
   }
 
+  /** Ajustes › Sonido ("Conseguir más sonidos"). */
   openSoundsHelp(open: boolean): void {
-    this.soundsHelp = open;
-    if (open) this.editor.closeMenus();
-    this.changed();
+    this.openSettings(open ? "sound" : null);
   }
 
   subscribe = (l: () => void): (() => void) => {

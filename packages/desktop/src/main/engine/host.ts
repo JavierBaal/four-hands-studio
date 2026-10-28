@@ -18,7 +18,8 @@ export interface EngineHostOptions {
   cacheFile: string;
   log: (entry: Record<string, unknown>) => void;
   onStatus?: (status: EngineStatus) => void;
-  onScanning?: (file: string) => void;
+  /** A plugin file being scanned, and how far the scan is (0 to 1). */
+  onScanning?: (file: string, progress: number) => void;
   /** How long the engine has to say it is ready. */
   startTimeoutMs?: number;
 }
@@ -187,7 +188,7 @@ export class EngineHost {
 
   private received(m: Reply): void {
     if (m.type === "scanning") {
-      this.options.onScanning?.(String(m.file ?? ""));
+      this.options.onScanning?.(String(m.file ?? ""), Number(m.progress ?? 0));
       return;
     }
     const next = this.waiting.shift();

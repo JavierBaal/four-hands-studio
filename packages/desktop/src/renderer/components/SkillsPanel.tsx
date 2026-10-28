@@ -1,13 +1,12 @@
 /**
- * "Tu IA" (ESTUDIO_SKILLS.md, 6; H4): how the AI gives its opinions, and its skills. Two places:
+ * "Tu IA" (ESTUDIO_SKILLS.md, 6; H4): connecting it, how it gives its opinions, and its skills. Two places:
  * - "Skills activas" in the activity panel, as sketch 01 shows it: the skills that are on, with their
  *   origin, and "Gestionar skills…";
- * - the card: every skill Four Hands serves, built in or the user's,
- * turned on and off here; import a ZIP or open the folder. A dot in the AI's colour marks the
- * skills an AI loaded since the app opened. Same card as "Get more sounds"; Esc or a click
- * outside closes it.
+ * - Ajustes › Tu IA (ESTUDIO_INTERFAZ_2.md): every skill Four Hands serves, built in or the user's,
+ *   turned on and off; import a ZIP or open the folder. A dot in the AI's colour marks the skills an
+ *   AI loaded since the app opened.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { Strings } from "../../shared/i18n.js";
 import type { AiApply, AiTone, SkillCardInfo } from "../../shared/protocol.js";
 import { useActions, useAi, useApp } from "../context.js";
@@ -20,49 +19,38 @@ function builtInText(name: string): { title: keyof Strings; description: keyof S
     : null;
 }
 
-export function SkillsPanel() {
+export function AiSettings() {
   const { t, bridge } = useApp();
   const actions = useActions();
   const ai = useAi();
-  const ref = useRef<HTMLDivElement>(null);
   const [skills, setSkills] = useState<SkillCardInfo[] | null>(null);
   const [tone, setTone] = useState<AiTone | null>(null);
   const [apply, setApply] = useState<AiApply | null>(null);
-  const open = actions.skillsPanel;
 
   useEffect(() => {
-    if (open) void bridge.skills().then(setSkills);
-  }, [open, actions.skillsVersion]);
+    void bridge.skills().then(setSkills);
+  }, [actions.skillsVersion]);
   useEffect(() => {
-    if (open) void bridge.aiTone().then(setTone);
-    if (open) void bridge.aiApply().then(setApply);
-  }, [open]);
+    void bridge.aiTone().then(setTone);
+    void bridge.aiApply().then(setApply);
+  }, []);
   const pickTone = (next: AiTone) => void bridge.setAiTone(next).then(setTone);
   const pickApply = (next: AiApply) => void bridge.setAiApply(next).then(setApply);
 
-  useEffect(() => {
-    if (!open) return;
-    const down = (e: PointerEvent) => {
-      if (!ref.current?.contains(e.target as Node)) actions.openSkills(false);
-    };
-    const key = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      e.stopPropagation();
-      actions.openSkills(false);
-    };
-    window.addEventListener("pointerdown", down, true);
-    window.addEventListener("keydown", key, true);
-    return () => {
-      window.removeEventListener("pointerdown", down, true);
-      window.removeEventListener("keydown", key, true);
-    };
-  }, [open]);
-
-  if (!open) return null;
   const used = new Set(ai.skillsUsed ?? []);
+  const names = ai.clients.map((c) => c.name).join(", ");
   return (
-    <div className="menu qdialog skillspanel" ref={ref} role="dialog" aria-label={t("skillsTitle")}>
-      <div className="mhead">{t("skillsTitle")}</div>
+    <div className="skillspanel">
+      <div className="setconnect">
+        <p className="setstatus" role="status">
+          <span className={ai.clients.length ? "dot ai" : "dot off"} />
+          {ai.clients.length ? t("aiConnected", { name: names }) : t("aiOff")}
+        </p>
+        <p className="skdesc">{t("setConnectHint")}</p>
+        <button className="btn" onClick={() => bridge.connectClaude()}>
+          {t("menuConnectClaude")}
+        </button>
+      </div>
       <div className="tonebox">
         <div className="toneh">
           <span className="sech">{t("toneTitle")}</span>
@@ -138,9 +126,6 @@ export function SkillsPanel() {
         </button>
         <button className="btn" onClick={() => void actions.importSkills(() => bridge.pickSkills())}>
           {t("skillsImport")}
-        </button>
-        <button className="btn pri" onClick={() => actions.openSkills(false)}>
-          {t("close")}
         </button>
       </div>
     </div>

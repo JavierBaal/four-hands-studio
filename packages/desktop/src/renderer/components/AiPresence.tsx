@@ -10,7 +10,7 @@ import { barAt, barStart } from "@fourhands/core";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import type { AudioLayer } from "../audio-layer.js";
 import type { AiWriting } from "../../shared/protocol.js";
-import { useApp, useAi, useSong } from "../context.js";
+import { useActions, useApp, useAi, useSong } from "../context.js";
 import { barRange } from "../music.js";
 import { currentProposal, proposalCounts } from "../proposals.js";
 import type { RollView } from "../roll/geometry.js";
@@ -38,19 +38,18 @@ function where(w: AiWriting, song: ReturnType<typeof useSong>, t: ReturnType<typ
 }
 
 export function AiChip() {
-  const { t, bridge } = useApp();
+  const { t } = useApp();
+  const actions = useActions();
   const ai = useAi();
   const song = useSong();
   const goTo = useGoTo();
   if (ai.clients.length === 0) {
     return (
       <span className="aichip">
-        <span className="chip">
+        {/* "Cómo conectarla" moved to Help and Ajustes › Tu IA (ESTUDIO_INTERFAZ_2.md): the chip opens it. */}
+        <button className="chip chipbtn" title={t("menuConnectAi")} onClick={() => actions.openSkills(true)}>
           <span className="dot off" />
           {t("aiOff")}
-        </span>
-        <button className="linkbtn" onClick={() => bridge.connectClaude()}>
-          {t("aiHowTo")}
         </button>
       </span>
     );

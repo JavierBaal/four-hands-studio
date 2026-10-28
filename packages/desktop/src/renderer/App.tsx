@@ -6,7 +6,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import type { Note } from "@fourhands/core";
 import { ActivityPanel, Rail } from "./components/ActivityPanel.js";
 import { AiCompareBar, AiProposalBar, AiWritingBar } from "./components/AiPresence.js";
-import { MidiOutPanel } from "./components/MidiOutPanel.js";
 import { Arrangement } from "./components/Arrangement.js";
 import { ContextMenu, QuantizeDialog } from "./components/Menus.js";
 import { RollArea } from "./components/RollArea.js";
@@ -15,8 +14,8 @@ import { TopBar } from "./components/TopBar.js";
 import { ActionsCtx, activeTrack, notesByTrack, useApp, useSize, useSong, useView } from "./context.js";
 import { Mixer } from "./components/Mixer.js";
 import { KeyGuide } from "./components/KeyGuide.js";
-import { Notice, SoundsHelp } from "./components/SoundsHelp.js";
-import { SkillsPanel } from "./components/SkillsPanel.js";
+import { Notice } from "./components/SoundsHelp.js";
+import { Settings } from "./components/Settings.js";
 import { SongActions } from "./song-actions.js";
 import { Editor } from "./editor.js";
 import { type RollView, centerOnPitches, clampScrollY, stepRow, zoomAt, zoomRowsAt } from "./roll/geometry.js";
@@ -206,6 +205,9 @@ export function App({ audio, onEditor }: AppProps) {
         case "save":
           bridge.save();
           return true;
+        case "settings":
+          actions.openSettings(actions.settings ? null : "ai");
+          return true;
         case "toolZoom":
           view.set({ tool: "zoom" });
           return true;
@@ -268,6 +270,7 @@ export function App({ audio, onEditor }: AppProps) {
         else if (a === "resetLayout") view.set({ ...LAYOUT_DEFAULTS, arrZoom: null });
         else if (a === "skills") actions.openSkills(true);
         else if (a === "midiOut") actions.openMidiOut(true);
+        else if (a === "settings") actions.openSettings("ai");
         else perform(a);
       }),
     [perform],
@@ -397,9 +400,7 @@ export function App({ audio, onEditor }: AppProps) {
       {overlayMenus.menu && <ContextMenu {...overlayMenus.menu} onClose={() => editor.closeMenus()} />}
       {overlayMenus.quantizeDialog && <QuantizeDialog editor={editor} {...overlayMenus.quantizeDialog} />}
       <Mixer />
-      <SoundsHelp audio={audio} />
-      <SkillsPanel />
-      <MidiOutPanel audio={audio} />
+      <Settings audio={audio} />
       <Notice />
     </div>
     </ActionsCtx.Provider>

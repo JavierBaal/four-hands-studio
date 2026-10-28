@@ -141,7 +141,7 @@ juce::var Link::handle (const juce::var& m, Connection& from)
             for (const auto& p : *m["paths"].getArray())
                 where.add (juce::File (p.toString()));
         const auto pedal = cacheFile.getSiblingFile ("plugins-scanning.txt");
-        engine.scan (where, pedal, [&from] (const juce::String& file) { from.send (obj ({ { "type", "scanning" }, { "file", file } })); });
+        engine.scan (where, pedal, [&from] (const juce::String& file, float progress) { from.send (obj ({ { "type", "scanning" }, { "file", file }, { "progress", progress } })); });
         saveCache();
         return pluginList();
     }

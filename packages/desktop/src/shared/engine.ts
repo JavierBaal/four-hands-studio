@@ -41,3 +41,25 @@ export interface EngineMidiEvent {
 
 /** What a load gives back: the plugin's name, or why it could not load. */
 export type EngineLoadResult = { ok: true; name: string } | { ok: false; error: string };
+
+/** While the engine looks for plugins: the file it is on and how far it is (0 to 1). */
+export interface EngineScanProgress {
+  file: string;
+  progress: number;
+}
+
+/** The answer to "which plugins are there": the list, when it was last looked for, or why not. */
+export interface EnginePluginList {
+  plugins: EnginePlugin[];
+  /** Last full scan, ms since the epoch, or null if never. */
+  scannedAt?: number | null;
+  error?: string;
+}
+
+/** Where the engine looks for plugins (Ajustes › Plugins). */
+export interface PluginFolders {
+  /** The system's VST3 folders: always searched. */
+  system: string[];
+  /** Added by the user; they can be removed. */
+  user: string[];
+}

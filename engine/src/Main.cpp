@@ -24,7 +24,7 @@ int selfTest (const juce::String& folder)
 {
     fh::Engine engine;
     const auto pedal = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("fh-engine-selftest-scan.txt");
-    engine.scan (juce::FileSearchPath (folder), pedal, [] (const juce::String& f) { std::cout << "scanning " << f << std::endl; });
+    engine.scan (juce::FileSearchPath (folder), pedal, [] (const juce::String& f, float) { std::cout << "scanning " << f << std::endl; });
     juce::PluginDescription chosen;
     bool found = false;
     for (const auto& d : engine.known().getTypes())

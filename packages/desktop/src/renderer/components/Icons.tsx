@@ -86,3 +86,59 @@ export const ToStartIcon = () => (
     <path d="M3.5 3v10M13 3L6 8l7 5z" fill="none" stroke={T.text} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );
+
+// ESTUDIO_INTERFAZ_2.md: Ajustes and its sections. Drawn in the current colour, so the button decides it.
+const line = { fill: "none", stroke: "currentColor", strokeWidth: 1.5, strokeLinecap: "round", strokeLinejoin: "round" } as const;
+export const GearIcon = () => (
+  <svg {...svg}>
+    <circle cx="8" cy="8" r="2.1" {...line} />
+    <path
+      d="M12.9 9.9a1.1 1.1 0 0 0 .2 1.2l.04.04a1.33 1.33 0 1 1-1.9 1.9l-.04-.04a1.1 1.1 0 0 0-1.2-.2 1.1 1.1 0 0 0-.67 1V14a1.33 1.33 0 1 1-2.67 0v-.06a1.1 1.1 0 0 0-.72-1 1.1 1.1 0 0 0-1.2.2l-.04.04a1.33 1.33 0 1 1-1.9-1.9l.04-.04a1.1 1.1 0 0 0 .2-1.2 1.1 1.1 0 0 0-1-.67H2a1.33 1.33 0 1 1 0-2.67h.06a1.1 1.1 0 0 0 1-.72 1.1 1.1 0 0 0-.2-1.2l-.04-.04a1.33 1.33 0 1 1 1.9-1.9l.04.04a1.1 1.1 0 0 0 1.2.2H6a1.1 1.1 0 0 0 .67-1V2a1.33 1.33 0 1 1 2.67 0v.06a1.1 1.1 0 0 0 .67 1 1.1 1.1 0 0 0 1.2-.2l.04-.04a1.33 1.33 0 1 1 1.9 1.9l-.04.04a1.1 1.1 0 0 0-.2 1.2V6a1.1 1.1 0 0 0 1 .67H14a1.33 1.33 0 1 1 0 2.67h-.06a1.1 1.1 0 0 0-1 .67z"
+      {...line}
+      strokeWidth={1.2}
+    />
+  </svg>
+);
+export const AiIcon = () => (
+  <svg {...svg}>
+    <circle cx="8" cy="8" r="5.5" {...line} />
+    <circle cx="8" cy="8" r="2" fill="currentColor" />
+  </svg>
+);
+export const KeysIcon = () => (
+  <svg {...svg}>
+    <rect x="2" y="3.5" width="12" height="9" rx="1" {...line} />
+    <path d="M5.5 3.5v5.5M8 3.5v9M10.5 3.5v5.5" {...line} />
+  </svg>
+);
+export const PlugIcon = () => (
+  <svg {...svg}>
+    <path d="M6 2v3M10 2v3M4.5 5h7v3a3.5 3.5 0 0 1-7 0zM8 11.5V14" {...line} />
+  </svg>
+);
+export const MidiIcon = () => (
+  <svg {...svg}>
+    <circle cx="8" cy="8" r="5.5" {...line} />
+    <circle cx="5.5" cy="8" r=".8" fill="currentColor" />
+    <circle cx="10.5" cy="8" r=".8" fill="currentColor" />
+    <circle cx="8" cy="5.5" r=".8" fill="currentColor" />
+    <circle cx="6.2" cy="6.2" r=".6" fill="currentColor" />
+    <circle cx="9.8" cy="6.2" r=".6" fill="currentColor" />
+  </svg>
+);
+export const FolderIcon = () => (
+  <svg {...svg}>
+    <path d="M2 4.5a1 1 0 0 1 1-1h3l1.5 1.5H13a1 1 0 0 1 1 1V12a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z" {...line} />
+  </svg>
+);
+export const ToolsIcon = () => (
+  <svg {...svg}>
+    <path d="M3 13l5.5-5.5M9.5 3.2a3 3 0 0 0 3.3 3.3L11 8.3 7.7 5z" {...line} />
+    <path d="M10 10.5l2.5 2.5" {...line} />
+  </svg>
+);
+export const CloseIcon = () => (
+  <svg {...svg}>
+    <path d="M4 4l8 8M12 4l-8 8" {...line} />
+  </svg>
+);

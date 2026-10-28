@@ -41,9 +41,10 @@ public:
 
     /**
      * Looks for VST3 plugins in `where` (by default, the system's VST3 folders). A plugin that
-     * crashes the scan is remembered in `deadMansPedal` and skipped next time.
+     * crashes the scan is remembered in `deadMansPedal` and skipped next time. `progress` gets the
+     * file being scanned and how far it is (0 to 1).
      */
-    void scan (const juce::FileSearchPath& where, const juce::File& deadMansPedal, const std::function<void (const juce::String&)>& progress);
+    void scan (const juce::FileSearchPath& where, const juce::File& deadMansPedal, const std::function<void (const juce::String&, float)>& progress);
     juce::KnownPluginList& known() { return knownPlugins; }
     juce::FileSearchPath defaultSearchPath();
 

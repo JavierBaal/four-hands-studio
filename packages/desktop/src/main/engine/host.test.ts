@@ -42,11 +42,11 @@ describe("engine host (prueba S2)", () => {
   it("starts the engine, greets it with the token and matches replies in order", async () => {
     const { h, statuses, log } = host();
     const scanned: string[] = [];
-    (h as unknown as { options: { onScanning: (f: string) => void } }).options.onScanning = (f) => scanned.push(f);
+    (h as unknown as { options: { onScanning: (f: string, p: number) => void } }).options.onScanning = (f, p) => scanned.push(`${f} ${p}`);
     const [list, loaded, wrong] = await Promise.allSettled([h.request({ type: "scan" }), h.request({ type: "load", slot: 0, id: "VST3-Fake" }), h.request({ type: "load", slot: 1, id: "nope" })]);
     expect(h.current).toMatchObject({ state: "ready", device: "Fake · 48000 Hz", latency: 0.02, generation: 1 });
     expect(statuses.map((s) => s.state)).toEqual(["starting", "ready"]);
-    expect(scanned).toEqual(["/vst3/Fake.vst3"]);
+    expect(scanned).toEqual(["/vst3/Fake.vst3 0.5"]);
     expect(list.status === "fulfilled" && (list.value.list as unknown[]).length).toBe(1);
     expect(loaded.status === "fulfilled" && loaded.value.name).toBe("Fake");
     expect(wrong.status === "rejected" && String(wrong.reason)).toMatch(/Unknown plugin/);

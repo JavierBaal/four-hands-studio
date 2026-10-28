@@ -867,6 +867,38 @@ await page.locator('.skillspanel [data-tone="direct"]').click();
 await page.keyboard.press("Escape");
 await settle();
 
+// ESTUDIO_INTERFAZ_2 (28/10/2026): Ajustes, with what the Help menu used to hold.
+await page.getByRole("button", { name: "Ajustes", exact: true }).click();
+await settle();
+check("the gear opens Ajustes on Tu IA", (await page.locator('.settings[data-section="ai"]').count()) === 1 && (await page.locator(".settings .tonebox").count()) === 2);
+await page.locator('.setnavb[data-section="plugins"]').click();
+await page.waitForSelector(".setplugins .setbig");
+await settle();
+check("Plugins says what the engine found", /3 plugins · 2 instrumentos/.test(await page.locator(".setplugins .setbig").innerText()), await page.locator(".setplugins .setbig").innerText());
+await page.getByRole("button", { name: "Añadir carpeta…" }).click();
+await settle();
+check("a plugin folder can be added and removed", (await page.locator(".setplugins .setlist li", { hasText: "D:\\VST3" }).count()) === 1);
+await page.locator(".setplugins .setlist li", { hasText: "D:\\VST3" }).getByRole("button", { name: "Quitar" }).click();
+await settle();
+check("…and it is gone", (await page.locator(".setplugins .setlist li", { hasText: "D:\\VST3" }).count()) === 0);
+await page.locator('.setnavb[data-section="folders"]').click();
+await settle();
+check("Carpetas lists songs, backups, sounds and skills", (await page.locator(".setfolders li").count()) === 4);
+await page.keyboard.press("Escape");
+await settle();
+check("Esc closes Ajustes", (await page.locator(".settings").count()) === 0);
+await page.keyboard.press("Control+Comma");
+await settle();
+check("Ctrl + , opens Ajustes", (await page.locator(".settings").count()) === 1);
+await page.locator(".setveil").click({ position: { x: 5, y: 5 } });
+await settle();
+check("a click outside closes it", (await page.locator(".settings").count()) === 0);
+await page.locator(".aichip .chipbtn").click();
+await settle();
+check("the AI chip, when no AI is connected, opens Tu IA", (await page.locator('.settings[data-section="ai"] .setconnect').count()) === 1);
+await page.keyboard.press("Escape");
+await settle();
+
 // H4 (20/10/2026): Con / Sin of the last AI intervention, applied straight into the song.
 const aiWrites = (label, group) =>
   page.evaluate(([label, group, bar]) => {

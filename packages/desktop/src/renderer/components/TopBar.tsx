@@ -11,7 +11,7 @@ import { AiChip } from "./AiPresence.js";
 import { InlineEdit } from "./InlineEdit.js";
 import { modLabel } from "../editor.js";
 import { keyName, noteName, transportPosition } from "../music.js";
-import { KeyboardIcon, LoopIcon, PlayIcon, RecordIcon, StopIcon, ToStartIcon } from "./Icons.js";
+import { GearIcon, KeyboardIcon, LoopIcon, PlayIcon, RecordIcon, StopIcon, ToStartIcon } from "./Icons.js";
 
 /**
  * The state of the file, not a clock (Fran, 15/10/2026: "Guardado hace 12 min" read as "not saved
@@ -213,6 +213,9 @@ export function TopBar({ audio }: { audio: AudioLayer }) {
       <span className={file.error || audio.status === "error" ? "saved err" : "saved"} title={file.error ?? (file.savedAt !== null ? t("savedTitle", { time: new Date(file.savedAt).toLocaleTimeString(lang === "es" ? "es-ES" : "en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" }), path: file.path }) : file.path)}>
         {saved}
       </span>
+      <button className="ibtn gear" aria-label={t("setTitle")} title={`${t("setTitle")} (${modLabel}+,)`} aria-pressed={actions.settings !== null} onClick={() => actions.openSettings(actions.settings ? null : "ai")}>
+        <GearIcon />
+      </button>
       <AiChip />
     </header>
   );

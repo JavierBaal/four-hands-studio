@@ -11,7 +11,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { BRIDGE_CONFIG_FILE, TOOLS_VERSION, bridgeConfigDir } from "@fourhands/mcp-tools";
 import { type Lang, langFrom, translator } from "../shared/i18n.js";
-import { type AiApply, type AiTone, CH, DEFAULT_AI_APPLY, DEFAULT_AI_TONE, NO_AI, type MenuAction, type Request, type SkillImportResult, type ViewInfo } from "../shared/protocol.js";
+import { type AiApply, type AiTone, CH, DEFAULT_AI_APPLY, DEFAULT_AI_TONE, type FolderKind, NO_AI, type MenuAction, type ToolKind, type Request, type SkillImportResult, type ViewInfo } from "../shared/protocol.js";
 import { AiDesk } from "./ai/desk.js";
 import { SkillImportError, SkillLibrary, importSkillZip } from "./ai/skills.js";
 import { AiServer } from "./ai/server.js";
@@ -61,6 +61,10 @@ interface Settings {
   aiApply?: AiApply;
   /** MIDI out (H4): the port for the tracks that sound in another program. */
   midiOutPort?: string | null;
+  /** Ajustes › Plugins: folders the user added for the engine to search. */
+  pluginFolders?: string[];
+  /** Last full plugin scan, ms since the epoch. */
+  pluginsScannedAt?: number;
 }
 
 const aiTone = (): AiTone => (readSettings().aiTone === "gentle" ? "gentle" : DEFAULT_AI_TONE);
@@ -133,7 +137,7 @@ function engineHost(): EngineHost {
     cacheFile: path.join(dataDir(), "motor", "plugins.xml"),
     log: appendLog,
     onStatus: (status) => win?.webContents.send(CH.engineStatusChanged, status),
-    onScanning: (file) => win?.webContents.send(CH.engineScanning, file),
+    onScanning: (file, progress) => win?.webContents.send(CH.engineScanning, { file, progress }),
   });
   return engine;
 }
@@ -279,6 +283,9 @@ function buildMenu(): void {
         { label: t("menuExport"), accelerator: "CmdOrCtrl+E", click: () => void exportMidi() },
         { label: t("menuShowFolder"), click: () => songs && shell.showItemInFolder(songs.path) },
         { type: "separator" },
+        // Ajustes (ESTUDIO_INTERFAZ_2.md, 5.4): what the Help menu used to hold. The window takes Ctrl+, itself.
+        { label: t("menuSettings"), accelerator: "CmdOrCtrl+,", registerAccelerator: false, click: () => sendMenu("settings") },
+        { type: "separator" },
         { label: t("menuQuit"), role: "quit" },
       ],
     },
@@ -313,16 +320,10 @@ function buildMenu(): void {
     {
       label: t("menuHelp"),
       submenu: [
-        { label: t("menuSongsFolder"), click: () => void shell.openPath(songsDir()) },
-        { label: t("menuBackups"), click: () => void shell.openPath(path.join(dataDir(), "copias")) },
+        // Only help (ESTUDIO_INTERFAZ_2.md, 5.4); settings, folders and test tools are in Ajustes.
+        { label: t("menuConnectAi"), click: () => sendMenu("skills") },
         { type: "separator" },
-        { label: t("menuConnectClaude"), click: () => void connectWithClaude() },
-        { label: t("menuSkills"), click: () => sendMenu("skills") },
-        { label: t("menuMidiOut"), click: () => sendMenu("midiOut") },
-        { type: "separator" },
-        { label: t("menuSoundTest"), click: () => void openSoundTest() },
-        { label: t("menuBlind"), click: () => void openBlindListening() },
-        { label: t("menuDevTools"), accelerator: "F12", click: () => win?.webContents.toggleDevTools() },
+        { label: t("menuAbout"), click: () => void about() },
       ],
     },
   ];
@@ -396,6 +397,35 @@ async function connectWithClaude(): Promise<void> {
   }
 }
 
+/** Help › About Four Hands. */
+async function about(): Promise<void> {
+  if (!win) return;
+  await dialog.showMessageBox(win, {
+    type: "info",
+    message: "Four Hands Studio",
+    detail: t("aboutDetail", { version: app.getVersion(), electron: process.versions.electron ?? "", tools: String(TOOLS_VERSION) }),
+  });
+}
+
+/** The VST3 folders the engine always searches on this system (JUCE's defaults). */
+function systemPluginFolders(): string[] {
+  if (process.platform === "win32") return [path.join(process.env.CommonProgramFiles ?? "C:\\Program Files\\Common Files", "VST3")];
+  if (process.platform === "darwin") return ["/Library/Audio/Plug-Ins/VST3", path.join(os.homedir(), "Library", "Audio", "Plug-Ins", "VST3")];
+  return [path.join(os.homedir(), ".vst3"), "/usr/lib/vst3", "/usr/local/lib/vst3"];
+}
+
+/** Four Hands's own test instrument, next to the engine «Compilar motor.bat» leaves. */
+const testPluginFolder = () => (projectRoot ? path.join(projectRoot, "motor", "plugins-prueba") : null);
+
+function pluginFolders(): { system: string[]; user: string[] } {
+  const test = testPluginFolder();
+  return { system: [...systemPluginFolders(), ...(test && fs.existsSync(test) ? [test] : [])], user: readSettings().pluginFolders ?? [] };
+}
+
+function userFolders(): Record<FolderKind, string> {
+  return { songs: songsDir(), backups: path.join(dataDir(), "copias"), sounds: soundsDir(), skills: userSkillsDir() };
+}
+
 async function openBlindListening(): Promise<void> {
   const w = new BrowserWindow({
     width: 760,
@@ -443,6 +473,8 @@ async function createWindow(): Promise<void> {
   win.webContents.setVisualZoomLevelLimits(1, 1);
   win.webContents.on("before-input-event", (event, input) => {
     if ((input.control || input.meta) && ["+", "-", "=", "0"].includes(input.key)) event.preventDefault();
+    // F12: the developer tools (also in Ajustes › Avanzado; no longer in a menu).
+    if (input.type === "keyDown" && input.key === "F12") win?.webContents.toggleDevTools();
   });
   win.on("closed", () => (win = null));
   // The window title is the song's, not the page's.
@@ -510,12 +542,16 @@ function registerIpc(): void {
   ipcMain.handle(CH.enginePlugins, async (_e, scan: unknown) => {
     try {
       const started = Date.now();
-      // Besides the system's VST3 folders: <project>/motor/plugins-prueba, where «Compilar motor.bat»
-      // leaves the test instrument.
-      const extra = [projectRoot && path.join(projectRoot, "motor", "plugins-prueba")].filter((p): p is string => !!p && fs.existsSync(p));
+      // Besides the system's VST3 folders: the user's (Ajustes › Plugins) and <project>/motor/plugins-prueba,
+      // where «Compilar motor.bat» leaves the test instrument.
+      const test = testPluginFolder();
+      const extra = [...(readSettings().pluginFolders ?? []), ...(test ? [test] : [])].filter((p) => fs.existsSync(p));
       const plugins = pluginsOf(await engineHost().request(scan ? { type: "scan", paths: extra } : { type: "plugins" }));
-      if (scan) appendLog({ type: "engine_scanned", ms: Date.now() - started, plugins: plugins.length, instruments: plugins.filter((p) => p.instrument).map((p) => p.name) });
-      return { plugins };
+      if (scan) {
+        appendLog({ type: "engine_scanned", ms: Date.now() - started, plugins: plugins.length, instruments: plugins.filter((p) => p.instrument).map((p) => p.name) });
+        writeSettings({ pluginsScannedAt: Date.now() });
+      }
+      return { plugins, scannedAt: readSettings().pluginsScannedAt ?? null };
     } catch (error) {
       return { plugins: [], error: (error as Error).message };
     }
@@ -542,6 +578,37 @@ function registerIpc(): void {
     if (Array.isArray(events) && events.length) engine?.send({ type: "midi", events });
   });
   ipcMain.on(CH.enginePanic, () => engine?.send({ type: "panic" }));
+  // Ajustes: folders, test tools and where the engine looks for plugins.
+  ipcMain.handle(CH.folders, () => userFolders());
+  ipcMain.on(CH.openFolder, (_e, kind: unknown) => {
+    const dir = userFolders()[kind as FolderKind];
+    if (!dir) return;
+    fs.mkdirSync(dir, { recursive: true });
+    void shell.openPath(dir);
+  });
+  ipcMain.on(CH.openTool, (_e, kind: unknown) => {
+    const tool = kind as ToolKind;
+    appendLog({ type: "tool_opened", tool });
+    if (tool === "soundTest") void openSoundTest();
+    else if (tool === "blind") void openBlindListening();
+    else if (tool === "devTools") win?.webContents.toggleDevTools();
+  });
+  ipcMain.handle(CH.pluginFolders, () => pluginFolders());
+  ipcMain.handle(CH.pluginFoldersAdd, async () => {
+    if (!win) return pluginFolders();
+    const pick = await dialog.showOpenDialog(win, { properties: ["openDirectory"] });
+    const dir = pick.canceled ? null : pick.filePaths[0];
+    if (dir) {
+      const now = readSettings().pluginFolders ?? [];
+      if (!now.includes(dir)) writeSettings({ pluginFolders: [...now, dir] });
+      appendLog({ type: "plugin_folder_added", dir });
+    }
+    return pluginFolders();
+  });
+  ipcMain.handle(CH.pluginFoldersRemove, (_e, dir: unknown) => {
+    writeSettings({ pluginFolders: (readSettings().pluginFolders ?? []).filter((d) => d !== dir) });
+    return pluginFolders();
+  });
   // Tu IA > Opiniones.
   ipcMain.handle(CH.aiTone, () => aiTone());
   ipcMain.handle(CH.aiToneSet, (_e, tone: string) => {

@@ -2,9 +2,9 @@
  * The window's door to the main process (exposed by the preload as `window.fh`), plus an in-page
  * stand-in that runs the core directly, for the browser harness and the interface tests.
  */
-import { ENGINE_OFF, type EngineLoadResult, type EngineMidiEvent, type EnginePlugin, type EngineStatus } from "../shared/engine.js";
+import { ENGINE_OFF, type EngineLoadResult, type EngineMidiEvent, type EnginePlugin, type EnginePluginList, type EngineScanProgress, type EngineStatus, type PluginFolders } from "../shared/engine.js";
 import { SongDocument, USER, runCommands, type Song } from "@fourhands/core";
-import { type AiApply, type AiState, type AiTone, DEFAULT_AI_APPLY, DEFAULT_AI_TONE, type FileState, type MenuAction, NO_AI, type PatchMessage, type Reply, type Request, type SkillCardInfo, type SkillImportResult, type Snapshot, type SoundBankInfo, type ViewInfo, lastAiOf, proposalsOf } from "../shared/protocol.js";
+import { type AiApply, type AiState, type AiTone, DEFAULT_AI_APPLY, DEFAULT_AI_TONE, type FileState, type FolderKind, type Folders, type MenuAction, type ToolKind, NO_AI, type PatchMessage, type Reply, type Request, type SkillCardInfo, type SkillImportResult, type Snapshot, type SoundBankInfo, type ViewInfo, lastAiOf, proposalsOf } from "../shared/protocol.js";
 
 export interface AppInfo {
   soundFont: string | null;
@@ -69,13 +69,23 @@ export interface Bridge {
   engineStatus(): Promise<EngineStatus>;
   onEngineStatus(listener: (status: EngineStatus) => void): () => void;
   /** The plugins the engine knows; `scan` looks for them on the computer first (slow). */
-  enginePlugins(scan: boolean): Promise<{ plugins: EnginePlugin[]; error?: string }>;
-  onEngineScanning(listener: (file: string) => void): () => void;
+  enginePlugins(scan: boolean): Promise<EnginePluginList>;
+  onEngineScanning(listener: (p: EngineScanProgress) => void): () => void;
   engineLoad(slot: number, id: string): Promise<EngineLoadResult>;
   /** Opens the plugin's own window. False if it has none (or is not loaded). */
   engineShow(slot: number): Promise<boolean>;
   engineMidi(events: EngineMidiEvent[]): void;
   enginePanic(): void;
+  /** Ajustes › Carpetas. */
+  folders(): Promise<Folders>;
+  openFolder(kind: FolderKind): void;
+  /** Ajustes › Avanzado. */
+  openTool(kind: ToolKind): void;
+  /** Ajustes › Plugins: where the engine looks. */
+  pluginFolders(): Promise<PluginFolders>;
+  /** The system's folder dialog; gives the folders after adding (unchanged if cancelled). */
+  addPluginFolder(): Promise<PluginFolders>;
+  removePluginFolder(dir: string): Promise<PluginFolders>;
 }
 
 export function windowBridge(): Bridge | null {
@@ -121,6 +131,8 @@ export function memoryBridge(
   const fakePlugins = options.enginePlugins;
   const engineState: EngineStatus = fakePlugins ? { state: "ready", device: "Prueba · 48000 Hz", latency: 0.02, generation: 1 } : { ...ENGINE_OFF, state: "missing" };
   const engine = { loaded: new Map<number, string>(), midi: [] as EngineMidiEvent[], shown: [] as number[] };
+  let pluginDirs: string[] = [];
+  const pluginState = (): PluginFolders => ({ system: ["C:\\Program Files\\Common Files\\VST3"], user: [...pluginDirs] });
   const on = <T>(set: Set<T>, l: T) => {
     set.add(l);
     return () => void set.delete(l);
@@ -210,7 +222,7 @@ export function memoryBridge(
     engine,
     engineStatus: async () => ({ ...engineState }),
     onEngineStatus: () => () => {},
-    enginePlugins: async () => (fakePlugins ? { plugins: structuredClone(fakePlugins) } : { plugins: [], error: "The engine is not built on this computer" }),
+    enginePlugins: async () => (fakePlugins ? { plugins: structuredClone(fakePlugins), scannedAt: Date.UTC(2026, 9, 28, 19, 55) } : { plugins: [], error: "The engine is not built on this computer" }),
     onEngineScanning: () => () => {},
     engineLoad: async (slot, id) => {
       const p = fakePlugins?.find((x) => x.id === id);
@@ -224,6 +236,12 @@ export function memoryBridge(
     },
     engineMidi: (events) => void engine.midi.push(...structuredClone(events)),
     enginePanic: () => {},
+    folders: async () => ({ songs: "C:\\Users\\fran\\Documents\\Four Hands", backups: "C:\\Users\\fran\\AppData\\Roaming\\Four Hands Studio\\copias", sounds: "C:\\Users\\fran\\Documents\\Four Hands\\Sonidos", skills: "C:\\Users\\fran\\Documents\\Four Hands\\Skills" }),
+    openFolder: (kind) => console.log("[fh] open folder", kind),
+    openTool: (kind) => console.log("[fh] open tool", kind),
+    pluginFolders: async () => pluginState(),
+    addPluginFolder: async () => (pluginDirs.includes("D:\\VST3") || pluginDirs.push("D:\\VST3"), pluginState()),
+    removePluginFolder: async (dir) => (pluginDirs = pluginDirs.filter((d) => d !== dir), pluginState()),
     save: () => {
       file.savedAt = now();
       for (const l of fileListeners) l({ ...file });
