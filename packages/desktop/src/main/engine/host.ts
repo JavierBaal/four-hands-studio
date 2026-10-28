@@ -25,6 +25,9 @@ export interface EngineHostOptions {
 
 export class EngineError extends Error {}
 
+/** Lines of the engine's own output kept in the log per run. */
+const CHATTER_LOGGED = 5;
+
 /** A port nobody is using now, for the engine to listen on. */
 function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -46,6 +49,7 @@ export class EngineHost {
   private stopping = false;
   /** While starting: gives up (the process ended before it was ready). */
   private abortStart: ((why: string) => void) | null = null;
+  private chatterLines = 0;
 
   constructor(private readonly options: EngineHostOptions) {}
 
@@ -103,7 +107,7 @@ export class EngineHost {
       this.child = child;
       child.on("error", (error) => fail(`The engine could not start: ${error.message}`));
       child.on("exit", (code, signal) => this.exited(child, code, signal));
-      child.stderr?.on("data", (d: Buffer) => this.options.log({ type: "engine_stderr", text: d.toString().slice(0, 500) }));
+      child.stderr?.on("data", (d: Buffer) => this.chatter("engine_stderr", d.toString().slice(0, 500)));
       let out = "";
       child.stdout?.on("data", (d: Buffer) => {
         out += d.toString();
@@ -112,7 +116,7 @@ export class EngineHost {
           const line = out.slice(0, nl).trim();
           out = out.slice(nl + 1);
           if (line.startsWith("FH_ENGINE_ERROR")) fail(line.slice("FH_ENGINE_ERROR".length).trim());
-          else if (line && !line.startsWith("FH_ENGINE_READY")) this.options.log({ type: "engine_out", text: line.slice(0, 300) });
+          else if (line && !line.startsWith("FH_ENGINE_READY")) this.chatter("engine_out", line.slice(0, 300));
         }
       });
       // Knock until the engine opens the door (or gives up).
@@ -172,6 +176,15 @@ export class EngineHost {
     });
   }
 
+  /**
+   * What the engine prints is mostly the plugins talking to themselves (Kontakt's memory messages,
+   * Splice, Serato…): the first lines go to the log, the rest only counted (S2, Fran 28/10/2026).
+   */
+  private chatter(type: string, text: string): void {
+    if (this.chatterLines < CHATTER_LOGGED) this.options.log({ type, text });
+    this.chatterLines++;
+  }
+
   private received(m: Reply): void {
     if (m.type === "scanning") {
       this.options.onScanning?.(String(m.file ?? ""));
@@ -217,6 +230,8 @@ export class EngineHost {
   private exited(child: ChildProcess, code: number | null, signal: NodeJS.Signals | null): void {
     if (this.child !== child) return;
     this.child = null;
+    if (this.chatterLines > CHATTER_LOGGED) this.options.log({ type: "engine_chatter", lines: this.chatterLines, logged: CHATTER_LOGGED });
+    this.chatterLines = 0;
     this.socket?.destroy();
     this.socket = null;
     this.rejectAll("The engine stopped");

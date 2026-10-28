@@ -2,6 +2,7 @@
 juce_add_plugin(FourHandsTestSynth
   PRODUCT_NAME "Four Hands Test Synth"
   COMPANY_NAME "Four Hands Studio"
+  BUNDLE_ID com.fourhandsstudio.testsynth
   PLUGIN_MANUFACTURER_CODE FhSt
   PLUGIN_CODE FhTs
   FORMATS VST3

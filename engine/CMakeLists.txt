@@ -19,6 +19,7 @@ endif()
 juce_add_gui_app(FourHandsEngine
   PRODUCT_NAME "Four Hands Engine"
   COMPANY_NAME "Four Hands Studio"
+  BUNDLE_ID com.fourhandsstudio.engine
   VERSION 0.1.0)
 
 target_sources(FourHandsEngine PRIVATE src/Main.cpp src/Engine.cpp src/Link.cpp)

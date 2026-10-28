@@ -6,6 +6,8 @@ const arg = (name) => process.argv[process.argv.indexOf(name) + 1];
 const token = arg("--token");
 const MAGIC = 0xf2b49e2c;
 let midi = 0;
+// Plugins talk a lot (Kontakt's memory messages): only the first lines may reach the log.
+for (let i = 0; i < 20; i++) console.log(`plugin noise ${i}`);
 
 const server = net.createServer((socket) => {
   let buffer = Buffer.alloc(0);

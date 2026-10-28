@@ -40,7 +40,7 @@ describe("engine host (prueba S2)", () => {
   });
 
   it("starts the engine, greets it with the token and matches replies in order", async () => {
-    const { h, statuses } = host();
+    const { h, statuses, log } = host();
     const scanned: string[] = [];
     (h as unknown as { options: { onScanning: (f: string) => void } }).options.onScanning = (f) => scanned.push(f);
     const [list, loaded, wrong] = await Promise.allSettled([h.request({ type: "scan" }), h.request({ type: "load", slot: 0, id: "VST3-Fake" }), h.request({ type: "load", slot: 1, id: "nope" })]);
@@ -57,6 +57,8 @@ describe("engine host (prueba S2)", () => {
     h.stop();
     await new Promise((r) => setTimeout(r, 300));
     expect(h.current.state).toBe("off");
+    expect(log.filter((e) => e.type === "engine_out")).toHaveLength(5);
+    expect(log.find((e) => e.type === "engine_chatter")).toMatchObject({ lines: 20, logged: 5 });
   });
 
   it("survives the engine crashing: the request fails, Four Hands goes on, the next one restarts it", async () => {
