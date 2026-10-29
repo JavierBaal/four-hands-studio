@@ -51,6 +51,12 @@ const CH = {
   engineShow: "fh:engine-show",
   engineMidi: "fh:engine-midi",
   enginePanic: "fh:engine-panic",
+  folders: "fh:folders",
+  openFolder: "fh:open-folder",
+  openTool: "fh:open-tool",
+  pluginFolders: "fh:plugin-folders",
+  pluginFoldersAdd: "fh:plugin-folders-add",
+  pluginFoldersRemove: "fh:plugin-folders-remove",
 } as const;
 
 function listen(channel: string, listener: (value: unknown) => void): () => void {
@@ -105,4 +111,10 @@ contextBridge.exposeInMainWorld("fh", {
   engineShow: (slot: number) => ipcRenderer.invoke(CH.engineShow, slot),
   engineMidi: (events: unknown[]) => ipcRenderer.send(CH.engineMidi, events),
   enginePanic: () => ipcRenderer.send(CH.enginePanic),
+  folders: () => ipcRenderer.invoke(CH.folders),
+  openFolder: (kind: string) => ipcRenderer.send(CH.openFolder, kind),
+  openTool: (kind: string) => ipcRenderer.send(CH.openTool, kind),
+  pluginFolders: () => ipcRenderer.invoke(CH.pluginFolders),
+  addPluginFolder: () => ipcRenderer.invoke(CH.pluginFoldersAdd),
+  removePluginFolder: (dir: string) => ipcRenderer.invoke(CH.pluginFoldersRemove, dir),
 });

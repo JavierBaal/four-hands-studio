@@ -40,7 +40,7 @@ const server = net.createServer((socket) => {
           send({ type: "hello", version: 1, device: "Fake · 48000 Hz", sampleRate: 48000, latency: 0.02 });
           break;
         case "scan":
-          send({ type: "scanning", file: "/vst3/Fake.vst3" });
+          send({ type: "scanning", file: "/vst3/Fake.vst3", progress: 0.5 });
           send({ type: "plugins", list: [{ id: "VST3-Fake", name: "Fake", vendor: "FH", category: "Instrument", format: "VST3", instrument: true }] });
           break;
         case "load":

@@ -209,7 +209,19 @@ export const CH = {
   engineShow: "fh:engine-show",
   engineMidi: "fh:engine-midi",
   enginePanic: "fh:engine-panic",
+  folders: "fh:folders",
+  openFolder: "fh:open-folder",
+  openTool: "fh:open-tool",
+  pluginFolders: "fh:plugin-folders",
+  pluginFoldersAdd: "fh:plugin-folders-add",
+  pluginFoldersRemove: "fh:plugin-folders-remove",
 } as const;
+
+/** The user's folders (Ajustes › Carpetas). */
+export type FolderKind = "songs" | "backups" | "sounds" | "skills";
+export type Folders = Record<FolderKind, string>;
+/** Ajustes › Avanzado: the test windows and the developer tools. */
+export type ToolKind = "soundTest" | "blind" | "devTools";
 
 /**
  * How the AI gives its opinions (Tu IA > Opiniones). Honesty is never optional: "gentle" says the
@@ -239,4 +251,4 @@ export interface SkillImportResult {
 }
 
 /** Menu commands handled by the window (edit and view actions live there). */
-export type MenuAction = "undo" | "redo" | "cut" | "copy" | "paste" | "duplicate" | "delete" | "selectAll" | "toggleAuthorship" | "togglePanel" | "zoomIn" | "zoomOut" | "zoomRowsIn" | "zoomRowsOut" | "resetLayout" | "skills" | "midiOut";
+export type MenuAction = "undo" | "redo" | "cut" | "copy" | "paste" | "duplicate" | "delete" | "selectAll" | "toggleAuthorship" | "togglePanel" | "zoomIn" | "zoomOut" | "zoomRowsIn" | "zoomRowsOut" | "resetLayout" | "skills" | "midiOut" | "settings";

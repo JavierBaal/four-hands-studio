@@ -10,7 +10,7 @@ import { Engine } from "../audio/engine.js";
 import { INITIAL_KEYBOARD, type KeyboardState, keyAction } from "../audio/keyboard.js";
 import { Player } from "../audio/player.js";
 import { type EnginePort, type MidiPort, SoundRouter, isOwnLoopback } from "../audio/router.js";
-import { ENGINE_OFF, type EngineStatus } from "../shared/engine.js";
+import { ENGINE_OFF, type EnginePluginList, type EngineScanProgress, type EngineStatus } from "../shared/engine.js";
 import type { Bridge } from "./bridge.js";
 import type { SoundBankInfo } from "../shared/protocol.js";
 import { activeTrack } from "./context.js";
@@ -91,6 +91,9 @@ export class AudioLayer {
   private engineLoading = new Set<string>();
   private engineRefused = new Set<string>();
   pluginProblem: { name: string; error: string } | null = null;
+  /** Ajustes › Plugins: what the engine knows, and the scan under way (it goes on with the card closed). */
+  pluginList: EnginePluginList | null = null;
+  pluginScan: EngineScanProgress | null = null;
   /** Listens to the MIDI inputs again (the output port changed: skip its loopback). */
   private relisten: () => void = () => {};
 
@@ -149,6 +152,26 @@ export class AudioLayer {
     this.bridge.onSoundsChanged(() => void this.refreshBanks());
     void this.bridge.engineStatus().then((s) => this.engineChanged(s));
     this.bridge.onEngineStatus((s) => this.engineChanged(s));
+    this.bridge.onEngineScanning((p) => {
+      this.pluginScan = p;
+      this.changed();
+    });
+  }
+
+  /** The plugins the engine knows; with `scan`, it looks for them first (minutes, the first time). */
+  async loadPlugins(scan = false): Promise<void> {
+    if (this.pluginScan) return;
+    if (scan) {
+      this.pluginScan = { file: "", progress: 0 };
+      this.bridge.log({ type: "engine_scan_asked" });
+      this.changed();
+    }
+    try {
+      this.pluginList = await this.bridge.enginePlugins(scan);
+    } finally {
+      this.pluginScan = null;
+      this.changed();
+    }
   }
 
   // -------------------------------------------------------------------------

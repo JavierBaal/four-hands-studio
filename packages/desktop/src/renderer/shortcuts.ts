@@ -29,6 +29,7 @@ export type Action =
   | "zoomIn"
   | "zoomRowsOut"
   | "save"
+  | "settings"
   | "zoomRowsIn"
   | "toolZoom"
   | "toolArrow"
@@ -50,6 +51,7 @@ export interface Combo {
 
 export const DEFAULT_SHORTCUTS: Record<Action, Combo[]> = {
   save: [{ key: "s", mod: true }],
+  settings: [{ key: ",", mod: true }],
   undo: [{ key: "z", mod: true }],
   redo: [{ key: "y", mod: true }, { key: "z", mod: true, shift: true }],
   cut: [{ key: "x", mod: true }],
@@ -106,6 +108,7 @@ export const PIANO_MODE_ALLOWED: ReadonlySet<Action> = new Set<Action>([
   "toolEraser",
   "toolZoom",
   "save",
+  "settings",
   "delete",
   "escape",
   "undo",

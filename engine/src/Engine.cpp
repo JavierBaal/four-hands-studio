@@ -104,7 +104,7 @@ juce::FileSearchPath Engine::defaultSearchPath()
     return path;
 }
 
-void Engine::scan (const juce::FileSearchPath& where, const juce::File& deadMansPedal, const std::function<void (const juce::String&)>& progress)
+void Engine::scan (const juce::FileSearchPath& where, const juce::File& deadMansPedal, const std::function<void (const juce::String&, float)>& progress)
 {
     for (auto* format : formatManager.getFormats())
     {
@@ -114,7 +114,7 @@ void Engine::scan (const juce::FileSearchPath& where, const juce::File& deadMans
         {
             name = scanner.getNextPluginFileThatWillBeScanned();
             if (progress && name.isNotEmpty())
-                progress (name);
+                progress (name, scanner.getProgress());
             if (! scanner.scanNextFile (true, name))
                 break;
         }

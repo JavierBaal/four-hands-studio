@@ -1,9 +1,10 @@
 /**
- * "Get more sounds" (Fran, 14/10/2026): which formats work, three steps to install a bank and where
- * to find free ones. Same card as the mixer and the quantize dialog; Esc or a click outside closes it.
+ * Ajustes › Sonido (ESTUDIO_INTERFAZ_2.md): the built-in sound, the banks installed and "Get more
+ * sounds" (Fran, 14/10/2026): which formats work, three steps to install a bank and where to find
+ * free ones.
  * Plus the short notice that confirms banks dropped onto the window.
  */
-import { useEffect, useRef } from "react";
+import { useSyncExternalStore } from "react";
 import type { AudioLayer } from "../audio-layer.js";
 import { useActions, useApp } from "../context.js";
 
@@ -13,31 +14,29 @@ const LINKS = [
   { key: "soundsHelpList", url: "https://musescore.org/en/handbook/3/soundfonts-and-sfz-files#list" },
 ] as const;
 
-export function SoundsHelp({ audio }: { audio: AudioLayer }) {
+export function SoundSettings({ audio }: { audio: AudioLayer }) {
   const { t } = useApp();
-  const actions = useActions();
-  const ref = useRef<HTMLDivElement>(null);
-  const open = actions.soundsHelp;
-  useEffect(() => {
-    if (!open) return;
-    const down = (e: PointerEvent) => {
-      if (!ref.current?.contains(e.target as Node)) actions.openSoundsHelp(false);
-    };
-    const key = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      e.stopPropagation();
-      actions.openSoundsHelp(false);
-    };
-    window.addEventListener("pointerdown", down, true);
-    window.addEventListener("keydown", key, true);
-    return () => {
-      window.removeEventListener("pointerdown", down, true);
-      window.removeEventListener("keydown", key, true);
-    };
-  }, [open]);
-  if (!open) return null;
+  useSyncExternalStore(audio.subscribe, audio.getVersion);
+  const status = audio.status === "ready" ? t("setSoundReady") : audio.status === "loading" ? t("soundLoading") : audio.status === "none" ? t("soundMissing") : t("soundFailed");
   return (
-    <div className="menu qdialog soundshelp" ref={ref} role="dialog" aria-label={t("soundsHelpTitle")}>
+    <div className="soundshelp">
+      <p className="setstatus" role="status">
+        <span className={audio.status === "ready" ? "dot ok" : "dot off"} />
+        {status}
+      </p>
+      <div className="mhead">{t("setBanks")}</div>
+      {audio.banks.length === 0 ? (
+        <p className="hint">{t("soundsNone")}</p>
+      ) : (
+        <ul className="setlist">
+          {audio.banks.map((b) => (
+            <li key={b.id}>
+              <span className="setname">{b.name}</span>
+              <span className="setmeta mono">{t("setBankMeta", { presets: b.presets.length, mb: Math.round(b.bytes / 1048576) })}</span>
+            </li>
+          ))}
+        </ul>
+      )}
       <div className="mhead">{t("soundsHelpTitle")}</div>
       <p>{t("soundsHelpFormat")}</p>
       <ol>
@@ -66,9 +65,6 @@ export function SoundsHelp({ audio }: { audio: AudioLayer }) {
       <div className="qbtns">
         <button className="btn" onClick={() => audio.openSoundsFolder()}>
           {t("soundsFolder")}
-        </button>
-        <button className="btn pri" onClick={() => actions.openSoundsHelp(false)}>
-          {t("close")}
         </button>
       </div>
     </div>
