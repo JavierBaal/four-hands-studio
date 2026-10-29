@@ -34,7 +34,7 @@ import type { Editor, MenuItem } from "./editor.js";
 import { PALETTE, type PaletteItem, instrumentName, paletteName } from "../shared/instruments.js";
 import { barRange, keyName } from "./music.js";
 import type { Replica } from "./replica.js";
-import { TRACK_PALETTE, trackColor, trackColorIndex } from "./theme.js";
+import { SIZE, TRACK_PALETTE, trackColor, trackColorIndex } from "./theme.js";
 import { parseDb, parsePan } from "../shared/mix.js";
 
 /** The sections of Ajustes, in their order. */
@@ -131,7 +131,12 @@ export class SongActions {
     if (!this.song.tracks[trackId]) return;
     this.editor.closeMenus();
     if (this.song.context.activeTrackId !== trackId) void this.replica.setContext({ activeTrackId: trackId });
-    this.viewStore?.set({ panelOpen: true, panelTab: "sounds", compactPanel: true });
+    const v = this.viewStore?.state;
+    if (!v) return;
+    // Folded, it opens only for this: once the sound is chosen it folds again (panelPeek).
+    const compact = typeof window !== "undefined" && window.innerWidth < SIZE.compactBelow;
+    const folded = compact ? !v.compactPanel : !v.panelOpen;
+    this.viewStore!.set({ panelOpen: true, panelTab: "sounds", compactPanel: true, panelPeek: folded || (v.panelPeek && v.panelTab === "sounds") });
   }
 
   /** A sound of the catalog on a track (double click, Enter, or dropped on its header). */
@@ -141,6 +146,15 @@ export class SongActions {
     else if (choice) this.setInstrument(trackId, choice);
     else return;
     this.audio?.rememberSound(item.key);
+    this.foldIfPeeking();
+  }
+
+  /** The column opened only to choose a sound: the sound is chosen, it folds again. */
+  private foldIfPeeking(): void {
+    const v = this.viewStore?.state;
+    if (!v?.panelPeek) return;
+    const compact = typeof window !== "undefined" && window.innerWidth < SIZE.compactBelow;
+    this.viewStore!.set(compact ? { compactPanel: false, panelPeek: false } : { panelOpen: false, panelPeek: false });
   }
 
   /** A sound dropped on an empty part of the arrangement: a new track with it. */
@@ -149,6 +163,7 @@ export class SongActions {
     const id = await this.addTrack(choice);
     if (id && item.target.kind === "plugin") this.choosePlugin(id, item.target.plugin);
     this.audio?.rememberSound(item.key);
+    this.foldIfPeeking();
   }
 
   private choiceOf(item: SoundItem): SoundChoice | null {

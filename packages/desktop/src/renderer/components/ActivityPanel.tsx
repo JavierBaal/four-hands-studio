@@ -166,19 +166,19 @@ export function ActivityContent() {
 export function Rail() {
   const { t, view } = useApp();
   const v = useView();
-  const open = (tab: PanelTab) => view.set({ panelOpen: true, panelTab: tab, compactPanel: true });
+  const open = (tab: PanelTab) => view.set({ panelOpen: true, panelTab: tab, compactPanel: true, panelPeek: false });
   return (
     <nav className="rail" aria-label={t("sidePanel")}>
       <button className="ibtn rexp" onClick={() => view.set({ panelOpen: true })} aria-label={t("unfoldPanel")} title={t("unfoldPanel")}>
         <ChevronLeft />
       </button>
-      <button className={v.compactPanel && v.panelTab === "track" ? "ibtn on" : "ibtn"} onClick={() => open("track")} aria-label={t("tabTrack")} title={t("tabTrack")}>
+      <button className={v.compactPanel && v.panelTab === "track" ? "ibtn on" : "ibtn"} onClick={() => open("track")} aria-label={t("tabTrack")} title={`${t("tabTrack")} (F4)`}>
         <TrackIcon />
       </button>
-      <button className={v.compactPanel && v.panelTab === "sounds" ? "ibtn on" : "ibtn"} onClick={() => open("sounds")} aria-label={t("tabSounds")} title={t("tabSounds")}>
+      <button className={v.compactPanel && v.panelTab === "sounds" ? "ibtn on" : "ibtn"} onClick={() => open("sounds")} aria-label={t("tabSounds")} title={`${t("tabSounds")} (F5)`}>
         <LibraryIcon />
       </button>
-      <button className={v.compactPanel && v.panelTab === "ai" ? "ibtn on aitab" : "ibtn aitab"} onClick={() => open("ai")} aria-label={t("tabAi")} title={t("tabAi")}>
+      <button className={v.compactPanel && v.panelTab === "ai" ? "ibtn on aitab" : "ibtn aitab"} onClick={() => open("ai")} aria-label={t("tabAi")} title={`${t("tabAi")} (F6)`}>
         <AiIcon />
       </button>
     </nav>
