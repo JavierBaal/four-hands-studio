@@ -18,7 +18,7 @@ const server = http.createServer((req, res) => {
 }).listen(0);
 const port = server.address().port;
 const browser = await chromium.launch(executablePath ? { executablePath } : {});
-const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } }); // H3.2: the arrangement grew (volume and pan in the headers); pitch 57 must stay in sight.
+const page = await browser.newPage({ viewport: { width: 1440, height: 1100 } }); // H3.2 and interfaz 2: the arrangement grew (volume, pan and sound in the headers); pitch 57 must stay in sight.
 const errors = [];
 page.on("pageerror", (e) => errors.push(String(e)));
 
@@ -381,9 +381,10 @@ await page.keyboard.press("Enter");
 await settle();
 check("track renamed", (await song()).tracks[added.id].name === "Contracanto");
 const hb = await lastHeader.boundingBox();
-await page.mouse.move(hb.x + 30, hb.y + hb.height / 2);
+// Grabbed by its name (the sound line under it is a button).
+await page.mouse.move(hb.x + 30, hb.y + 10);
 await page.mouse.down();
-await page.mouse.move(hb.x + 30, hb.y + hb.height / 2 - 26 - 4, { steps: 6 });
+await page.mouse.move(hb.x + 30, hb.y + 10 - hb.height / 2 - 4, { steps: 6 });
 await page.mouse.up();
 await settle();
 s1 = await song();
@@ -597,10 +598,10 @@ check("the last preset can be reached", (await song()).tracks[(await song()).con
 await page.keyboard.press("Escape");
 const hdr = await page.locator(".thdr").first().boundingBox();
 await page.mouse.click(hdr.x + 40, hdr.y + 10, { button: "right" });
-await page.locator(".menu [role=menuitem]", { hasText: "Instrumento…" }).click();
+await page.locator(".menu [role=menuitem]", { hasText: "Sonido…" }).click();
 check("palette from the track menu fits the window", await inside(), JSON.stringify(await page.locator(".menu").boundingBox()));
 await page.keyboard.press("Escape");
-await page.setViewportSize({ width: 1440, height: 1000 });
+await page.setViewportSize({ width: 1440, height: 1100 });
 
 // H3.2: volume and pan in the track header, typed values, colours and the label over a note.
 await page.keyboard.press("Escape");
@@ -813,7 +814,7 @@ await page.getByRole("menuitem", { name: /^Suena en/ }).click();
 await page.getByRole("menuitem", { name: /^Tu DAW \(salida MIDI, canal \d+\)/ }).click();
 await settle();
 const secondId = (await song()).trackOrder[1];
-check("a track goes out to the DAW from its menu, with its badge", (await song()).tracks[secondId].output === "external" && (await page.locator(".thdr").nth(1).locator(".tout").count()) === 1);
+check("a track goes out to the DAW from its menu, and its header says so", (await song()).tracks[secondId].output === "external" && /Tu DAW \(canal \d+\)/.test(await page.locator(".thdr").nth(1).locator(".tsnd").innerText()));
 check("its history label names the channel", /suena en tu DAW \(canal \d+\)/.test(await lastLabel()), await lastLabel());
 check("the external channel goes to the router, not the synth", await page.evaluate((id) => window.fhTest.audio.externalChannels().has(window.fhTest.replica.song.tracks[id].channel), secondId));
 await page.locator(".thdr").nth(1).click({ button: "right", position: { x: 120, y: 12 } });
@@ -827,10 +828,10 @@ check("the card brings it back to Four Hands", !(await song()).tracks[secondId].
 await page.keyboard.press("Escape");
 await settle();
 
-// Fase 2, prueba S2: a track sounds through a plugin of the engine, from its menu; its window opens.
+// Fase 2, prueba S2 and interfaz 2: a track sounds through a plugin, chosen in its Sonido menu; its window opens.
 await page.locator(".thdr").nth(1).click({ button: "right", position: { x: 120, y: 12 } });
-await page.getByRole("menuitem", { name: /^Suena en/ }).click();
-await page.getByRole("menuitem", { name: /^Un plugin \(prueba S2\)/ }).click();
+await page.getByRole("menuitem", { name: /^Sonido…/ }).click();
+await page.getByRole("menuitem", { name: /^Elegir un plugin…/ }).click();
 await page.waitForSelector('[role="menuitem"]:has-text("Kontakt 8")');
 check("the plugin menu lists the instruments, not the effects", (await page.getByRole("menuitem", { name: /Ozone/ }).count()) === 0 && (await page.getByRole("menuitem", { name: /Efectos \(1\)/ }).count()) === 1);
 await page.getByRole("menuitem", { name: /^Kontakt 8/ }).click();
@@ -838,6 +839,7 @@ await settle();
 const pluginId = (await song()).trackOrder[1];
 check("the track sounds through Kontakt", (await song()).tracks[pluginId].output === "plugin" && (await song()).tracks[pluginId].plugin?.name === "Kontakt 8");
 check("its history label names the plugin", /suena con Kontakt 8/.test(await lastLabel()), await lastLabel());
+check("its header shows the plugin", /Kontakt 8/.test(await page.locator(".thdr").nth(1).locator(".tsnd").innerText()));
 check(
   "the plugin is loaded in the track's slot and its channel leaves the built-in sound",
   await page.evaluate((id) => {
@@ -849,11 +851,41 @@ await page.locator(".thdr").nth(1).click({ button: "right", position: { x: 120, 
 await page.getByRole("menuitem", { name: "Abrir ventana de Kontakt 8" }).click();
 await settle();
 check("the track menu opens the plugin's window", await page.evaluate((id) => window.fhTest.ai.engine.shown.includes(window.fhTest.replica.song.tracks[id].channel), pluginId));
-await page.locator(".thdr").nth(1).click({ button: "right", position: { x: 120, y: 12 } });
-await page.getByRole("menuitem", { name: /^Suena en/ }).click();
-await page.getByRole("menuitem", { name: "Four Hands", exact: true }).click();
+
+// Interfaz 2, parte 2: the Pista tab, the card of the active track.
+await page.locator(".thdr").nth(1).click({ position: { x: 120, y: 10 } });
+await page.getByRole("tab", { name: "Pista" }).click();
 await settle();
-check("back to Four Hands, the plugin is remembered for next time", !(await song()).tracks[pluginId].output && (await song()).tracks[pluginId].plugin?.name === "Kontakt 8");
+check("the Pista tab shows the active track and its plugin", (await page.locator(".tcard .tcname").innerText()) === (await song()).tracks[pluginId].name && /Kontakt 8/.test(await page.locator(".tcard .tcsoundname").innerText()));
+await page.locator(".tcard").getByRole("button", { name: "Abrir ventana" }).click();
+await settle();
+check("the card opens the plugin's window too", await page.evaluate((id) => window.fhTest.ai.engine.shown.filter((s) => s === window.fhTest.replica.song.tracks[id].channel).length === 2, pluginId));
+const colorBefore = (await song()).tracks[pluginId].color;
+await page.locator(".tcswatches .sw").nth((colorBefore + 3) % 10).click();
+await settle();
+check("a swatch changes the track colour", (await song()).tracks[pluginId].color === (colorBefore + 3) % 10);
+await page.locator(".tcard .tcout").getByRole("radio", { name: /Tu DAW/ }).click();
+await settle();
+check("the card sends the track to the DAW", (await song()).tracks[pluginId].output === "external");
+await page.locator(".tcard .tcout").getByRole("radio", { name: "Four Hands" }).click();
+await settle();
+check("…and back to Four Hands, to its plugin", (await song()).tracks[pluginId].output === "plugin");
+await page.locator(".tcard").getByRole("button", { name: "Cambiar…" }).click();
+await page.getByRole("menuitem", { name: "Piano", exact: true }).click();
+await settle();
+check("a Four Hands sound replaces the plugin: one sound per track", !(await song()).tracks[pluginId].output && !(await song()).tracks[pluginId].plugin && /Piano/.test(await page.locator(".tcard .tcsoundname").innerText()));
+await page.locator(".thdr").nth(1).locator(".tsnd").click();
+check("the sound in the header opens the sound menu", (await page.getByRole("menuitem", { name: /^Elegir un plugin…/ }).count()) === 1);
+await page.keyboard.press("Escape");
+const upBefore = (await song()).trackOrder.indexOf(pluginId);
+await page.locator(".tcfoot").getByRole("button", { name: /Bajar/ }).click();
+await settle();
+check("the card moves the track", (await song()).trackOrder.indexOf(pluginId) === upBefore + 1);
+await page.evaluate(() => window.fhTest.replica.undoLast());
+await settle();
+await page.getByRole("tab", { name: "IA" }).click();
+await settle();
+check("the IA tab is the activity panel", (await page.locator(".pbody .concept").count()) === 1);
 
 // H4 (20/10/2026): Tu IA > Sus opiniones, direct by default and remembered.
 await page.locator(".askmanage").click();

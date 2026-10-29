@@ -13,7 +13,8 @@ import { activeTrack, useAi, useApp, useClock, useSong, useView } from "../conte
 import { barRange, shortPosition } from "../music.js";
 import { ActiveSkills } from "./SkillsPanel.js";
 import { ConceptCard } from "./Concept.js";
-import { ChevronLeft, ChevronRight, EyeIcon, HistoryIcon, ProposalIcon } from "./Icons.js";
+import { AiIcon, ChevronLeft, TrackIcon } from "./Icons.js";
+import type { PanelTab } from "../view.js";
 
 function ago(t: Translate, at: number, now: number): string {
   const min = Math.floor((now - at) / 60_000);
@@ -100,21 +101,16 @@ function AiInterventions({ now }: { now: number }) {
   );
 }
 
-export function ActivityPanel() {
-  const { t, view, replica } = useApp();
+/** The IA tab of the side column: the activity panel of the sketches, unchanged. */
+export function ActivityContent() {
+  const { t, replica } = useApp();
   const song = useSong();
   const now = useClock(30_000);
   const track = activeTrack(song);
   const loop = song.context.loop;
   const history = [...replica.history].reverse().slice(0, 30);
   return (
-    <aside className="activity" aria-label={t("activity")}>
-      <div className="phead">
-        <span className="ptitle">{t("activity")}</span>
-        <button className="ibtn" onClick={() => view.set({ panelOpen: false })} aria-label={t("foldPanel")} title={t("foldPanel")}>
-          <ChevronRight />
-        </button>
-      </div>
+    <>
       <ConceptCard />
       <div>
         <p className="ah">{t("aiSeesTitle")}</p>
@@ -162,29 +158,26 @@ export function ActivityPanel() {
         )}
       </div>
       <ActiveSkills />
-    </aside>
+    </>
   );
 }
 
+/** The folded column: unfold it, or open it straight on one tab. */
 export function Rail() {
   const { t, view } = useApp();
   const v = useView();
-  const open = () => view.set({ panelOpen: true });
+  const open = (tab: PanelTab) => view.set({ panelOpen: true, panelTab: tab, compactPanel: true });
   return (
-    <nav className="rail" aria-label={t("activity")}>
-      <button className="ibtn rexp" onClick={open} aria-label={t("unfoldPanel")} title={t("unfoldPanel")}>
+    <nav className="rail" aria-label={t("sidePanel")}>
+      <button className="ibtn rexp" onClick={() => view.set({ panelOpen: true })} aria-label={t("unfoldPanel")} title={t("unfoldPanel")}>
         <ChevronLeft />
       </button>
-      <button className="ibtn" onClick={open} aria-label={t("aiSeesTitle")} title={t("aiSeesTitle")}>
-        <EyeIcon />
+      <button className={v.compactPanel && v.panelTab === "track" ? "ibtn on" : "ibtn"} onClick={() => open("track")} aria-label={t("tabTrack")} title={t("tabTrack")}>
+        <TrackIcon />
       </button>
-      <button className="ibtn" onClick={open} aria-label={t("interventions")} title={t("interventions")}>
-        <ProposalIcon />
+      <button className={v.compactPanel && v.panelTab === "ai" ? "ibtn on aitab" : "ibtn aitab"} onClick={() => open("ai")} aria-label={t("tabAi")} title={t("tabAi")}>
+        <AiIcon />
       </button>
-      <button className="ibtn" onClick={open} aria-label={t("history")} title={t("history")}>
-        <HistoryIcon />
-      </button>
-      {void v}
     </nav>
   );
 }

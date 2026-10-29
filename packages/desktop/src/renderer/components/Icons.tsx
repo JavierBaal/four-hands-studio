@@ -142,3 +142,23 @@ export const CloseIcon = () => (
     <path d="M4 4l8 8M12 4l-8 8" {...line} />
   </svg>
 );
+export const TrackIcon = () => (
+  <svg {...svg}>
+    <path d="M3 4h10M3 8h10M3 12h10" {...line} />
+    <circle cx="6" cy="4" r="1.4" {...line} fill="var(--bg-panel)" />
+    <circle cx="10.5" cy="8" r="1.4" {...line} fill="var(--bg-panel)" />
+    <circle cx="5" cy="12" r="1.4" {...line} fill="var(--bg-panel)" />
+  </svg>
+);
+export const BankIcon = () => (
+  <svg {...svg}>
+    <ellipse cx="8" cy="4.5" rx="5" ry="2" {...line} />
+    <path d="M3 4.5v7c0 1.1 2.2 2 5 2s5-.9 5-2v-7M3 8c0 1.1 2.2 2 5 2s5-.9 5-2" {...line} />
+  </svg>
+);
+export const WindowIcon = () => (
+  <svg {...svg}>
+    <rect x="2.5" y="3.5" width="11" height="9" rx="1" {...line} />
+    <path d="M2.5 6h11" {...line} />
+  </svg>
+);

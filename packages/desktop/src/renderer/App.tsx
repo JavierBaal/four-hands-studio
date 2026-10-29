@@ -4,7 +4,8 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { Note } from "@fourhands/core";
-import { ActivityPanel, Rail } from "./components/ActivityPanel.js";
+import { Rail } from "./components/ActivityPanel.js";
+import { SidePanel } from "./components/SidePanel.js";
 import { AiCompareBar, AiProposalBar, AiWritingBar } from "./components/AiPresence.js";
 import { Arrangement } from "./components/Arrangement.js";
 import { ContextMenu, QuantizeDialog } from "./components/Menus.js";
@@ -339,7 +340,7 @@ export function App({ audio, onEditor }: AppProps) {
   return (
     <ActionsCtx.Provider value={actions}>
     <div
-      className={v.panelOpen ? "app" : "app pclosed"}
+      className={(v.panelOpen ? "app" : "app pclosed") + (compact && v.compactPanel ? " cpanel" : "")}
       ref={appRef}
       style={{ "--hdr-w": `${v.headerWidth}px`, "--act-w": `${v.panelWidth}px` } as React.CSSProperties}
       onDragOver={(e) => {
@@ -391,7 +392,7 @@ export function App({ audio, onEditor }: AppProps) {
             onReset={() => view.set({ panelWidth: LAYOUT_DEFAULTS.panelWidth })}
           />
         )}
-        <ActivityPanel />
+        <SidePanel audio={audio} compact={compact} />
         <Rail />
       </div>
       <AiWritingBar />

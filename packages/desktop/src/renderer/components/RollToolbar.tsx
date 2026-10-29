@@ -1,5 +1,6 @@
 /** Piano roll bar (DIRECCION_ARTISTICA.md, 6.1 item 3): track, tools, grid, layers, legend, what the AI sees. */
 import { barAt } from "@fourhands/core";
+import { SoundOriginIcon } from "./SidePanel.js";
 import { activeTrack, useActions, useApp, useSong, useView } from "../context.js";
 import { barRange } from "../music.js";
 import { ArrowToolIcon, EraserIcon, PencilIcon, ZoomIcon } from "./Icons.js";
@@ -47,14 +48,15 @@ export function RollToolbar({ onGridMenu }: RollToolbarProps) {
       {track && (
         <button
           className="rsubb"
-          title={t("instrument")}
+          title={t("changeSound")}
           aria-haspopup="menu"
           onClick={(e) => {
             const r = e.currentTarget.getBoundingClientRect();
-            actions.paletteMenu(r.left, r.bottom + 4, (choice) => actions.setInstrument(track.id, choice), track);
+            actions.soundMenu(track.id, r.left, r.bottom + 4);
           }}
         >
-          {actions.instrumentLabel(track)} ▾
+          <SoundOriginIcon origin={actions.soundOrigin(track)} />
+          {actions.soundLabel(track)} ▾
         </button>
       )}
       <span className="sep" />

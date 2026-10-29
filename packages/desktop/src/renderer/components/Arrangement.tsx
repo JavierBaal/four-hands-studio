@@ -16,6 +16,7 @@ import type { AudioLayer } from "../audio-layer.js";
 import { InlineEdit } from "./InlineEdit.js";
 import { Fader } from "./Fader.js";
 import { Splitter } from "./Splitter.js";
+import { SoundOriginIcon } from "./SidePanel.js";
 import { LAYOUT_DEFAULTS } from "../view.js";
 import { formatDb, formatPan } from "../../shared/mix.js";
 import type { Track } from "@fourhands/core";
@@ -242,11 +243,6 @@ export function Arrangement({ compact, visible, onSelectTrack, onPan, onToggle, 
                   ) : (
                     <span className={tr.id === active?.id ? "tname on" : "tname"}>{tr.name}</span>
                   )}
-                  {tr.output === "external" && (
-                    <span className="tout" title={t("outputDawTitle", { ch: tr.channel + 1 })}>
-                      MIDI
-                    </span>
-                  )}
                   <span className="ms">
                     <button
                       className={tr.mute ? "msb on" : "msb"}
@@ -274,6 +270,21 @@ export function Arrangement({ compact, visible, onSelectTrack, onPan, onToggle, 
                     </button>
                   </span>
                 </div>
+                {!compact && (
+                  <button
+                    className="tsnd"
+                    title={t("changeSound")}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const r = e.currentTarget.getBoundingClientRect();
+                      actions.soundMenu(tr.id, r.left, r.bottom + 4);
+                    }}
+                  >
+                    <SoundOriginIcon origin={actions.soundOrigin(tr)} />
+                    <span>{tr.output === "external" ? t("outputDawChannel", { ch: tr.channel + 1 }) : actions.soundLabel(tr)}</span>
+                  </button>
+                )}
                 {!compact && <TrackMix track={tr} />}
               </div>
               {dropAt === i && dropAt > dragFrom && <div className="dropline" />}

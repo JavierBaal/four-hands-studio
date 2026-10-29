@@ -20,16 +20,11 @@ export function Mixer() {
 }
 
 function MixerCard({ track, x, y }: { track: Track; x: number; y: number }) {
-  const { t, lang } = useApp();
-  const [typing, setTyping] = useState<"volume" | "pan" | "reverb" | null>(null);
+  const { t } = useApp();
   const actions = useActions();
-  const [volume, setVolume] = useState(track.volume);
-  const [pan, setPan] = useState(track.pan);
-  const [reverb, setReverb] = useState(track.reverb ?? 0);
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ left: x, top: y });
-  const latest = useRef({ volume, pan, reverb });
-  latest.current = { volume, pan, reverb };
+  const latest = useRef<{ volume: number; pan: number; reverb: number } | null>(null);
   useLayoutEffect(() => {
     const r = ref.current?.getBoundingClientRect();
     if (!r) return;
@@ -37,7 +32,8 @@ function MixerCard({ track, x, y }: { track: Track; x: number; y: number }) {
   }, [x, y]);
   useEffect(() => {
     const close = () => {
-      actions.setMix(track.id, latest.current.volume, latest.current.pan, latest.current.reverb);
+      const l = latest.current;
+      if (l) actions.setMix(track.id, l.volume, l.pan, l.reverb);
       actions.closeMixer();
     };
     const down = (e: PointerEvent) => {
@@ -55,6 +51,39 @@ function MixerCard({ track, x, y }: { track: Track; x: number; y: number }) {
       window.removeEventListener("keydown", key, true);
     };
   }, [track.id]);
+  return (
+    <div className="menu qdialog" ref={ref} role="dialog" aria-label={t("mixTitle")} style={pos}>
+      <div className="mhead">
+        {t("mixTitle")} · {track.name}
+      </div>
+      <MixRows track={track} onValues={(v) => (latest.current = v)} />
+      <div className="qbtns">
+        <button className="btn" onClick={() => actions.closeMixer()}>
+          {t("close")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Volume, pan and reverb of a track, each a slider whose value can also be typed: in the mixer
+ * card and in the Pista tab (ESTUDIO_INTERFAZ_2.md, 5.2). The sound follows while dragging; the
+ * song gets the value on release (one undo step). Values the AI or an undo change come in.
+ */
+export function MixRows({ track, onValues }: { track: Track; onValues?: (v: { volume: number; pan: number; reverb: number }) => void }) {
+  const { t, lang } = useApp();
+  const actions = useActions();
+  const [typing, setTyping] = useState<"volume" | "pan" | "reverb" | null>(null);
+  const [volume, setVolume] = useState(track.volume);
+  const [pan, setPan] = useState(track.pan);
+  const [reverb, setReverb] = useState(track.reverb ?? 0);
+  useEffect(() => {
+    setVolume(track.volume);
+    setPan(track.pan);
+    setReverb(track.reverb ?? 0);
+  }, [track.id, track.volume, track.pan, track.reverb]);
+  onValues?.({ volume, pan, reverb });
   const commit = () => actions.setMix(track.id, volume, pan, reverb);
   const panText = formatPan(pan);
   const volText = formatDb(volume, lang);
@@ -78,10 +107,7 @@ function MixerCard({ track, x, y }: { track: Track; x: number; y: number }) {
       </span>
     );
   return (
-    <div className="menu qdialog" ref={ref} role="dialog" aria-label={t("mixTitle")} style={pos}>
-      <div className="mhead">
-        {t("mixTitle")} · {track.name}
-      </div>
+    <>
       <label className="qrow">
         <span>{t("volume")}</span>
         <input type="range" min={0} max={100} value={Math.round(volume * 100)} onChange={(e) => (setVolume(Number(e.target.value) / 100), actions.previewMix(track.id, Number(e.target.value) / 100, pan, reverb))} onPointerUp={commit} onKeyUp={commit} />
@@ -97,11 +123,6 @@ function MixerCard({ track, x, y }: { track: Track; x: number; y: number }) {
         <input type="range" min={0} max={100} value={Math.round(reverb * 100)} onChange={(e) => (setReverb(Number(e.target.value) / 100), actions.previewMix(track.id, volume, pan, Number(e.target.value) / 100))} onPointerUp={commit} onKeyUp={commit} onDoubleClick={() => (setReverb(0), actions.setMix(track.id, volume, pan, 0))} />
         {value("reverb", formatReverb(reverb), t("reverbTypeHint"))}
       </label>
-      <div className="qbtns">
-        <button className="btn" onClick={() => (commit(), actions.closeMixer())}>
-          {t("close")}
-        </button>
-      </div>
-    </div>
+    </>
   );
 }

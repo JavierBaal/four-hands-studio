@@ -94,7 +94,7 @@ export const SIZE = {
   trackHeader: 196,
   trackHeaderCompact: 44,
   /** H3.2: 26 → 40 so volume and pan fit under the name (pending Fran's approval). */
-  arrangeLane: 40,
+  arrangeLane: 54,
   arrangeLaneCompact: 14,
   arrangeStrip: 22,
   rulerLabel: 72,
