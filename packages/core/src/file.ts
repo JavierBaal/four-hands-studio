@@ -122,6 +122,7 @@ const historyEntry = z.object({
   author: authorship,
   label: z.string(),
   at: z.number(),
+  dropped: z.literal(true).optional(),
 });
 
 const fileSchema = z.object({

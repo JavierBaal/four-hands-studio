@@ -27,7 +27,7 @@ import {
   runCommands,
   serializeSong,
 } from "@fourhands/core";
-import { type FileState, type PatchMessage, type Reply, type Request, type Snapshot, type UndoState, lastAiOf, proposalsOf } from "../shared/protocol.js";
+import { type FileState, type PatchMessage, type Reply, type Request, type Snapshot, type UndoState, undoStateOf } from "../shared/protocol.js";
 import { backup, uniquePath, writeAtomic } from "./files.js";
 
 export const SONG_EXT = ".fourhands";
@@ -196,6 +196,9 @@ export class SongSession {
         case "redo":
           this.doc.redo(USER);
           return { ok: true, results: [] };
+        case "goTo":
+          this.doc.goTo(request.revision, USER);
+          return { ok: true, results: [] };
         case "setContext":
           this.doc.setContext(request.changes as Partial<SharedContext>);
           return { ok: true, results: [] };
@@ -238,7 +241,7 @@ export class SongSession {
   }
 
   private undoState(): UndoState {
-    return { canUndo: this.doc.canUndo, canRedo: this.doc.canRedo, undoLabel: this.doc.undoLabel, redoLabel: this.doc.redoLabel, lastAi: lastAiOf(this.doc), proposals: proposalsOf(this.doc) };
+    return undoStateOf(this.doc);
   }
 
   private markDirty(): void {
@@ -301,7 +304,7 @@ export class SongSession {
   private async write(): Promise<void> {
     const file = this.file;
     const pluginStates = await this.freshPluginStates();
-    const text = serializeSong({ song: this.doc.song, history: this.doc.history, proposals: this.doc.proposals, pluginStates });
+    const text = serializeSong({ song: this.doc.song, history: this.doc.historyForFile(), proposals: this.doc.proposals, pluginStates });
     try {
       const last = this.lastBackup.get(file);
       if (last === undefined || this.now() - last >= (this.options.backupEveryMs ?? 5 * 60_000)) {

@@ -35,7 +35,7 @@ export class Replica {
     this.song = s.song;
     this.history = s.history;
     this.file = s.file;
-    this.undo = { canUndo: s.canUndo, canRedo: s.canRedo, undoLabel: s.undoLabel, redoLabel: s.redoLabel, lastAi: s.lastAi ?? null, proposals: s.proposals ?? [] };
+    this.undo = { canUndo: s.canUndo, canRedo: s.canRedo, undoLabel: s.undoLabel, redoLabel: s.redoLabel, lastAi: s.lastAi ?? null, proposals: s.proposals ?? [], steps: s.steps ?? [], baseRevision: s.baseRevision ?? 0 };
     this.fresh.clear();
     this.bump();
   }
@@ -48,7 +48,7 @@ export class Replica {
     this.song.revision = m.patch.revision;
     if (m.replacesLast) this.history.splice(-1, 1, ...m.history);
     else this.history.push(...m.history);
-    this.undo = { canUndo: m.canUndo, canRedo: m.canRedo, undoLabel: m.undoLabel, redoLabel: m.redoLabel, lastAi: m.lastAi ?? null, proposals: m.proposals ?? [] };
+    this.undo = { canUndo: m.canUndo, canRedo: m.canRedo, undoLabel: m.undoLabel, redoLabel: m.redoLabel, lastAi: m.lastAi ?? null, proposals: m.proposals ?? [], steps: m.steps ?? [], baseRevision: m.baseRevision ?? 0 };
     this.bump();
   }
 
@@ -75,6 +75,11 @@ export class Replica {
 
   undoLast(): Promise<Reply> {
     return this.bridge.request({ type: "undo" });
+  }
+
+  /** The history panel: back or forward to right after a step (0: the song as opened). */
+  goTo(revision: number): Promise<Reply> {
+    return this.bridge.request({ type: "goTo", revision });
   }
 
   redoLast(): Promise<Reply> {
