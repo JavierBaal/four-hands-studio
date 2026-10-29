@@ -52,6 +52,8 @@ export interface SessionOptions {
    * file had.
    */
   collectPluginStates?: (song: Song) => Promise<PluginStates>;
+  /** The plugin states could not go in the file: the song was saved without them (for the log). */
+  onPluginStatesDropped?: (error: string) => void;
 }
 
 export class SongSession {
@@ -259,7 +261,11 @@ export class SongSession {
   saveNow(): Promise<void> {
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
-    this.saving = this.saving.then(() => this.write());
+    // A failed save must not stop the next ones: the chain never stays rejected.
+    this.saving = this.saving.then(() => this.write()).catch((error) => {
+      this.saveError = (error as Error).message;
+      this.emitFile();
+    });
     return this.saving;
   }
 
@@ -303,9 +309,23 @@ export class SongSession {
 
   private async write(): Promise<void> {
     const file = this.file;
-    const pluginStates = await this.freshPluginStates();
-    const text = serializeSong({ song: this.doc.song, history: this.doc.historyForFile(), proposals: this.doc.proposals, pluginStates });
     try {
+      let pluginStates: PluginStates = {};
+      try {
+        pluginStates = await this.freshPluginStates();
+      } catch {
+        // Never lose the song for a plugin: without states it still saves.
+      }
+      let text: string;
+      try {
+        text = serializeSong({ song: this.doc.song, history: this.doc.historyForFile(), proposals: this.doc.proposals, pluginStates });
+      } catch (error) {
+        // A plugin's state the file cannot hold must not stop the song from saving (29/10/2026:
+        // every save failed in silence and a whole session was lost). Save the song without them.
+        if (!Object.keys(pluginStates).length) throw error;
+        this.options.onPluginStatesDropped?.((error as Error).message);
+        text = serializeSong({ song: this.doc.song, history: this.doc.historyForFile(), proposals: this.doc.proposals });
+      }
       const last = this.lastBackup.get(file);
       if (last === undefined || this.now() - last >= (this.options.backupEveryMs ?? 5 * 60_000)) {
         await backup(file, this.options.backupsDir, this.now());
