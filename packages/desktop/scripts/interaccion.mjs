@@ -869,13 +869,17 @@ await settle();
 check("the track menu opens the plugin's window", await page.evaluate((id) => window.fhTest.ai.engine.shown.includes(window.fhTest.replica.song.tracks[id].channel), pluginId));
 
 // Interfaz 2, parte 2: the Pista tab, the card of the active track.
-await page.locator(".thdr").nth(1).click({ position: { x: 120, y: 10 } });
+await page.locator(".thdr").nth(1).click({ position: { x: 60, y: 10 } });
 await page.getByRole("tab", { name: "Pista" }).click();
 await settle();
 check("the Pista tab shows the active track and its plugin", (await page.locator(".tcard .tcname").innerText()) === (await song()).tracks[pluginId].name && /Kontakt 8/.test(await page.locator(".tcard .tcsoundname").innerText()));
 await page.locator(".tcard").getByRole("button", { name: "Abrir ventana" }).click();
 await settle();
 check("the card opens the plugin's window too", await page.evaluate((id) => window.fhTest.ai.engine.shown.filter((s) => s === window.fhTest.replica.song.tracks[id].channel).length === 2, pluginId));
+check("only the plugin track has the window button in its header", (await page.locator(".thdr .plugb").count()) === 1);
+await page.locator(".thdr .plugb").click();
+await settle();
+check("the header's button opens the plugin's window in one click", await page.evaluate((id) => window.fhTest.ai.engine.shown.filter((s) => s === window.fhTest.replica.song.tracks[id].channel).length === 3, pluginId) && (await page.locator(".thdr .plugb").getAttribute("title")) === "Abrir Kontakt 8");
 const colorBefore = (await song()).tracks[pluginId].color;
 await page.locator(".tcswatches .sw").nth((colorBefore + 3) % 10).click();
 await settle();

@@ -71,6 +71,10 @@ input.inline.mixval { height: 16px; padding: 0 2px; font-size: 10px; text-align:
 .tname { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tname.on { font-weight: 600; }
 .ms { display: flex; gap: 4px; }
+.msb.plugb { display: inline-flex; align-items: center; justify-content: center; color: var(--text-2); }
+.msb.plugb:hover:not(:disabled) { color: var(--text); border-color: var(--line-on); }
+.msb.plugb:disabled { opacity: .4; cursor: default; }
+.msb.plugb svg { width: 14px; height: 14px; }
 .msb { width: 22px; height: 20px; border-radius: 4px; border: 1px solid var(--line-control); background: transparent; color: var(--text-2); font-size: 11px; cursor: pointer; padding: 0; }
 .msb.on { background: var(--bg-control-on); border-color: var(--line-on); color: var(--text); }
 .lanes { flex: 1; min-width: 0; position: relative; }

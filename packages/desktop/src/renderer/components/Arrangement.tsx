@@ -7,7 +7,7 @@
  * - Headers: double click renames, right click opens the track menu, dragging reorders.
  * - "Añadir pista" under the headers opens the instrument palette.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { type Song, barStart, barTicks, orderedSections, orderedTracks } from "@fourhands/core";
 import { activeTrack, notesByTrack, trackColors, useActions, useApp, useSize, useSong, useView } from "../context.js";
 import { arrangementTotal, drawArrangement, prepare } from "../roll/draw.js";
@@ -17,6 +17,7 @@ import { InlineEdit } from "./InlineEdit.js";
 import { Fader } from "./Fader.js";
 import { Splitter } from "./Splitter.js";
 import { SoundOriginIcon } from "./SidePanel.js";
+import { PluginWindowIcon } from "./Icons.js";
 import { SOUND_DRAG } from "./SoundsBrowser.js";
 import { LAYOUT_DEFAULTS } from "../view.js";
 import { formatDb, formatPan } from "../../shared/mix.js";
@@ -277,6 +278,9 @@ export function Arrangement({ compact, visible, onSelectTrack, onPan, onToggle, 
                     <span className={tr.id === active?.id ? "tname on" : "tname"}>{tr.name}</span>
                   )}
                   <span className="ms">
+                    {tr.output === "plugin" && tr.plugin && audio && (
+                      <PluginButton audio={audio} track={tr} />
+                    )}
                     <button
                       className={tr.mute ? "msb on" : "msb"}
                       aria-label={t("mute")}
@@ -442,4 +446,34 @@ function TrackMix({ track }: { track: Track }) {
 
 function barTicksOf(song: Song): number {
   return barTicks(song.meter);
+}
+
+const noSubscribe = () => () => {};
+
+/**
+ * Opens the plugin's own window (Kontakt…) in one click from the track header, next to M and S
+ * (Fran, 29/10/2026). Waits while the engine loads it.
+ */
+function PluginButton({ audio, track }: { audio: AudioLayer; track: Track }) {
+  const { t } = useApp();
+  useSyncExternalStore(audio.subscribe ?? noSubscribe, audio.getVersion);
+  const plugin = track.plugin!;
+  const ready = audio.pluginReady(track.channel, plugin.id);
+  const label = ready ? t("openPlugin", { plugin: plugin.name }) : t("cardSubPluginLoading");
+  return (
+    <button
+      className="msb plugb"
+      aria-label={label}
+      title={label}
+      disabled={!ready}
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => {
+        e.stopPropagation();
+        void audio.showPlugin(track.channel);
+      }}
+      onDoubleClick={(e) => e.stopPropagation()}
+    >
+      <PluginWindowIcon />
+    </button>
+  );
 }
