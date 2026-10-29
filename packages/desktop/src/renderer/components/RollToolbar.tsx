@@ -49,14 +49,10 @@ export function RollToolbar({ onGridMenu }: RollToolbarProps) {
         <button
           className="rsubb"
           title={t("changeSound")}
-          aria-haspopup="menu"
-          onClick={(e) => {
-            const r = e.currentTarget.getBoundingClientRect();
-            actions.soundMenu(track.id, r.left, r.bottom + 4);
-          }}
+          onClick={() => actions.openSounds(track.id)}
         >
           <SoundOriginIcon origin={actions.soundOrigin(track)} />
-          {actions.soundLabel(track)} ▾
+          {actions.soundLabel(track)}
         </button>
       )}
       <span className="sep" />

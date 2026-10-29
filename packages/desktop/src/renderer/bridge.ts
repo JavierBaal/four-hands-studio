@@ -3,6 +3,7 @@
  * stand-in that runs the core directly, for the browser harness and the interface tests.
  */
 import { ENGINE_OFF, type EngineLoadResult, type EngineMidiEvent, type EnginePlugin, type EnginePluginList, type EngineScanProgress, type EngineStatus, type PluginFolders } from "../shared/engine.js";
+import { NO_SOUND_PREFS, type SoundPrefs } from "../shared/sound-catalog.js";
 import { SongDocument, USER, runCommands, type Song } from "@fourhands/core";
 import { type AiApply, type AiState, type AiTone, DEFAULT_AI_APPLY, DEFAULT_AI_TONE, type FileState, type FolderKind, type Folders, type MenuAction, type ToolKind, NO_AI, type PatchMessage, type Reply, type Request, type SkillCardInfo, type SkillImportResult, type Snapshot, type SoundBankInfo, type ViewInfo, lastAiOf, proposalsOf } from "../shared/protocol.js";
 
@@ -86,6 +87,9 @@ export interface Bridge {
   /** The system's folder dialog; gives the folders after adding (unchanged if cancelled). */
   addPluginFolder(): Promise<PluginFolders>;
   removePluginFolder(dir: string): Promise<PluginFolders>;
+  /** The Sonidos browser: favourites, recents, hidden plugins and moved categories. */
+  soundPrefs(): Promise<SoundPrefs>;
+  setSoundPrefs(prefs: SoundPrefs): Promise<SoundPrefs>;
 }
 
 export function windowBridge(): Bridge | null {
@@ -132,6 +136,7 @@ export function memoryBridge(
   const engineState: EngineStatus = fakePlugins ? { state: "ready", device: "Prueba · 48000 Hz", latency: 0.02, generation: 1 } : { ...ENGINE_OFF, state: "missing" };
   const engine = { loaded: new Map<number, string>(), midi: [] as EngineMidiEvent[], shown: [] as number[] };
   let pluginDirs: string[] = [];
+  let soundPrefs: SoundPrefs = structuredClone(NO_SOUND_PREFS);
   const pluginState = (): PluginFolders => ({ system: ["C:\\Program Files\\Common Files\\VST3"], user: [...pluginDirs] });
   const on = <T>(set: Set<T>, l: T) => {
     set.add(l);
@@ -241,6 +246,8 @@ export function memoryBridge(
     openTool: (kind) => console.log("[fh] open tool", kind),
     pluginFolders: async () => pluginState(),
     addPluginFolder: async () => (pluginDirs.includes("D:\\VST3") || pluginDirs.push("D:\\VST3"), pluginState()),
+    soundPrefs: async () => structuredClone(soundPrefs),
+    setSoundPrefs: async (p) => (soundPrefs = structuredClone(p)),
     removePluginFolder: async (dir) => (pluginDirs = pluginDirs.filter((d) => d !== dir), pluginState()),
     save: () => {
       file.savedAt = now();

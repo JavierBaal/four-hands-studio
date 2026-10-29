@@ -6,6 +6,7 @@
  */
 import { type ReactNode, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { PluginFolders } from "../../shared/engine.js";
+import { pluginKey } from "../../shared/sound-catalog.js";
 import type { Strings } from "../../shared/i18n.js";
 import type { FolderKind, Folders, ToolKind } from "../../shared/protocol.js";
 import type { AudioLayer } from "../audio-layer.js";
@@ -142,6 +143,21 @@ function PluginSettings({ audio }: { audio: AudioLayer }) {
           {t("setPluginsAdd")}
         </button>
       </div>
+      <div className="mhead">{t("setHidden")}</div>
+      {audio.soundPrefs.hidden.length === 0 ? (
+        <p className="hint">{t("setHiddenNone")}</p>
+      ) : (
+        <ul className="setlist sethidden">
+          {audio.soundPrefs.hidden.map((key) => (
+            <li key={key}>
+              <span className="setname">{list?.plugins.find((p) => pluginKey(p.id) === key)?.name ?? key.replace(/^plugin:/, "")}</span>
+              <button className="linkbtn" onClick={() => audio.updateSoundPrefs((p) => ({ ...p, hidden: p.hidden.filter((k) => k !== key) }))}>
+                {t("setShow")}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
       {engine.state === "ready" && (
         <>
           <div className="mhead">{t("setEngine")}</div>

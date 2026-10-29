@@ -23,6 +23,8 @@ import {
   tempoChangesText,
 } from "@fourhands/core";
 import type { AudioLayer } from "./audio-layer.js";
+import type { SoundItem } from "../shared/sound-catalog.js";
+import type { ViewStore } from "./view.js";
 import type { SkillImportResult, SoundBankInfo } from "../shared/protocol.js";
 import type { Bridge } from "./bridge.js";
 import type { BankPreset } from "../shared/soundbank-info.js";
@@ -109,7 +111,55 @@ export class SongActions {
     private readonly lang: Lang,
     private readonly audio: AudioLayer | null = null,
     private readonly bridge: Bridge | null = null,
+    private readonly viewStore: ViewStore | null = null,
   ) {}
+
+  // -------------------------------------------------------------------------
+  // Sonidos (ESTUDIO_INTERFAZ_2.md, 5.3): the browser is the door to a track's sound
+
+  /** A context menu for a panel (the browser's rows). */
+  menu(x: number, y: number, items: MenuItem[]): void {
+    this.editor.openMenu(x, y, items);
+  }
+
+  closeMenus(): void {
+    this.editor.closeMenus();
+  }
+
+  /** Opens the Sonidos tab for this track (it becomes the active one). */
+  openSounds(trackId: string): void {
+    if (!this.song.tracks[trackId]) return;
+    this.editor.closeMenus();
+    if (this.song.context.activeTrackId !== trackId) void this.replica.setContext({ activeTrackId: trackId });
+    this.viewStore?.set({ panelOpen: true, panelTab: "sounds", compactPanel: true });
+  }
+
+  /** A sound of the catalog on a track (double click, Enter, or dropped on its header). */
+  applySound(trackId: string, item: SoundItem): void {
+    const choice = this.choiceOf(item);
+    if (item.target.kind === "plugin") this.choosePlugin(trackId, item.target.plugin);
+    else if (choice) this.setInstrument(trackId, choice);
+    else return;
+    this.audio?.rememberSound(item.key);
+  }
+
+  /** A sound dropped on an empty part of the arrangement: a new track with it. */
+  async addTrackWithSound(item: SoundItem): Promise<void> {
+    const choice = this.choiceOf(item) ?? { kind: "default" as const, item: PALETTE[0]!.items[0]! };
+    const id = await this.addTrack(choice);
+    if (id && item.target.kind === "plugin") this.choosePlugin(id, item.target.plugin);
+    this.audio?.rememberSound(item.key);
+  }
+
+  private choiceOf(item: SoundItem): SoundChoice | null {
+    const t = item.target;
+    if (t.kind === "default") return { kind: "default", item: t.item };
+    if (t.kind === "bank") {
+      const bank = this.audio?.banks.find((b) => b.id === t.bankId);
+      return bank ? { kind: "bank", bank, preset: t.preset } : null;
+    }
+    return null;
+  }
 
   openSettings(section: SettingsSection | null): void {
     this.settings = section;
@@ -187,35 +237,6 @@ export class SongActions {
     void this.run(this.h("hOutputPlugin", { name: track.name, plugin: plugin.name }), [
       { type: "updateTrack", id, changes: { output: "plugin", plugin: { id: plugin.id, name: plugin.name } } },
     ]);
-  }
-
-  /** The instrument plugins the engine knows, to pick one; or look for them first. */
-  private async pluginMenu(id: string, x: number, y: number, scan = false): Promise<void> {
-    const track = this.song.tracks[id];
-    if (!track || !this.bridge) return;
-    const t = this.t;
-    const back = { label: t("soundsBack"), run: () => this.soundMenu(id, x, y) };
-    if (scan) {
-      this.editor.openMenu(x, y, [back, { separator: true }, { label: t("pluginsScanning"), disabled: true }]);
-      this.bridge.log({ type: "engine_scan_asked" });
-    }
-    const { plugins, error } = await this.bridge.enginePlugins(scan);
-    const status = this.audio?.engineStatus.state;
-    if (error) {
-      this.editor.openMenu(x, y, [back, { separator: true }, { label: status === "missing" ? t("engineMissing") : `${t("engineFailed")}: ${error}`, disabled: true }]);
-      return;
-    }
-    const instruments = plugins.filter((p) => p.instrument).sort((a, b) => a.name.localeCompare(b.name));
-    const effects = plugins.length - instruments.length;
-    const close = (fn: () => void) => () => (this.editor.closeMenus(), fn());
-    const items: MenuItem[] = [back, { separator: true }, { label: t("pluginsHeader"), header: true }];
-    if (instruments.length === 0) items.push({ label: t("pluginsNone"), disabled: true });
-    for (const p of instruments) {
-      items.push({ label: p.name, shortcut: p.vendor, active: track.output === "plugin" && track.plugin?.id === p.id, run: close(() => this.choosePlugin(id, p)) });
-    }
-    if (effects > 0) items.push({ label: t("pluginsEffects", { n: effects }), disabled: true });
-    items.push({ separator: true }, { label: t("pluginsScan"), run: () => void this.pluginMenu(id, x, y, true) });
-    this.editor.openMenu(x, y, items);
   }
 
   private outputMenu(id: string, x: number, y: number): void {
@@ -300,9 +321,9 @@ export class SongActions {
     return this.song.trackOrder.length < MAX_TRACKS && this.freeChannel() !== null;
   }
 
-  async addTrack(choice: SoundChoice): Promise<void> {
+  async addTrack(choice: SoundChoice): Promise<string | null> {
     const item = choice.kind === "default" ? choice.item : null;
-    if (!this.canAddTrack() && item?.program !== null) return;
+    if (!this.canAddTrack() && item?.program !== null) return null;
     let spec: { name: string; percussion?: boolean; program?: number; channel?: number; sound?: TrackSound };
     let name: string;
     if (choice.kind === "bank") {
@@ -313,7 +334,10 @@ export class SongActions {
       spec = choice.item.program === null ? { name, percussion: true } : { name, program: choice.item.program, channel: this.freeChannel()! };
     }
     const reply = await this.run(this.h("hTrackAdd", { name }), [{ type: "addTrack", spec }]);
-    if (reply.ok) void this.replica.setContext({ activeTrackId: reply.results[0] as string, selection: [] });
+    if (!reply.ok) return null;
+    const id = reply.results[0] as string;
+    void this.replica.setContext({ activeTrackId: id, selection: [] });
+    return id;
   }
 
   private uniqueName(base: string): string {
@@ -465,23 +489,6 @@ export class SongActions {
     this.editor.openMenu(x, y, items);
   }
 
-  /**
-   * The sound of a track, in one menu (ESTUDIO_INTERFAZ_2.md, 5.2): Four Hands's sounds, your banks
-   * and the plugins. The browser of part 3 replaces it; the door stays the same.
-   */
-  soundMenu(id: string, x: number, y: number): void {
-    const track = this.song.tracks[id];
-    if (!track) return;
-    const t = this.t;
-    const extra: MenuItem[] = [
-      { separator: true },
-      { label: t("pluginsHeader"), header: true },
-      ...(track.plugin ? [{ label: track.plugin.name, active: track.output === "plugin", run: () => (this.editor.closeMenus(), this.choosePlugin(id, track.plugin!)) }] : []),
-      { label: t("soundPlugins"), shortcut: "›", run: () => void this.pluginMenu(id, x, y) },
-    ];
-    this.paletteMenu(x, y, (choice) => this.setInstrument(id, choice), track, extra);
-  }
-
   /** The presets of one installed bank. */
   private bankMenu(x: number, y: number, bank: SoundBankInfo, onPick: (choice: SoundChoice) => void, current?: Track): void {
     const items: MenuItem[] = [
@@ -505,7 +512,7 @@ export class SongActions {
     const close = (fn: () => void) => () => (this.editor.closeMenus(), fn());
     this.editor.openMenu(x, y, [
       { label: track.name, header: true },
-      { label: t("trackMenuSound"), shortcut: this.soundLabel(track), run: () => this.soundMenu(id, x, y) },
+      { label: t("trackMenuSound"), shortcut: this.soundLabel(track), run: () => this.openSounds(id) },
       { label: t("trackMenuMix"), run: () => this.openMixer(id, x, y) },
       {
         label: t("trackMenuOutput"),

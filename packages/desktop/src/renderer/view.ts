@@ -7,8 +7,7 @@ import type { GridValue } from "./roll/geometry.js";
 import type { NoteNames } from "./music.js";
 
 export type Tool = "arrow" | "pencil" | "eraser" | "zoom";
-/** "sounds" (the browser) comes with part 3 of ESTUDIO_INTERFAZ_2.md. */
-export type PanelTab = "track" | "ai";
+export type PanelTab = "track" | "sounds" | "ai";
 
 export interface ViewState {
   tool: Tool;

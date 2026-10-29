@@ -215,6 +215,8 @@ export const CH = {
   pluginFolders: "fh:plugin-folders",
   pluginFoldersAdd: "fh:plugin-folders-add",
   pluginFoldersRemove: "fh:plugin-folders-remove",
+  soundPrefs: "fh:sound-prefs",
+  soundPrefsSet: "fh:sound-prefs-set",
 } as const;
 
 /** The user's folders (Ajustes › Carpetas). */

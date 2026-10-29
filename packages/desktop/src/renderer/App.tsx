@@ -41,7 +41,7 @@ const MAC = /Mac|iPhone|iPad/.test(navigator.platform);
 export function App({ audio, onEditor }: AppProps) {
   const { replica, view, t, bridge, lang } = useApp();
   const editor = useMemo(() => new Editor(replica, view, t), []);
-  const actions = useMemo(() => new SongActions(replica, editor, t, lang, audio, bridge), []);
+  const actions = useMemo(() => new SongActions(replica, editor, t, lang, audio, bridge, view), []);
   useSyncExternalStore(audio.subscribe, audio.getVersion);
   const pianoMode = audio.pianoMode;
   useEffect(() => {

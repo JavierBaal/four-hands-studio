@@ -1,7 +1,6 @@
 /**
  * The side column (ESTUDIO_INTERFAZ_2.md, 5.1–5.2; sketch `interfaz2_1_pista.png`): tabs with icon
- * and name, Pista (the active track's card) and IA (the activity panel). The browser of sounds
- * arrives as a third tab in part 3. Below 1000 px it opens over the piano roll from the rail and
+ * and name, Pista (the active track's card), Sonidos (the browser, part 3) and IA (the activity panel). Below 1000 px it opens over the piano roll from the rail and
  * closes with Esc or its arrow.
  */
 import { useEffect, useSyncExternalStore } from "react";
@@ -11,7 +10,8 @@ import { activeTrack, useActions, useApp, useSong, useView } from "../context.js
 import { TRACK_PALETTE, trackColor, trackColorIndex } from "../theme.js";
 import type { PanelTab } from "../view.js";
 import { ActivityContent } from "./ActivityPanel.js";
-import { AiIcon, BankIcon, ChevronRight, KeysIcon, MidiIcon, PlugIcon, TrackIcon, WindowIcon } from "./Icons.js";
+import { SoundsBrowser } from "./SoundsBrowser.js";
+import { AiIcon, BankIcon, LibraryIcon, ChevronRight, KeysIcon, MidiIcon, PlugIcon, TrackIcon, WindowIcon } from "./Icons.js";
 import { MixRows } from "./Mixer.js";
 
 /** The icon of where a track's sound comes from (header, card, toolbar). */
@@ -47,6 +47,7 @@ export function SidePanel({ audio, compact }: { audio: AudioLayer; compact: bool
     <aside className={compact ? "activity side over" : "activity side"} aria-label={t("sidePanel")}>
       <div className="ptabs" role="tablist" aria-label={t("sidePanel")}>
         {tab("track", t("tabTrack"), TrackIcon)}
+        {tab("sounds", t("tabSounds"), LibraryIcon)}
         {tab("ai", t("tabAi"), AiIcon)}
         <span className="grow" />
         <button className="ibtn pfold" onClick={() => view.set(compact ? { compactPanel: false } : { panelOpen: false })} aria-label={t("foldPanel")} title={t("foldPanel")}>
@@ -54,7 +55,7 @@ export function SidePanel({ audio, compact }: { audio: AudioLayer; compact: bool
         </button>
       </div>
       <div className="pbody" role="tabpanel">
-        {v.panelTab === "track" ? <TrackCard audio={audio} /> : <ActivityContent />}
+        {v.panelTab === "track" ? <TrackCard audio={audio} /> : v.panelTab === "sounds" ? <SoundsBrowser audio={audio} /> : <ActivityContent />}
       </div>
     </aside>
   );
@@ -100,14 +101,8 @@ function TrackCard({ audio }: { audio: AudioLayer }) {
           </div>
         </div>
         <div className="tcbtns">
-          <button
-            className="btn"
-            onClick={(e) => {
-              const r = e.currentTarget.getBoundingClientRect();
-              actions.soundMenu(track.id, r.left, r.bottom + 4);
-            }}
-          >
-            {t("cardChange")}
+          <button className="btn" onClick={() => actions.openSounds(track.id)}>
+            <LibraryIcon /> {t("cardChange")}
           </button>
           {track.output === "plugin" && track.plugin && (
             <button className="btn" disabled={!pluginReady} onClick={() => void audio.showPlugin(track.channel)}>

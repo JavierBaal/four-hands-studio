@@ -20,6 +20,7 @@ import { type SessionOptions, SongSession } from "./session.js";
 import { SoundLibrary } from "./sound-library.js";
 import { EngineHost } from "./engine/host.js";
 import type { EngineLoadResult, EngineMidiEvent, EnginePlugin } from "../shared/engine.js";
+import { CATEGORIES, RECENT_MAX, type SoundCategory, type SoundPrefs } from "../shared/sound-catalog.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url)); // packages/desktop/dist
 const packageDir = path.resolve(here, "..");
@@ -65,6 +66,8 @@ interface Settings {
   pluginFolders?: string[];
   /** Last full plugin scan, ms since the epoch. */
   pluginsScannedAt?: number;
+  /** The Sonidos browser (ESTUDIO_INTERFAZ_2.md, 5.3): favourites, recents, hidden plugins, moved categories. */
+  soundPrefs?: SoundPrefs;
 }
 
 const aiTone = (): AiTone => (readSettings().aiTone === "gentle" ? "gentle" : DEFAULT_AI_TONE);
@@ -422,6 +425,17 @@ function pluginFolders(): { system: string[]; user: string[] } {
   return { system: [...systemPluginFolders(), ...(test && fs.existsSync(test) ? [test] : [])], user: readSettings().pluginFolders ?? [] };
 }
 
+/** What the window sends, checked: lists of short strings and known categories only. */
+function cleanSoundPrefs(raw: unknown): SoundPrefs {
+  const r = (raw ?? {}) as Partial<SoundPrefs>;
+  const keys = (v: unknown, max: number) => (Array.isArray(v) ? v.filter((k): k is string => typeof k === "string" && k.length < 2100).slice(0, max) : []);
+  const categories: Record<string, SoundCategory> = {};
+  if (r.categories && typeof r.categories === "object") {
+    for (const [k, c] of Object.entries(r.categories)) if (k.length < 2100 && (CATEGORIES as readonly string[]).includes(c as string)) categories[k] = c as SoundCategory;
+  }
+  return { favorites: keys(r.favorites, 500), recents: keys(r.recents, RECENT_MAX), hidden: keys(r.hidden, 2000), categories };
+}
+
 function userFolders(): Record<FolderKind, string> {
   return { songs: songsDir(), backups: path.join(dataDir(), "copias"), sounds: soundsDir(), skills: userSkillsDir() };
 }
@@ -594,6 +608,12 @@ function registerIpc(): void {
     else if (tool === "devTools") win?.webContents.toggleDevTools();
   });
   ipcMain.handle(CH.pluginFolders, () => pluginFolders());
+  ipcMain.handle(CH.soundPrefs, () => cleanSoundPrefs(readSettings().soundPrefs));
+  ipcMain.handle(CH.soundPrefsSet, (_e, prefs: unknown) => {
+    const next = cleanSoundPrefs(prefs);
+    writeSettings({ soundPrefs: next });
+    return next;
+  });
   ipcMain.handle(CH.pluginFoldersAdd, async () => {
     if (!win) return pluginFolders();
     const pick = await dialog.showOpenDialog(win, { properties: ["openDirectory"] });
