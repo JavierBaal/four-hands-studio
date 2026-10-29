@@ -29,6 +29,7 @@ import {
 } from "@fourhands/core";
 import { type FileState, type PatchMessage, type Reply, type Request, type Snapshot, type UndoState, undoStateOf } from "../shared/protocol.js";
 import { backup, uniquePath, writeAtomic } from "./files.js";
+import { packStates, unpackStates } from "./plugin-watch.js";
 
 export const SONG_EXT = ".fourhands";
 
@@ -318,7 +319,7 @@ export class SongSession {
       }
       let text: string;
       try {
-        text = serializeSong({ song: this.doc.song, history: this.doc.historyForFile(), proposals: this.doc.proposals, pluginStates });
+        text = serializeSong({ song: this.doc.song, history: this.doc.historyForFile(), proposals: this.doc.proposals, pluginStates: packStates(pluginStates) });
       } catch (error) {
         // A plugin's state the file cannot hold must not stop the song from saving (29/10/2026:
         // every save failed in silence and a whole session was lost). Save the song without them.
@@ -373,5 +374,5 @@ async function loadSource(options: SessionOptions, source: string): Promise<{ do
     return { doc: new SongDocument(song, { now }), file, imported: true, pluginStates: {} };
   }
   const opened = parseSongFile(await fs.promises.readFile(source, "utf8"));
-  return { doc: new SongDocument(opened.song, { now, history: opened.history, proposals: opened.proposals as Proposal[] }), file: source, imported: false, pluginStates: opened.pluginStates ?? {} };
+  return { doc: new SongDocument(opened.song, { now, history: opened.history, proposals: opened.proposals as Proposal[] }), file: source, imported: false, pluginStates: unpackStates(opened.pluginStates ?? {}) };
 }

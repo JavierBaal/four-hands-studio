@@ -5,6 +5,7 @@ import { exportMidi, importMidi, parseSongFile } from "@fourhands/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { FileState, PatchMessage } from "../shared/protocol.js";
 import { backup, uniquePath, writeAtomic } from "./files.js";
+import { unpackStates } from "./plugin-watch.js";
 import { SongSession, type SessionOptions } from "./session.js";
 
 const DILATACION = path.resolve(__dirname, "../../../core/test-data/Dilatacion.mid");
@@ -235,7 +236,9 @@ describe("plugin states (F2.1): what Kontakt had loaded comes back with the song
     engineSays = { [t]: { id: kontakt.id, data: b64("violins") } };
     await s.saveNow();
     const file = s.fileState().path;
-    expect(parseSongFile(fs.readFileSync(file, "utf8")).pluginStates).toEqual({ [t]: { id: kontakt.id, data: b64("violins") } });
+    const saved = parseSongFile(fs.readFileSync(file, "utf8")).pluginStates!;
+    expect(saved[t]!.data.startsWith("z")).toBe(true);
+    expect(unpackStates(saved)).toEqual({ [t]: { id: kontakt.id, data: b64("violins") } });
     // The engine restarted and has nothing yet: the saved state stays.
     engineSays = {};
     await s.saveNow();
@@ -263,17 +266,17 @@ describe("plugin states (F2.1): what Kontakt had loaded comes back with the song
     again.dispose();
   });
 
-  it("saves the song without plugin states the file cannot hold, and keeps saving after", async () => {
+  it("packs any state the engine sends, whatever its characters, and keeps saving after", async () => {
     const dropped: string[] = [];
     let engineSays: Record<string, { id: string; data: string }> = {};
     const s = await SongSession.createNew(options({ collectPluginStates: async () => engineSays, onPluginStatesDropped: (e) => dropped.push(e) }));
     const t = s.snapshot().song.trackOrder[0]!;
     s.handle({ type: "run", label: "Kontakt", commands: [{ type: "updateTrack", id: t, changes: { output: "plugin", plugin: kontakt } }] });
-    engineSays = { [t]: { id: kontakt.id, data: "not allowed: spaces & <tags>" } };
+    engineSays = { [t]: { id: kontakt.id, data: "spaces & <tags> ñ" } };
     await s.saveNow();
     const file = s.fileState().path;
-    expect(dropped).toHaveLength(1);
-    expect(parseSongFile(fs.readFileSync(file, "utf8")).song.tracks[t]!.plugin).toEqual(kontakt);
+    expect(dropped).toHaveLength(0);
+    expect(unpackStates(parseSongFile(fs.readFileSync(file, "utf8")).pluginStates!)[t]!.data).toBe("spaces & <tags> ñ".replace("ñ", "\u00f1"));
     s.handle({ type: "run", label: "Nombre", commands: [{ type: "updateTrack", id: t, changes: { name: "Coro" } }] });
     await s.saveNow();
     expect(parseSongFile(fs.readFileSync(file, "utf8")).song.tracks[t]!.name).toBe("Coro");

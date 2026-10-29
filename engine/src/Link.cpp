@@ -199,6 +199,14 @@ juce::var Link::handle (const juce::var& m, Connection& from)
         return obj ({ { "type", "state" }, { "slot", slot }, { "data", engine.state (slot).toBase64Encoding() } });
     }
 
+    if (type == "windows")
+    {
+        juce::Array<juce::var> slots;
+        for (auto slot : engine.openWindows())
+            slots.add (slot);
+        return obj ({ { "type", "windows" }, { "slots", slots } });
+    }
+
     if (type == "setState")
     {
         juce::MemoryBlock data;
