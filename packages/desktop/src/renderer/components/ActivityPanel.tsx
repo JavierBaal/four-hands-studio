@@ -13,7 +13,7 @@ import { activeTrack, useAi, useApp, useClock, useSong, useView } from "../conte
 import { barRange, shortPosition } from "../music.js";
 import { ActiveSkills } from "./SkillsPanel.js";
 import { ConceptCard } from "./Concept.js";
-import { AiIcon, ChevronLeft, TrackIcon } from "./Icons.js";
+import { AiIcon, ChevronLeft, LibraryIcon, TrackIcon } from "./Icons.js";
 import type { PanelTab } from "../view.js";
 
 function ago(t: Translate, at: number, now: number): string {
@@ -174,6 +174,9 @@ export function Rail() {
       </button>
       <button className={v.compactPanel && v.panelTab === "track" ? "ibtn on" : "ibtn"} onClick={() => open("track")} aria-label={t("tabTrack")} title={t("tabTrack")}>
         <TrackIcon />
+      </button>
+      <button className={v.compactPanel && v.panelTab === "sounds" ? "ibtn on" : "ibtn"} onClick={() => open("sounds")} aria-label={t("tabSounds")} title={t("tabSounds")}>
+        <LibraryIcon />
       </button>
       <button className={v.compactPanel && v.panelTab === "ai" ? "ibtn on aitab" : "ibtn aitab"} onClick={() => open("ai")} aria-label={t("tabAi")} title={t("tabAi")}>
         <AiIcon />

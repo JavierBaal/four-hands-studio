@@ -57,6 +57,8 @@ const CH = {
   pluginFolders: "fh:plugin-folders",
   pluginFoldersAdd: "fh:plugin-folders-add",
   pluginFoldersRemove: "fh:plugin-folders-remove",
+  soundPrefs: "fh:sound-prefs",
+  soundPrefsSet: "fh:sound-prefs-set",
 } as const;
 
 function listen(channel: string, listener: (value: unknown) => void): () => void {
@@ -107,7 +109,7 @@ contextBridge.exposeInMainWorld("fh", {
   onEngineStatus: (l: (v: unknown) => void) => listen(CH.engineStatusChanged, l),
   enginePlugins: (scan: boolean) => ipcRenderer.invoke(CH.enginePlugins, scan),
   onEngineScanning: (l: (v: unknown) => void) => listen(CH.engineScanning, l),
-  engineLoad: (slot: number, id: string) => ipcRenderer.invoke(CH.engineLoad, slot, id),
+  engineLoad: (slot: number, id: string, trackId?: string) => ipcRenderer.invoke(CH.engineLoad, slot, id, trackId),
   engineShow: (slot: number) => ipcRenderer.invoke(CH.engineShow, slot),
   engineMidi: (events: unknown[]) => ipcRenderer.send(CH.engineMidi, events),
   enginePanic: () => ipcRenderer.send(CH.enginePanic),
@@ -117,4 +119,6 @@ contextBridge.exposeInMainWorld("fh", {
   pluginFolders: () => ipcRenderer.invoke(CH.pluginFolders),
   addPluginFolder: () => ipcRenderer.invoke(CH.pluginFoldersAdd),
   removePluginFolder: (dir: string) => ipcRenderer.invoke(CH.pluginFoldersRemove, dir),
+  soundPrefs: () => ipcRenderer.invoke(CH.soundPrefs),
+  setSoundPrefs: (prefs: unknown) => ipcRenderer.invoke(CH.soundPrefsSet, prefs),
 });

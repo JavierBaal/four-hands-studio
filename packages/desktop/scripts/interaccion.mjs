@@ -369,8 +369,10 @@ const added = s1.tracks[s1.trackOrder.at(-1)];
 check("track added", s1.trackOrder.length === tracksBefore + 1 && added.program === 42 && added.name === "Chelos", JSON.stringify(added));
 check("new track active", s1.context.activeTrackId === added.id);
 check("add label", (await lastLabel()) === "añadiste la pista Chelos", await lastLabel());
+// The sound in the piano roll bar opens Sonidos (interfaz 2, parte 3): a double click picks it.
 await page.locator(".rsubb").click();
-await menuItem("Violas").click();
+await page.locator(".sndsearch input").fill("violas");
+await page.locator(".sndit", { hasText: /^Violas/ }).dblclick();
 await settle();
 check("instrument changed", (await song()).tracks[added.id].program === 41);
 check("instrument label", (await lastLabel()) === "cambiaste el instrumento de Chelos a Violas", await lastLabel());
@@ -514,24 +516,30 @@ check("chord removed", (await song()).harmony[String(BAR + 1920)] === undefined)
 // 26. Sound banks: the palette lists the installed banks; a bank opens its presets; the track takes
 // one (its General MIDI program stays); going back to the default bank clears it.
 await page.keyboard.press("Escape");
+// Interfaz 2, parte 3: the banks are in the Sonidos browser, with Four Hands's sounds.
 await page.locator(".rsubb").click();
-const sonatinaItem = page.locator(".menu [role=menuitem]", { hasText: "Sonatina Symphonic Orchestra" }); // with its "5 ›"
-check("palette lists installed banks", (await menuItem("YDP Grand Piano").count()) === 1 && (await sonatinaItem.count()) === 1);
-await sonatinaItem.click();
-await menuItem("1st Violins Sustain").click();
+await page.locator(".sndsearch input").fill("");
+await page.getByRole("radio", { name: "Fabricante" }).click();
+await settle();
+check("Sonidos lists the installed banks", (await page.locator(".sndgh .sndgname", { hasText: "YDP Grand Piano" }).count()) === 1 && (await page.locator(".sndgh .sndgname", { hasText: "Sonatina Symphonic Orchestra" }).count()) === 1);
+await page.getByRole("radio", { name: "Categoría" }).click();
+await page.locator(".sndsearch input").fill("1st violins");
+await page.locator(".sndit", { hasText: "1st Violins Sustain" }).dblclick();
 await settle();
 const active = (await song()).context.activeTrackId;
 let tr = (await song()).tracks[active];
 check("track takes a bank preset", tr.sound && tr.sound.bank === "Sonatina_Symphonic_Orchestra.sf2" && tr.sound.program === 2, JSON.stringify(tr.sound));
 check("instrument label shows the preset", (await page.locator(".rsubb").innerText()).includes("1st Violins Sustain"), await page.locator(".rsubb").innerText());
 check("bank label in history", (await lastLabel()).endsWith("a 1st Violins Sustain"), await lastLabel());
-await page.locator(".rsubb").click();
-await menuItem("Violines").click();
+await page.locator(".sndsearch input").fill("violines");
+await page.locator(".sndit", { hasText: /^Violines/ }).dblclick();
 await settle();
 tr = (await song()).tracks[active];
 check("default bank clears the sound", !tr.sound && tr.program === 40, JSON.stringify(tr));
-await page.locator(".rsubb").click();
-await menuItem("Conseguir más sonidos…").click();
+await page.locator(".sndsearch input").fill("");
+await page.getByRole("button", { name: "Ajustes", exact: true }).click();
+await page.locator('.setnavb[data-section="sound"]').click();
+await settle();
 check("help card", (await page.locator(".soundshelp a").count()) === 3);
 await page.keyboard.press("Escape");
 check("help card closes", (await page.locator(".soundshelp").count()) === 0);
@@ -579,7 +587,9 @@ check("wheel glides", mid > sy0 && mid < sy0 + 200 && Math.abs(end - (sy0 + 200)
 // palette at the same point (Fran, 14/10/2026: the last presets were out of reach).
 await page.setViewportSize({ width: 1440, height: 520 });
 await page.waitForTimeout(200);
-await page.locator(".rsubb").click();
+// The palette of «Añadir pista» is still a menu.
+const activeBeforeAdd = (await song()).context.activeTrackId;
+await page.locator(".addtrack button").click();
 const inside = async () => {
   const box = await page.locator(".menu").boundingBox();
   return box.y >= 0 && box.y + box.height <= 520;
@@ -593,14 +603,16 @@ await lastPreset.scrollIntoViewIfNeeded();
 await lastPreset.click();
 await settle();
 check("the last preset can be reached", (await song()).tracks[(await song()).context.activeTrackId].sound?.name === "Cello Section Sustai", JSON.stringify((await song()).tracks[(await song()).context.activeTrackId].sound));
-// The palette opened from a track's menu (a short list) used to keep the short list's place and
-// run off the bottom.
+// That added a track: take it away and go back to the track we were on.
+await page.evaluate(() => window.fhTest.replica.undoLast());
+await page.evaluate((id) => window.fhTest.replica.setContext({ activeTrackId: id }), activeBeforeAdd);
+await settle();
+// Sonidos in a short window: the list scrolls inside the panel.
 await page.keyboard.press("Escape");
-const hdr = await page.locator(".thdr").first().boundingBox();
-await page.mouse.click(hdr.x + 40, hdr.y + 10, { button: "right" });
-await page.locator(".menu [role=menuitem]", { hasText: "Sonido…" }).click();
-check("palette from the track menu fits the window", await inside(), JSON.stringify(await page.locator(".menu").boundingBox()));
-await page.keyboard.press("Escape");
+await page.locator(".rsubb").click();
+await settle();
+const panelBox = await page.locator(".pbody").boundingBox();
+check("Sonidos fits a short window", panelBox.y + panelBox.height <= 520, JSON.stringify(panelBox));
 await page.setViewportSize({ width: 1440, height: 1100 });
 
 // H3.2: volume and pan in the track header, typed values, colours and the label over a note.
@@ -725,6 +737,7 @@ check("zoom tool on the arrangement", !!az && az.span > 0, JSON.stringify(az));
 await page.keyboard.press("1");
 
 // The song concept (20/10/2026): written in the activity panel, one undo step, signed by the user.
+await page.getByRole("tab", { name: "IA" }).click(); // the concept lives in the IA tab
 await page.locator(".concept .dashbtn").click();
 await page.keyboard.type("Dura 1:12, como los créditos");
 await page.keyboard.press("Shift+Enter");
@@ -831,10 +844,13 @@ await settle();
 // Fase 2, prueba S2 and interfaz 2: a track sounds through a plugin, chosen in its Sonido menu; its window opens.
 await page.locator(".thdr").nth(1).click({ button: "right", position: { x: 120, y: 12 } });
 await page.getByRole("menuitem", { name: /^Sonido…/ }).click();
-await page.getByRole("menuitem", { name: /^Elegir un plugin…/ }).click();
-await page.waitForSelector('[role="menuitem"]:has-text("Kontakt 8")');
-check("the plugin menu lists the instruments, not the effects", (await page.getByRole("menuitem", { name: /Ozone/ }).count()) === 0 && (await page.getByRole("menuitem", { name: /Efectos \(1\)/ }).count()) === 1);
-await page.getByRole("menuitem", { name: /^Kontakt 8/ }).click();
+await page.waitForSelector(".snd .sndsearch input");
+await settle();
+check("Sonido… opens the Sonidos tab for that track", (await page.getByRole("tab", { name: "Sonidos" }).getAttribute("aria-selected")) === "true" && (await page.locator(".sndfor b").innerText()) === (await song()).tracks[(await song()).trackOrder[1]].name);
+await page.locator(".sndsearch input").fill("kontakt");
+await page.waitForSelector('.sndit[data-sound^="plugin:"]');
+check("the browser finds the plugin, not the effects", (await page.locator(".sndit .nm", { hasText: "Ozone" }).count()) === 0 && (await page.locator(".sndit").count()) === 1);
+await page.locator(".sndit", { hasText: "Kontakt 8" }).dblclick();
 await settle();
 const pluginId = (await song()).trackOrder[1];
 check("the track sounds through Kontakt", (await song()).tracks[pluginId].output === "plugin" && (await song()).tracks[pluginId].plugin?.name === "Kontakt 8");
@@ -871,18 +887,77 @@ await page.locator(".tcard .tcout").getByRole("radio", { name: "Four Hands" }).c
 await settle();
 check("…and back to Four Hands, to its plugin", (await song()).tracks[pluginId].output === "plugin");
 await page.locator(".tcard").getByRole("button", { name: "Cambiar…" }).click();
-await page.getByRole("menuitem", { name: "Piano", exact: true }).click();
+await settle();
+check("Cambiar… opens Sonidos", (await page.locator(".snd").count()) === 1);
+await page.locator(".sndsearch input").fill("piano");
+await page.locator(".sndit").filter({ has: page.locator(".nm", { hasText: /^Piano$/ }) }).first().dblclick();
+await settle();
+await page.getByRole("tab", { name: "Pista" }).click();
 await settle();
 check("a Four Hands sound replaces the plugin: one sound per track", !(await song()).tracks[pluginId].output && !(await song()).tracks[pluginId].plugin && /Piano/.test(await page.locator(".tcard .tcsoundname").innerText()));
 await page.locator(".thdr").nth(1).locator(".tsnd").click();
-check("the sound in the header opens the sound menu", (await page.getByRole("menuitem", { name: /^Elegir un plugin…/ }).count()) === 1);
-await page.keyboard.press("Escape");
+await settle();
+check("the sound in the header opens Sonidos", (await page.getByRole("tab", { name: "Sonidos" }).getAttribute("aria-selected")) === "true");
+await page.getByRole("tab", { name: "Pista" }).click();
 const upBefore = (await song()).trackOrder.indexOf(pluginId);
 await page.locator(".tcfoot").getByRole("button", { name: /Bajar/ }).click();
 await settle();
 check("the card moves the track", (await song()).trackOrder.indexOf(pluginId) === upBefore + 1);
 await page.evaluate(() => window.fhTest.replica.undoLast());
 await settle();
+// Interfaz 2, parte 3: the Sonidos browser.
+await page.getByRole("tab", { name: "Sonidos" }).click();
+await page.locator(".sndsearch input").fill("");
+await settle();
+check("by category, the group of the current sound is open", (await page.locator(".sndgh:not(.closed)").count()) === 1 && (await page.locator(".sndit.cur").count()) === 1);
+await page.locator(".sndsearch input").fill("ORGANO");
+await settle();
+check("search ignores accents and case", (await page.locator(".sndit .nm").allInnerTexts()).join() === "Órgano");
+await page.locator(".sndsearch input").fill("");
+await page.getByRole("radio", { name: "Plugins" }).click();
+await settle();
+check("the Plugins filter shows only plugins", (await page.locator(".sndit").count()) === 2 && (await page.locator('.sndit:not([data-sound^="plugin:"])').count()) === 0);
+await page.locator(".sndit", { hasText: "Kontakt 8" }).locator(".st").click();
+await settle();
+await page.getByRole("radio", { name: "Favoritos" }).click();
+await settle();
+check("a star makes a favourite, and it is kept", (await page.locator(".sndit").count()) === 1 && (await page.evaluate(() => window.fhTest.ai.soundPrefs())).favorites.includes("plugin:VST3-Kontakt 8-1"));
+await page.getByRole("radio", { name: "Todo" }).click();
+await page.getByRole("radio", { name: "Fabricante" }).click();
+await settle();
+check("grouped by vendor, Four Hands's own first", /de serie/.test(await page.locator(".sndgh .sndgname").first().innerText()));
+await page.getByRole("radio", { name: "Categoría" }).click();
+await page.locator(".sndsearch input").fill("synth");
+await settle();
+const dropTo = (await song()).trackOrder[3];
+await page.locator(".sndit", { hasText: "Four Hands Test Synth" }).dragTo(page.locator(".thdr").nth(3), { targetPosition: { x: 100, y: 12 } });
+await settle();
+check("dragged onto a header, the sound goes to that track", (await song()).tracks[dropTo].plugin?.name === "Four Hands Test Synth");
+const countBeforeDrop = (await song()).trackOrder.length;
+await page.locator(".sndsearch input").fill("arpa");
+await settle();
+await page.locator(".sndit", { hasText: "Arpa" }).dragTo(page.locator(".addtrack"));
+await settle();
+check("dragged under the tracks, it makes a new track with it", (await song()).trackOrder.length === countBeforeDrop + 1 && /Arpa/.test((await song()).tracks[(await song()).trackOrder.at(-1)].name));
+await page.evaluate(() => window.fhTest.replica.undoLast());
+await page.evaluate(() => window.fhTest.replica.undoLast());
+await settle();
+await page.locator(".sndsearch input").fill("test synth");
+await settle();
+await page.locator(".sndit", { hasText: "Four Hands Test Synth" }).click({ button: "right" });
+await page.getByRole("menuitem", { name: "Esconder este plugin" }).click();
+await settle();
+check("a plugin can be hidden", (await page.locator(".sndit").count()) === 0);
+await page.getByRole("button", { name: "Ajustes", exact: true }).click();
+await page.locator('.setnavb[data-section="plugins"]').click();
+await settle();
+check("Ajustes › Plugins lists it and brings it back", (await page.locator(".sethidden li").count()) === 1);
+await page.locator(".sethidden").getByRole("button", { name: "Mostrar" }).click();
+await page.keyboard.press("Escape");
+await settle();
+check("…shown again", (await page.locator(".sndit").count()) === 1);
+await page.locator(".sndsearch input").fill("");
+
 await page.getByRole("tab", { name: "IA" }).click();
 await settle();
 check("the IA tab is the activity panel", (await page.locator(".pbody .concept").count()) === 1);

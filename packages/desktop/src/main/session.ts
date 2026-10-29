@@ -22,6 +22,7 @@ import {
   starterSong,
   exportMidi,
   importMidi,
+  type PluginStates,
   parseSongFile,
   runCommands,
   serializeSong,
@@ -45,6 +46,12 @@ export interface SessionOptions {
   onFile?: (state: FileState) => void;
   /** A different song was loaded: the window must ask for a new snapshot. */
   onReload?: () => void;
+  /**
+   * F2.1: what each plugin has loaded now, by track (from the engine), asked for on every save.
+   * Tracks it cannot answer for (the engine is off, the plugin is still loading) keep what the
+   * file had.
+   */
+  collectPluginStates?: (song: Song) => Promise<PluginStates>;
 }
 
 export class SongSession {
@@ -60,6 +67,8 @@ export class SongSession {
   private unsubscribe: () => void = () => {};
   private readonly patchListeners = new Set<(message: PatchMessage) => void>();
   private readonly now: () => number;
+  /** What each plugin had loaded, as last read from the file or the engine (F2.1). */
+  private pluginStates: PluginStates = {};
 
   private constructor(
     private readonly options: SessionOptions,
@@ -87,6 +96,7 @@ export class SongSession {
   static async open(options: SessionOptions, source: string): Promise<SongSession> {
     const loaded = await loadSource(options, source);
     const session = new SongSession(options, loaded.doc, loaded.file);
+    session.pluginStates = loaded.pluginStates;
     session.savedAt = loaded.imported ? null : session.now();
     if (loaded.imported) await session.saveNow();
     return session;
@@ -97,6 +107,7 @@ export class SongSession {
     const loaded = await loadSource(this.options, source);
     await this.flush();
     this.swap(loaded.doc, loaded.file);
+    this.pluginStates = loaded.pluginStates;
     this.savedAt = loaded.imported ? null : this.now();
     if (loaded.imported) await this.saveNow();
     this.options.onReload?.();
@@ -107,6 +118,7 @@ export class SongSession {
     await this.flush();
     const file = uniquePath(this.options.songsDir, this.options.untitledName, SONG_EXT);
     this.swap(new SongDocument(starterSong(this.options.untitledName), { now: this.now }), file);
+    this.pluginStates = {};
     this.savedAt = null;
     await this.saveNow();
     this.options.onReload?.();
@@ -254,9 +266,42 @@ export class SongSession {
     else await this.saving;
   }
 
+  /** The state of a track's plugin kept with the song, if it is that plugin's (F2.1). */
+  pluginState(trackId: string, pluginId: string): string | null {
+    const s = this.pluginStates[trackId];
+    return s && s.id === pluginId ? s.data : null;
+  }
+
+  /** Something changed inside a plugin (its window): save it with the song soon. */
+  pluginsChanged(): void {
+    this.markDirty();
+  }
+
+  /** Only the tracks that still play that plugin keep a state; fresh ones replace old ones. */
+  private async freshPluginStates(): Promise<PluginStates> {
+    const song = this.doc.song;
+    let fresh: PluginStates = {};
+    try {
+      fresh = (await this.options.collectPluginStates?.(song)) ?? {};
+    } catch {
+      // The engine did not answer: what the file had is kept.
+    }
+    const out: PluginStates = {};
+    for (const [trackId, track] of Object.entries(song.tracks)) {
+      if (!track.plugin) continue;
+      const now = fresh[trackId];
+      const before = this.pluginStates[trackId];
+      if (now && now.id === track.plugin.id && now.data) out[trackId] = now;
+      else if (before && before.id === track.plugin.id) out[trackId] = before;
+    }
+    this.pluginStates = out;
+    return out;
+  }
+
   private async write(): Promise<void> {
     const file = this.file;
-    const text = serializeSong({ song: this.doc.song, history: this.doc.history, proposals: this.doc.proposals });
+    const pluginStates = await this.freshPluginStates();
+    const text = serializeSong({ song: this.doc.song, history: this.doc.history, proposals: this.doc.proposals, pluginStates });
     try {
       const last = this.lastBackup.get(file);
       if (last === undefined || this.now() - last >= (this.options.backupEveryMs ?? 5 * 60_000)) {
@@ -296,14 +341,14 @@ export class SongSession {
   }
 }
 
-async function loadSource(options: SessionOptions, source: string): Promise<{ doc: SongDocument; file: string; imported: boolean }> {
+async function loadSource(options: SessionOptions, source: string): Promise<{ doc: SongDocument; file: string; imported: boolean; pluginStates: PluginStates }> {
   const ext = path.extname(source).toLowerCase();
   const now = options.now ?? Date.now;
   if (ext === ".mid" || ext === ".midi") {
     const { song } = importMidi(new Uint8Array(await fs.promises.readFile(source)));
     const file = uniquePath(options.songsDir, path.basename(source, path.extname(source)), SONG_EXT);
-    return { doc: new SongDocument(song, { now }), file, imported: true };
+    return { doc: new SongDocument(song, { now }), file, imported: true, pluginStates: {} };
   }
   const opened = parseSongFile(await fs.promises.readFile(source, "utf8"));
-  return { doc: new SongDocument(opened.song, { now, history: opened.history, proposals: opened.proposals as Proposal[] }), file: source, imported: false };
+  return { doc: new SongDocument(opened.song, { now, history: opened.history, proposals: opened.proposals as Proposal[] }), file: source, imported: false, pluginStates: opened.pluginStates ?? {} };
 }

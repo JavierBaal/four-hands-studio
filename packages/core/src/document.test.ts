@@ -250,6 +250,16 @@ describe("track output through a plugin (fase 2, prueba S2)", () => {
     const back = parseSongFile(serializeSong({ song: doc.song, history: doc.history, proposals: [] }));
     expect(back.song.tracks[t]!.output).toBe("plugin");
     expect(back.song.tracks[t]!.plugin).toEqual(kontakt);
+    expect(back.pluginStates).toBeUndefined();
+  });
+
+  it("keeps what each plugin had loaded (F2.1), outside the song and its undo", () => {
+    const { doc, t } = docWithTrack();
+    doc.transact({ actor: USER, label: "Kontakt" }, (tx) => updateTrack(tx, t, { output: "plugin", plugin: kontakt }));
+    const pluginStates = { [t]: { id: kontakt.id, data: Buffer.from("Kontakt multi: violins").toString("base64") } };
+    const back = parseSongFile(serializeSong({ song: doc.song, history: doc.history, proposals: [], pluginStates }));
+    expect(back.pluginStates).toEqual(pluginStates);
+    expect(() => serializeSong({ song: doc.song, history: doc.history, proposals: [], pluginStates: { [t]: { id: kontakt.id, data: "not base64!" } } })).toThrow(/invalid song/);
   });
 });
 

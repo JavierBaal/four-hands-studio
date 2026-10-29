@@ -55,6 +55,24 @@ async function start(): Promise<void> {
               { id: "VST3-Kontakt 8-1", name: "Kontakt 8", vendor: "Native Instruments", category: "Instrument|Sampler", format: "VST3", instrument: true },
               { id: "VST3-Four Hands Test Synth-2", name: "Four Hands Test Synth", vendor: "Four Hands", category: "Instrument|Synth", format: "VST3", instrument: true },
               { id: "VST3-Ozone 11-3", name: "Ozone 11", vendor: "iZotope", category: "Fx|Mastering", format: "VST3", instrument: false },
+              // ?plugins=fran: instruments like the ones on Fran's computer (prueba S2), for the captures.
+              ...(params.get("plugins") === "fran"
+                ? (
+                    [
+                      ["Omnisphere", "Spectrasonics", "Instrument|Synth"],
+                      ["Serum 2", "Xfer Records", "Instrument|Synth"],
+                      ["Nexus", "reFX", "Instrument|Synth"],
+                      ["EZkeys 2", "Toontrack", "Instrument"],
+                      ["EZdrummer 3", "Toontrack", "Instrument|Drum"],
+                      ["Grand Rhapsody Piano Stereo", "Waves", "Instrument"],
+                      ["Electric88 Stereo", "Waves", "Instrument"],
+                      ["CR8 Sampler Stereo", "Waves", "Instrument|Sampler"],
+                      ["Bass Slapper Stereo", "Waves", "Instrument"],
+                      ["Captain Chords Epic", "Mixed In Key", "Instrument"],
+                      ["Serato Sample", "Serato", "Instrument|Sampler"],
+                    ] as const
+                  ).map(([name, vendor, category], i) => ({ id: `VST3-${name}-${i + 10}`, name, vendor, category, format: "VST3", instrument: true }))
+                : []),
             ],
           }),
     });

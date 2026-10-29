@@ -24,6 +24,7 @@ import {
 } from "@fourhands/core";
 import { GM_NOTES, PALETTE, type PaletteItem, instrumentName } from "../../shared/instruments.js";
 import type { BankPreset, SoundProfile } from "../../shared/soundbank-info.js";
+import type { EnginePlugin } from "../../shared/engine.js";
 import type { AiApply, AiTone, SoundBankInfo } from "../../shared/protocol.js";
 
 /** What the window tells the main process about what the user sees (not part of the song). */
@@ -231,7 +232,7 @@ export function profileText(p: SoundProfile, keys = true): string {
   return parts.join(", ");
 }
 
-export function instrumentsText(banks: SoundBankInfo[], builtIn: readonly BankPreset[] = []): string {
+export function instrumentsText(banks: SoundBankInfo[], builtIn: readonly BankPreset[] = [], plugins: readonly EnginePlugin[] = []): string {
   const lines = [
     "Four Hands · instruments (built-in sound; ranges are the real sounding range).",
     "Behaviour comes from each sound's own data (attack, whether it holds a long note, how long it rings): trust it over the name.",
@@ -251,6 +252,13 @@ export function instrumentsText(banks: SoundBankInfo[], builtIn: readonly BankPr
   else {
     lines.push("Installed sound banks (list one's sounds with list_instruments, bank):");
     for (const b of banks) lines.push(`  ${b.id} · "${b.name}" · ${b.presets.length} sounds`);
+  }
+  if (plugins.length === 0) lines.push("Instrument plugins on this computer: none found yet");
+  else {
+    lines.push(
+      `Instrument plugins on this computer (hosted by Four Hands; use sound: 'plugin / <name>'). You do not hear them or know what each has loaded: ask the user what instrument is in it (a Kontakt library, an Omnisphere patch) before writing for it:`,
+    );
+    for (const p of plugins) lines.push(`  ${p.name}${p.vendor ? ` · ${p.vendor}` : ""}${p.category ? ` · ${p.category}` : ""}`);
   }
   return lines.join("\n");
 }

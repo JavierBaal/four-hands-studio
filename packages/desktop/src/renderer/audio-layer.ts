@@ -5,11 +5,12 @@
  */
 import { currentProposal, songWithProposal } from "./proposals.js";
 import { type Note, type PedalSpan, type Song, PPQ, barAt, barStart, orderedSections } from "@fourhands/core";
-import type { Strings, Translate } from "../shared/i18n.js";
+import type { Lang, Strings, Translate } from "../shared/i18n.js";
 import { Engine } from "../audio/engine.js";
 import { INITIAL_KEYBOARD, type KeyboardState, keyAction } from "../audio/keyboard.js";
 import { Player } from "../audio/player.js";
 import { type EnginePort, type MidiPort, SoundRouter, isOwnLoopback } from "../audio/router.js";
+import { NO_SOUND_PREFS, type SoundItem, type SoundPrefs, buildCatalog, withRecent } from "../shared/sound-catalog.js";
 import { ENGINE_OFF, type EnginePluginList, type EngineScanProgress, type EngineStatus } from "../shared/engine.js";
 import type { Bridge } from "./bridge.js";
 import type { SoundBankInfo } from "../shared/protocol.js";
@@ -94,6 +95,8 @@ export class AudioLayer {
   /** Ajustes › Plugins: what the engine knows, and the scan under way (it goes on with the card closed). */
   pluginList: EnginePluginList | null = null;
   pluginScan: EngineScanProgress | null = null;
+  /** The Sonidos browser's marks: favourites, recents, hidden plugins, moved categories. */
+  soundPrefs: SoundPrefs = { ...NO_SOUND_PREFS };
   /** Listens to the MIDI inputs again (the output port changed: skip its loopback). */
   private relisten: () => void = () => {};
 
@@ -152,10 +155,35 @@ export class AudioLayer {
     this.bridge.onSoundsChanged(() => void this.refreshBanks());
     void this.bridge.engineStatus().then((s) => this.engineChanged(s));
     this.bridge.onEngineStatus((s) => this.engineChanged(s));
+    // Another song: its plugins load again, each with what it had loaded in that song (F2.1).
+    this.bridge.onReload(() => {
+      this.engineLoaded.clear();
+      this.engineRefused.clear();
+    });
+    void this.bridge.soundPrefs().then((p) => {
+      this.soundPrefs = p;
+      this.changed();
+    });
     this.bridge.onEngineScanning((p) => {
       this.pluginScan = p;
       this.changed();
     });
+  }
+
+  /** Changes the browser's marks and keeps them (ajustes.json). */
+  updateSoundPrefs(change: (p: SoundPrefs) => SoundPrefs): void {
+    this.soundPrefs = change(this.soundPrefs);
+    this.changed();
+    void this.bridge.setSoundPrefs(this.soundPrefs);
+  }
+
+  /** Every sound a track can have, as the Sonidos browser lists it (also to resolve a dragged key). */
+  soundCatalog(lang: Lang, builtInLabel: string): SoundItem[] {
+    return buildCatalog({ lang, banks: this.banks, plugins: this.pluginList?.plugins ?? [], prefs: this.soundPrefs, builtInLabel });
+  }
+
+  rememberSound(key: string): void {
+    this.updateSoundPrefs((p) => withRecent(p, key));
   }
 
   /** The plugins the engine knows; with `scan`, it looks for them first (minutes, the first time). */
@@ -217,7 +245,7 @@ export class AudioLayer {
       const key = `${slot}:${plugin.id}`;
       if (this.engineLoaded.get(slot) === plugin.id || this.engineLoading.has(key) || this.engineRefused.has(key)) continue;
       this.engineLoading.add(key);
-      void this.bridge.engineLoad(slot, plugin.id).then((r) => {
+      void this.bridge.engineLoad(slot, plugin.id, id).then((r) => {
         this.engineLoading.delete(key);
         if (r.ok) {
           this.engineLoaded.set(slot, plugin.id);

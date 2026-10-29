@@ -21,7 +21,15 @@ export interface FourHandsFile {
   history: HistoryEntry[];
   /** Pending proposals. Their shape arrives with milestone H4. */
   proposals: unknown[];
+  /**
+   * What each plugin had loaded (F2.1): Kontakt's instrument and its settings, by track. Outside
+   * the song on purpose: a plugin changes its state on its own (its window), not by commands, so
+   * it has no undo and the AI does not read it. Base64 of the plugin's own data.
+   */
+  pluginStates?: PluginStates;
 }
+
+export type PluginStates = Record<string, { id: string; data: string }>;
 
 // ---------------------------------------------------------------------------
 // Schema
@@ -122,6 +130,7 @@ const fileSchema = z.object({
   song,
   history: z.array(historyEntry),
   proposals: z.array(z.unknown()),
+  pluginStates: z.record(z.string().regex(/^t\d+$/), z.object({ id: z.string().min(1).max(2000), data: z.string().regex(/^[A-Za-z0-9+/=]*$/).max(256 * 1024 * 1024) })).optional(),
 });
 
 /** Migrations from version N to N + 1, keyed by N. Empty while there is only version 1. */
@@ -151,7 +160,8 @@ function readable(value: unknown, indent = ""): string {
  * written, and the fields always come out in the same order.
  */
 export function serializeSong(file: FourHandsFile): string {
-  const parsed = fileSchema.safeParse({ format: FILE_FORMAT, version: FILE_VERSION, song: file.song, history: file.history, proposals: file.proposals });
+  const states = file.pluginStates && Object.keys(file.pluginStates).length ? file.pluginStates : undefined;
+  const parsed = fileSchema.safeParse({ format: FILE_FORMAT, version: FILE_VERSION, song: file.song, history: file.history, proposals: file.proposals, pluginStates: states });
   if (!parsed.success) {
     const issue = parsed.error.issues[0]!;
     fail(`Refusing to save an invalid song (${issue.path.join(".")}: ${issue.message})`);
@@ -195,7 +205,9 @@ export function parseSongFile(text: string): FourHandsFile {
   }
   const s = parsed.data.song as unknown as Song;
   checkConsistency(s);
-  return { song: s, history: parsed.data.history as HistoryEntry[], proposals: parsed.data.proposals };
+  const out: FourHandsFile = { song: s, history: parsed.data.history as HistoryEntry[], proposals: parsed.data.proposals };
+  if (parsed.data.pluginStates) out.pluginStates = parsed.data.pluginStates;
+  return out;
 }
 
 /** What the schema cannot see: ids match their keys, references exist, counters never reuse an id. */

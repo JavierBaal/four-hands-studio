@@ -17,9 +17,11 @@ import { SkillImportError, SkillLibrary, importSkillZip } from "./ai/skills.js";
 import { AiServer } from "./ai/server.js";
 import { connectClaude, findMcpb } from "./ai/connect.js";
 import { type SessionOptions, SongSession } from "./session.js";
+import type { PluginStates, Song } from "@fourhands/core";
 import { SoundLibrary } from "./sound-library.js";
 import { EngineHost } from "./engine/host.js";
 import type { EngineLoadResult, EngineMidiEvent, EnginePlugin } from "../shared/engine.js";
+import { CATEGORIES, RECENT_MAX, type SoundCategory, type SoundPrefs } from "../shared/sound-catalog.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url)); // packages/desktop/dist
 const packageDir = path.resolve(here, "..");
@@ -42,6 +44,8 @@ let desk: AiDesk | null = null;
 let aiServer: AiServer | null = null;
 let skills: SkillLibrary | null = null;
 let engine: EngineHost | null = null;
+/** The plugins the engine knows (fase 2), for the AI's list_instruments. */
+let knownPlugins: EnginePlugin[] = [];
 
 // ---------------------------------------------------------------------------
 // Places on disk
@@ -65,6 +69,8 @@ interface Settings {
   pluginFolders?: string[];
   /** Last full plugin scan, ms since the epoch. */
   pluginsScannedAt?: number;
+  /** The Sonidos browser (ESTUDIO_INTERFAZ_2.md, 5.3): favourites, recents, hidden plugins, moved categories. */
+  soundPrefs?: SoundPrefs;
 }
 
 const aiTone = (): AiTone => (readSettings().aiTone === "gentle" ? "gentle" : DEFAULT_AI_TONE);
@@ -162,8 +168,40 @@ function appendLog(entry: Record<string, unknown>): void {
 // ---------------------------------------------------------------------------
 // The song
 
+/**
+ * F2.1: what each plugin track's plugin has loaded, from the engine (its slot is the channel).
+ * Nothing when the engine is not running: the session keeps what the file had.
+ */
+async function collectPluginStates(song: Song): Promise<PluginStates> {
+  const out: PluginStates = {};
+  if (!engine || engine.current.state !== "ready") return out;
+  for (const id of song.trackOrder) {
+    const track = song.tracks[id];
+    if (track?.output !== "plugin" || !track.plugin) continue;
+    try {
+      const reply = await engine.request({ type: "getState", slot: track.channel });
+      const data = String(reply.data ?? "");
+      if (data) out[id] = { id: track.plugin.id, data };
+    } catch {
+      // That slot did not answer: its saved state stays.
+    }
+  }
+  return out;
+}
+
+/** Every few seconds: if a plugin changed inside (its window), the song is saved with it. */
+async function watchPluginStates(): Promise<void> {
+  if (!songs || !engine || engine.current.state !== "ready") return;
+  const fresh = await collectPluginStates(songs.snapshot().song);
+  if (Object.entries(fresh).some(([trackId, s]) => songs!.pluginState(trackId, s.id) !== s.data)) {
+    appendLog({ type: "plugin_state_changed", tracks: Object.keys(fresh) });
+    songs.pluginsChanged();
+  }
+}
+
 function sessionOptions(): SessionOptions {
   return {
+    collectPluginStates,
     songsDir: songsDir(),
     backupsDir: path.join(dataDir(), "copias"),
     untitledName: t("untitled"),
@@ -344,6 +382,7 @@ async function startAi(): Promise<void> {
     session: () => songs!,
     banks: () => library?.list() ?? [],
     builtInSounds: () => library?.defaultPresets() ?? [],
+    plugins: () => knownPlugins,
     skills: skills!,
     onState: (state) => win?.webContents.send(CH.aiState, state),
     tone: aiTone,
@@ -420,6 +459,17 @@ const testPluginFolder = () => (projectRoot ? path.join(projectRoot, "motor", "p
 function pluginFolders(): { system: string[]; user: string[] } {
   const test = testPluginFolder();
   return { system: [...systemPluginFolders(), ...(test && fs.existsSync(test) ? [test] : [])], user: readSettings().pluginFolders ?? [] };
+}
+
+/** What the window sends, checked: lists of short strings and known categories only. */
+function cleanSoundPrefs(raw: unknown): SoundPrefs {
+  const r = (raw ?? {}) as Partial<SoundPrefs>;
+  const keys = (v: unknown, max: number) => (Array.isArray(v) ? v.filter((k): k is string => typeof k === "string" && k.length < 2100).slice(0, max) : []);
+  const categories: Record<string, SoundCategory> = {};
+  if (r.categories && typeof r.categories === "object") {
+    for (const [k, c] of Object.entries(r.categories)) if (k.length < 2100 && (CATEGORIES as readonly string[]).includes(c as string)) categories[k] = c as SoundCategory;
+  }
+  return { favorites: keys(r.favorites, 500), recents: keys(r.recents, RECENT_MAX), hidden: keys(r.hidden, 2000), categories };
 }
 
 function userFolders(): Record<FolderKind, string> {
@@ -547,6 +597,7 @@ function registerIpc(): void {
       const test = testPluginFolder();
       const extra = [...(readSettings().pluginFolders ?? []), ...(test ? [test] : [])].filter((p) => fs.existsSync(p));
       const plugins = pluginsOf(await engineHost().request(scan ? { type: "scan", paths: extra } : { type: "plugins" }));
+      knownPlugins = plugins;
       if (scan) {
         appendLog({ type: "engine_scanned", ms: Date.now() - started, plugins: plugins.length, instruments: plugins.filter((p) => p.instrument).map((p) => p.name) });
         writeSettings({ pluginsScannedAt: Date.now() });
@@ -556,11 +607,18 @@ function registerIpc(): void {
       return { plugins: [], error: (error as Error).message };
     }
   });
-  ipcMain.handle(CH.engineLoad, async (_e, slot: unknown, id: unknown): Promise<EngineLoadResult> => {
+  ipcMain.handle(CH.engineLoad, async (_e, slot: unknown, id: unknown, trackId: unknown): Promise<EngineLoadResult> => {
     const started = Date.now();
     try {
       const reply = await engineHost().request({ type: "load", slot: Number(slot), id: String(id) });
       appendLog({ type: "engine_loaded", slot, plugin: reply.name, ms: Date.now() - started });
+      // F2.1: what the plugin had loaded in this song comes back (Kontakt's instrument).
+      const state = typeof trackId === "string" ? songs?.pluginState(trackId, String(id)) : null;
+      if (state) {
+        const t0 = Date.now();
+        const set = await engineHost().request({ type: "setState", slot: Number(slot), data: state });
+        appendLog({ type: "engine_state_restored", slot, plugin: reply.name, bytes: Math.round((state.length * 3) / 4), ok: !!set.ok, ms: Date.now() - t0 });
+      }
       return { ok: true, name: String(reply.name ?? "") };
     } catch (error) {
       appendLog({ type: "engine_load_failed", slot, id, error: (error as Error).message });
@@ -594,6 +652,12 @@ function registerIpc(): void {
     else if (tool === "devTools") win?.webContents.toggleDevTools();
   });
   ipcMain.handle(CH.pluginFolders, () => pluginFolders());
+  ipcMain.handle(CH.soundPrefs, () => cleanSoundPrefs(readSettings().soundPrefs));
+  ipcMain.handle(CH.soundPrefsSet, (_e, prefs: unknown) => {
+    const next = cleanSoundPrefs(prefs);
+    writeSettings({ soundPrefs: next });
+    return next;
+  });
   ipcMain.handle(CH.pluginFoldersAdd, async () => {
     if (!win) return pluginFolders();
     const pick = await dialog.showOpenDialog(win, { properties: ["openDirectory"] });
@@ -679,6 +743,14 @@ app.whenReady().then(async () => {
   }
   writeSettings({ lastFile: songs.path });
   await startAi();
+  setInterval(() => void watchPluginStates(), 20_000).unref();
+  // The engine's list of plugins, for the AI (it starts the engine; nothing if it is not built).
+  if (findEngine()) {
+    void engineHost()
+      .request({ type: "plugins" })
+      .then((r) => (knownPlugins = pluginsOf(r)))
+      .catch(() => {});
+  }
   appendLog({ type: "app_started", song: songs.path, soundFont: soundFontPath, electron: process.versions.electron, platform: process.platform });
   await createWindow();
 });
@@ -691,8 +763,13 @@ app.on("before-quit", (event) => {
   event.preventDefault();
   quitting = true;
   desk?.dispose();
-  engine?.stop();
-  void Promise.all([songs.flush(), aiServer?.stop()]).finally(() => {
+  // With plugin tracks the song is saved even without changes: what the plugins have loaded goes in
+  // (F2.1). Then the engine closes.
+  const song = songs.snapshot().song;
+  const plugins = song.trackOrder.some((id) => song.tracks[id]?.output === "plugin");
+  const saved = plugins && engine?.current.state === "ready" ? songs.saveNow() : songs.flush();
+  void Promise.all([saved, aiServer?.stop()]).finally(() => {
+    engine?.stop();
     appendLog({ type: "app_closed" });
     app.quit();
   });

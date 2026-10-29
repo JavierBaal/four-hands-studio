@@ -88,6 +88,11 @@ describe("engine host (prueba S2)", () => {
       h.send({ type: "midi", events: [{ slot: 3, delay: 0.05, data: [0x90, 60, 100] }, { slot: 3, delay: 0.3, data: [0x80, 60, 0] }] });
       const state = await h.request({ type: "getState", slot: 3 });
       expect(String(state.data).length).toBeGreaterThan(0);
+      // F2.1: a state put back comes out the same (what a song restores on opening).
+      const other = await h.request({ type: "load", slot: 4, id: synth.id });
+      expect(other.name).toBe("Four Hands Test Synth");
+      expect((await h.request({ type: "setState", slot: 4, data: state.data })).ok).toBe(true);
+      expect((await h.request({ type: "getState", slot: 4 })).data).toBe(state.data);
     }
     h.stop();
   });

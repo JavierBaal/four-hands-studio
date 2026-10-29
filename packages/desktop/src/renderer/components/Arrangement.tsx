@@ -17,6 +17,7 @@ import { InlineEdit } from "./InlineEdit.js";
 import { Fader } from "./Fader.js";
 import { Splitter } from "./Splitter.js";
 import { SoundOriginIcon } from "./SidePanel.js";
+import { SOUND_DRAG } from "./SoundsBrowser.js";
 import { LAYOUT_DEFAULTS } from "../view.js";
 import { formatDb, formatPan } from "../../shared/mix.js";
 import type { Track } from "@fourhands/core";
@@ -43,9 +44,40 @@ interface HeaderDrag {
 }
 
 export function Arrangement({ compact, visible, onSelectTrack, onPan, onToggle, height = null, audio }: ArrangementProps) {
-  const { t, replica, view } = useApp();
+  const { t, replica, view, lang } = useApp();
   useView();
   const actions = useActions();
+  // Sounds dragged from the Sonidos browser (ESTUDIO_INTERFAZ_2.md, 5.3): onto a track, or under the tracks.
+  const [soundOver, setSoundOver] = useState<string | null>(null);
+  const soundFrom = (e: React.DragEvent) => {
+    const key = e.dataTransfer.getData(SOUND_DRAG);
+    return key ? (audio?.soundCatalog(lang, t("sndBuiltIn")).find((i) => i.key === key) ?? null) : null;
+  };
+  const laneTrack = (e: React.DragEvent) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    return tracks[Math.floor((e.clientY - rect.top - SIZE.arrangeStrip) / laneHeight)] ?? null;
+  };
+  const dragsSound = (e: React.DragEvent) => e.dataTransfer.types.includes(SOUND_DRAG);
+  const soundDrop = (trackId: string | null) => ({
+    onDragOver: (e: React.DragEvent) => {
+      if (!dragsSound(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.dataTransfer.dropEffect = "copy";
+      if (soundOver !== (trackId ?? "new")) setSoundOver(trackId ?? "new");
+    },
+    onDragLeave: () => setSoundOver(null),
+    onDrop: (e: React.DragEvent) => {
+      if (!dragsSound(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setSoundOver(null);
+      const item = soundFrom(e);
+      if (!item) return;
+      if (trackId) actions.applySound(trackId, item);
+      else void actions.addTrackWithSound(item);
+    },
+  });
   const song = useSong();
   const tracks = orderedTracks(song);
   const active = activeTrack(song);
@@ -202,7 +234,7 @@ export function Arrangement({ compact, visible, onSelectTrack, onPan, onToggle, 
 
   return (
     <section className="arr" aria-label={t("arrangement")} style={height !== null ? { height, overflowY: "auto" } : undefined}>
-      <div className="thdrs">
+      <div className={soundOver === "new" ? "thdrs dropnew" : "thdrs"} {...soundDrop(null)}>
         {!compact && (
           <Splitter
             dir="col"
@@ -224,7 +256,8 @@ export function Arrangement({ compact, visible, onSelectTrack, onPan, onToggle, 
             <div key={tr.id}>
               {dropAt === i && dropAt < dragFrom && <div className="dropline" />}
               <div
-                className={dragging ? "lh thdr dragging" : "lh thdr"}
+                className={(dragging ? "lh thdr dragging" : "lh thdr") + (soundOver === tr.id ? " dropsnd" : "")}
+                {...soundDrop(tr.id)}
                 style={dragging ? { transform: `translateY(${drag!.dy}px)` } : undefined}
                 title={tr.name}
                 onPointerDown={(e) => headerDown(e, tr.id)}
@@ -277,8 +310,7 @@ export function Arrangement({ compact, visible, onSelectTrack, onPan, onToggle, 
                     onPointerDown={(e) => e.stopPropagation()}
                     onClick={(e) => {
                       e.stopPropagation();
-                      const r = e.currentTarget.getBoundingClientRect();
-                      actions.soundMenu(tr.id, r.left, r.bottom + 4);
+                      actions.openSounds(tr.id);
                     }}
                   >
                     <SoundOriginIcon origin={actions.soundOrigin(tr)} />
@@ -305,7 +337,29 @@ export function Arrangement({ compact, visible, onSelectTrack, onPan, onToggle, 
           </button>
         </div>
       </div>
-      <div className="lanes" ref={boxRef} onWheel={lanesWheel}>
+      <div
+        className="lanes"
+        ref={boxRef}
+        onWheel={lanesWheel}
+        onDragOver={(e) => {
+          if (!dragsSound(e)) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "copy";
+          const id = laneTrack(e)?.id ?? "new";
+          if (soundOver !== id) setSoundOver(id);
+        }}
+        onDragLeave={() => setSoundOver(null)}
+        onDrop={(e) => {
+          if (!dragsSound(e)) return;
+          e.preventDefault();
+          setSoundOver(null);
+          const item = soundFrom(e);
+          const track = laneTrack(e);
+          if (!item) return;
+          if (track) actions.applySound(track.id, item);
+          else void actions.addTrackWithSound(item);
+        }}
+      >
         {zoomBox && Math.abs(zoomBox.x1 - zoomBox.x0) > 2 && (
           <div className="zoombox" style={{ left: Math.min(zoomBox.x0, zoomBox.x1), width: Math.abs(zoomBox.x1 - zoomBox.x0) }} />
         )}

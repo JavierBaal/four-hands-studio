@@ -162,3 +162,21 @@ export const WindowIcon = () => (
     <path d="M2.5 6h11" {...line} />
   </svg>
 );
+export const SearchIcon = () => (
+  <svg {...svg}>
+    <circle cx="7" cy="7" r="4" {...line} />
+    <path d="M10 10l3.5 3.5" {...line} />
+  </svg>
+);
+export const StarIcon = ({ on = false }: { on?: boolean }) => (
+  <svg {...svg}>
+    <path d="M8 2.2l1.7 3.6 3.9.5-2.9 2.7.8 3.9L8 11l-3.5 1.9.8-3.9-2.9-2.7 3.9-.5z" {...line} fill={on ? "currentColor" : "none"} strokeWidth={1.3} />
+  </svg>
+);
+export const LibraryIcon = () => (
+  <svg {...svg}>
+    <rect x="2.5" y="3" width="3" height="10" rx=".6" {...line} />
+    <rect x="6.5" y="3" width="3" height="10" rx=".6" {...line} />
+    <path d="M11 3.6l2.6.7-2.4 9-2.4-.6" {...line} />
+  </svg>
+);
