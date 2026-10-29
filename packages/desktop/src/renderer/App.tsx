@@ -419,7 +419,7 @@ export function App({ audio, onEditor }: AppProps) {
             dir="col"
             className="actsplit"
             value={v.panelWidth}
-            min={240}
+            min={260}
             max={520}
             sign={-1}
             label={t("splitPanel")}
