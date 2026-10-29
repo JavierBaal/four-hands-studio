@@ -962,6 +962,31 @@ await page.getByRole("tab", { name: "IA" }).click();
 await settle();
 check("the IA tab is the activity panel", (await page.locator(".pbody .concept").count()) === 1);
 
+// Fran, 29/10/2026: the side column folds away and comes back when needed.
+await page.locator(".pbody").click({ position: { x: 5, y: 5 } });
+await page.keyboard.press("F6");
+await settle();
+check("F6 on the IA tab folds the column, and the rail stays", (await page.locator(".activity.side").count()) === 0 && (await page.locator(".rail").isVisible()));
+await page.waitForTimeout(450);
+check("folded is remembered", await page.evaluate(() => JSON.parse(localStorage.getItem("fh.layout") ?? "{}").panelOpen === false));
+await page.keyboard.press("F5");
+await settle();
+check("F5 opens it on Sonidos", (await page.getByRole("tab", { name: "Sonidos" }).getAttribute("aria-selected")) === "true");
+await page.keyboard.press("F5");
+await settle();
+check("F5 again folds it", (await page.locator(".activity.side").count()) === 0);
+await page.locator(".thdr").nth(0).locator(".tsnd").click();
+await settle();
+check("folded, a track's sound opens Sonidos for a moment", (await page.locator(".snd").count()) === 1);
+await page.locator(".sndsearch input").fill("celesta");
+await page.locator(".sndit", { hasText: "Celesta" }).dblclick();
+await settle();
+check("…and once the sound is chosen it folds again", (await page.locator(".activity.side").count()) === 0 && (await song()).tracks[(await song()).trackOrder[0]].program === 8);
+await page.evaluate(() => window.fhTest.replica.undoLast());
+await page.locator(".rail").getByRole("button", { name: "IA" }).click();
+await settle();
+check("the rail opens it on a tab, and it stays open", (await page.locator(".pbody .concept").count()) === 1);
+
 // H4 (20/10/2026): Tu IA > Sus opiniones, direct by default and remembered.
 await page.locator(".askmanage").click();
 await page.waitForSelector(".skillspanel .skill");

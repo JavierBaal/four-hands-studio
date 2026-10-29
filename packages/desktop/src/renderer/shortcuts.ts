@@ -30,6 +30,9 @@ export type Action =
   | "zoomRowsOut"
   | "save"
   | "settings"
+  | "panelTrack"
+  | "panelSounds"
+  | "panelAi"
   | "zoomRowsIn"
   | "toolZoom"
   | "toolArrow"
@@ -52,6 +55,9 @@ export interface Combo {
 export const DEFAULT_SHORTCUTS: Record<Action, Combo[]> = {
   save: [{ key: "s", mod: true }],
   settings: [{ key: ",", mod: true }],
+  panelTrack: [{ code: "F4" }],
+  panelSounds: [{ code: "F5" }],
+  panelAi: [{ code: "F6" }],
   undo: [{ key: "z", mod: true }],
   redo: [{ key: "y", mod: true }, { key: "z", mod: true, shift: true }],
   cut: [{ key: "x", mod: true }],
@@ -109,6 +115,9 @@ export const PIANO_MODE_ALLOWED: ReadonlySet<Action> = new Set<Action>([
   "toolZoom",
   "save",
   "settings",
+  "panelTrack",
+  "panelSounds",
+  "panelAi",
   "delete",
   "escape",
   "undo",

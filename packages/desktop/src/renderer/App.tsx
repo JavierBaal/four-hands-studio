@@ -21,7 +21,7 @@ import { SongActions } from "./song-actions.js";
 import { Editor } from "./editor.js";
 import { type RollView, centerOnPitches, clampScrollY, stepRow, zoomAt, zoomRowsAt } from "./roll/geometry.js";
 import type { AudioLayer } from "./audio-layer.js";
-import { LAYOUT_DEFAULTS, type Position, saveLayout } from "./view.js";
+import { type PanelTab, LAYOUT_DEFAULTS, type Position, saveLayout } from "./view.js";
 import { Splitter } from "./components/Splitter.js";
 
 /** The piano roll keeps at least this much height when the arrangement grows. */
@@ -112,6 +112,23 @@ export function App({ audio, onEditor }: AppProps) {
     },
     [rollSize.width, rollSize.height],
   );
+
+  /**
+   * The side column (Fran, 29/10/2026: it should fold away and come back when needed). With a tab:
+   * opens it on that tab, or folds it if it is already showing it (F4 Pista, F5 Sonidos, F6 IA, as
+   * Studio One's Inspector and Browser). Without: folds or unfolds it.
+   */
+  const compactRef = useRef(compact);
+  compactRef.current = compact;
+  const togglePanel = (tab: PanelTab | null) => {
+    const s = view.state;
+    const open = compactRef.current ? s.compactPanel : s.panelOpen;
+    const close = compactRef.current ? { compactPanel: false } : { panelOpen: false };
+    const show = { panelOpen: true, compactPanel: true, panelPeek: false };
+    if (!tab) view.set(open ? { ...close, panelPeek: false } : show);
+    else if (open && s.panelTab === tab) view.set({ ...close, panelPeek: false });
+    else view.set({ ...show, panelTab: tab });
+  };
 
   /** Runs a shortcut or menu action. Returns false if it does not apply. */
   const perform = useCallback(
@@ -206,6 +223,15 @@ export function App({ audio, onEditor }: AppProps) {
         case "save":
           bridge.save();
           return true;
+        case "panelTrack":
+          togglePanel("track");
+          return true;
+        case "panelSounds":
+          togglePanel("sounds");
+          return true;
+        case "panelAi":
+          togglePanel("ai");
+          return true;
         case "settings":
           actions.openSettings(actions.settings ? null : "ai");
           return true;
@@ -232,7 +258,9 @@ export function App({ audio, onEditor }: AppProps) {
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
-      if (target && (target.tagName === "INPUT" || target.tagName === "SELECT" || target.tagName === "TEXTAREA")) return;
+      // While typing, keys are the field's; F4 to F6 (the side column) still work.
+      const typingField = target && (target.tagName === "INPUT" || target.tagName === "SELECT" || target.tagName === "TEXTAREA");
+      if (typingField && !/^F[456]$/.test(e.code)) return;
       if (e.key === (MAC ? "Meta" : "Control")) view.set({ pencilHeld: true });
       // The computer keyboard as a piano takes its keys first (ESPEC_PIANO_ROLL.md, 8.2).
       if (audio.keyDown(e)) {
@@ -267,8 +295,11 @@ export function App({ audio, onEditor }: AppProps) {
     () =>
       bridge.onMenu((a: MenuAction) => {
         if (a === "toggleAuthorship") view.set({ authorship: !view.state.authorship });
-        else if (a === "togglePanel") view.set({ panelOpen: !view.state.panelOpen });
-        else if (a === "resetLayout") view.set({ ...LAYOUT_DEFAULTS, arrZoom: null });
+        else if (a === "togglePanel") togglePanel(null);
+        else if (a === "panelTrack") togglePanel("track");
+        else if (a === "panelSounds") togglePanel("sounds");
+        else if (a === "panelAi") togglePanel("ai");
+        else if (a === "resetLayout") view.set({ ...LAYOUT_DEFAULTS, arrZoom: null, panelPeek: false });
         else if (a === "skills") actions.openSkills(true);
         else if (a === "midiOut") actions.openMidiOut(true);
         else if (a === "settings") actions.openSettings("ai");
@@ -314,9 +345,13 @@ export function App({ audio, onEditor }: AppProps) {
   const arrMax = Math.max(arrMin, (workSize.height || 800) - ROLL_MIN);
   useEffect(() => {
     // Saved once the view settles (a vertical zoom glides through in-between heights).
-    const id = setTimeout(() => saveLayout({ headerWidth: v.headerWidth, panelWidth: v.panelWidth, arrHeight: v.arrHeight, rowHeight: v.rowHeight }), 400);
+    // A column opened only for a moment (panelPeek) is remembered folded.
+    const id = setTimeout(
+      () => saveLayout({ headerWidth: v.headerWidth, panelWidth: v.panelWidth, arrHeight: v.arrHeight, rowHeight: v.rowHeight, panelOpen: v.panelOpen && !v.panelPeek, panelTab: v.panelTab }),
+      400,
+    );
     return () => clearTimeout(id);
-  }, [v.headerWidth, v.panelWidth, v.arrHeight, v.rowHeight]);
+  }, [v.headerWidth, v.panelWidth, v.arrHeight, v.rowHeight, v.panelOpen, v.panelPeek, v.panelTab]);
 
   useSyncExternalStore(editor.subscribe, editor.getVersion);
   const overlayMenus = editor.overlay;

@@ -37,8 +37,9 @@ export function SidePanel({ audio, compact }: { audio: AudioLayer; compact: bool
     return () => window.removeEventListener("keydown", key, true);
   }, [compact, v.compactPanel]);
   if (!open) return null;
+  const key: Record<PanelTab, string> = { track: "F4", sounds: "F5", ai: "F6" };
   const tab = (id: PanelTab, label: string, Icon: () => JSX.Element) => (
-    <button role="tab" aria-selected={v.panelTab === id} className={v.panelTab === id ? `ptab on ${id}` : `ptab ${id}`} title={label} onClick={() => view.set({ panelTab: id })}>
+    <button role="tab" aria-selected={v.panelTab === id} className={v.panelTab === id ? `ptab on ${id}` : `ptab ${id}`} title={`${label} (${key[id]})`} onClick={() => view.set({ panelTab: id, panelPeek: false })}>
       <Icon />
       <span className="plbl">{label}</span>
     </button>
@@ -50,7 +51,7 @@ export function SidePanel({ audio, compact }: { audio: AudioLayer; compact: bool
         {tab("sounds", t("tabSounds"), LibraryIcon)}
         {tab("ai", t("tabAi"), AiIcon)}
         <span className="grow" />
-        <button className="ibtn pfold" onClick={() => view.set(compact ? { compactPanel: false } : { panelOpen: false })} aria-label={t("foldPanel")} title={t("foldPanel")}>
+        <button className="ibtn pfold" onClick={() => view.set(compact ? { compactPanel: false } : { panelOpen: false })} aria-label={t("foldPanel")} title={`${t("foldPanel")} (${key[v.panelTab]})`}>
           <ChevronRight />
         </button>
       </div>

@@ -347,6 +347,9 @@ function buildMenu(): void {
       submenu: [
         { label: t("menuAuthorship"), click: () => sendMenu("toggleAuthorship") },
         { label: t("menuPanel"), click: () => sendMenu("togglePanel") },
+        shown(t("menuPanelTrack"), "F4", "panelTrack"),
+        shown(t("menuPanelSounds"), "F5", "panelSounds"),
+        shown(t("menuPanelAi"), "F6", "panelAi"),
         { type: "separator" },
         shown(t("menuZoomIn"), "H", "zoomIn"),
         shown(t("menuZoomOut"), "G", "zoomOut"),

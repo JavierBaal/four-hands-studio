@@ -28,6 +28,11 @@ export interface ViewState {
   panelTab: PanelTab;
   /** Below 1000 px the column opens over the piano roll, only when asked for. */
   compactPanel: boolean;
+  /**
+   * The column was folded and something opened it for a moment (a track's sound): it folds again
+   * once the sound is chosen, unless the user starts working in it (Fran, 29/10/2026).
+   */
+  panelPeek: boolean;
   noteNames: NoteNames;
   /** Ctrl/Cmd held: the arrow works as a pencil (ESPEC_PIANO_ROLL.md, 3). */
   pencilHeld: boolean;
@@ -46,8 +51,8 @@ export interface ViewState {
   arrZoom: { start: number; span: number } | null;
 }
 
-export const LAYOUT_DEFAULTS = { headerWidth: 196, panelWidth: 288, arrHeight: null, rowHeight: 15 } as const;
-export type Layout = Pick<ViewState, "headerWidth" | "panelWidth" | "arrHeight" | "rowHeight">;
+export const LAYOUT_DEFAULTS = { headerWidth: 196, panelWidth: 288, arrHeight: null, rowHeight: 15, panelOpen: true, panelTab: "ai" } as const;
+export type Layout = Pick<ViewState, "headerWidth" | "panelWidth" | "arrHeight" | "rowHeight" | "panelOpen" | "panelTab">;
 const LAYOUT_KEY = "fh.layout";
 
 /** The layout this person left last time (a per-window convenience: localStorage is enough). */
@@ -61,6 +66,9 @@ export function savedLayout(): Layout {
       panelWidth: num(raw.panelWidth, LAYOUT_DEFAULTS.panelWidth),
       arrHeight: typeof raw.arrHeight === "number" && Number.isFinite(raw.arrHeight) ? raw.arrHeight : null,
       rowHeight: Math.max(12, Math.min(24, num(raw.rowHeight, LAYOUT_DEFAULTS.rowHeight))),
+      // Folded or open, and on which tab, as the person left it.
+      panelOpen: typeof raw.panelOpen === "boolean" ? raw.panelOpen : LAYOUT_DEFAULTS.panelOpen,
+      panelTab: raw.panelTab === "track" || raw.panelTab === "sounds" || raw.panelTab === "ai" ? raw.panelTab : LAYOUT_DEFAULTS.panelTab,
     };
   } catch {
     return { ...LAYOUT_DEFAULTS };
@@ -225,9 +233,8 @@ export function initialView(lang: "es" | "en"): ViewState {
     scrollY: 0,
     authorship: true,
     scale: true,
-    panelOpen: true,
-    panelTab: "ai",
     compactPanel: false,
+    panelPeek: false,
     noteNames: lang === "es" ? "solfege" : "letters",
     pencilHeld: false,
     centredTrack: null,
