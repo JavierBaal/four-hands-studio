@@ -63,7 +63,8 @@ export function savedLayout(): Layout {
     const num = (v: unknown, d: number) => (typeof v === "number" && Number.isFinite(v) ? v : d);
     return {
       headerWidth: num(raw.headerWidth, LAYOUT_DEFAULTS.headerWidth),
-      panelWidth: num(raw.panelWidth, LAYOUT_DEFAULTS.panelWidth),
+      // Never narrower than the tabs and the fold arrow need (Fran, 29/10/2026).
+      panelWidth: Math.max(260, num(raw.panelWidth, LAYOUT_DEFAULTS.panelWidth)),
       arrHeight: typeof raw.arrHeight === "number" && Number.isFinite(raw.arrHeight) ? raw.arrHeight : null,
       rowHeight: Math.max(12, Math.min(24, num(raw.rowHeight, LAYOUT_DEFAULTS.rowHeight))),
       // Folded or open, and on which tab, as the person left it.
