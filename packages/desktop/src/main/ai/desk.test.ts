@@ -46,6 +46,10 @@ async function open(file = DILATACION): Promise<void> {
   desk = new AiDesk({
     session: () => session,
     banks: () => BANKS,
+    plugins: () => [
+      { id: "VST3-Kontakt 8-1", name: "Kontakt 8", vendor: "Native Instruments", category: "Instrument|Sampler", format: "VST3", instrument: true },
+      { id: "VST3-Ozone 11-2", name: "Ozone 11", vendor: "iZotope", category: "Fx|Mastering", format: "VST3", instrument: false },
+    ],
     builtInSounds: () => [
       { program: 52, bankMSB: 0, name: "Choir Aahs", profile: { low: 0, high: 96, attack: 0.01, release: 1.7, sustain: "holds", fade: null } },
       { program: 46, bankMSB: 0, name: "Harp", profile: { low: 0, high: 108, attack: 0, release: 9.6, sustain: "fades", fade: 10.2 } },
@@ -534,6 +538,20 @@ describe("form, harmony, pedal, properties, tracks and annotations", () => {
     expect(fail("add_track", { intervention_id: id, name: "X", instrument: "theremin" })).toMatch(/not an instrument I know/);
     ok("update_track", { intervention_id: id, track: "Chelos Sonatina", sound: "default" });
     expect(trackByName("Chelos Sonatina").sound).toBeUndefined();
+  });
+
+  it("puts plugins on tracks (fase 2): one sound per track", () => {
+    expect(ok("list_instruments")).toMatch(/Kontakt 8 · Native Instruments · Instrument\|Sampler/);
+    expect(ok("list_instruments")).not.toMatch(/Ozone/);
+    const id = begin("Kontakt");
+    ok("add_track", { intervention_id: id, name: "Cuerdas Kontakt", sound: "plugin / kontakt" });
+    expect(trackByName("Cuerdas Kontakt")).toMatchObject({ output: "plugin", plugin: { id: "VST3-Kontakt 8-1", name: "Kontakt 8" } });
+    expect(fail("update_track", { intervention_id: id, track: "Cuerdas Kontakt", sound: "plugin / Ozone 11" })).toMatch(/no instrument plugin 'Ozone 11'/);
+    ok("update_track", { intervention_id: id, track: "Cuerdas Kontakt", instrument: "Violines" });
+    const back = trackByName("Cuerdas Kontakt");
+    expect(back.output).toBeUndefined();
+    expect(back.plugin).toBeUndefined();
+    expect(back.program).toBe(40);
   });
 
   it("warns, without refusing, when notes leave the instrument's range", () => {

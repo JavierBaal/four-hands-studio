@@ -72,7 +72,8 @@ export interface Bridge {
   /** The plugins the engine knows; `scan` looks for them on the computer first (slow). */
   enginePlugins(scan: boolean): Promise<EnginePluginList>;
   onEngineScanning(listener: (p: EngineScanProgress) => void): () => void;
-  engineLoad(slot: number, id: string): Promise<EngineLoadResult>;
+  /** Loads a plugin into a slot; with the track, what it had loaded in this song comes back (F2.1). */
+  engineLoad(slot: number, id: string, trackId?: string): Promise<EngineLoadResult>;
   /** Opens the plugin's own window. False if it has none (or is not loaded). */
   engineShow(slot: number): Promise<boolean>;
   engineMidi(events: EngineMidiEvent[]): void;

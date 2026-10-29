@@ -15,7 +15,7 @@
 import { z } from "zod";
 
 /** Bumped whenever a tool, its parameters or its meaning changes. The app refuses other bridges. */
-export const TOOLS_VERSION = 16;
+export const TOOLS_VERSION = 17;
 
 /**
  * Track colours by name (H3.2). The app's palette (desktop/src/shared/track-colors.ts) has the same
@@ -152,8 +152,9 @@ export const TOOLS: readonly ToolDefinition[] = [
     name: "list_instruments",
     title: "List instruments",
     description:
-      "List the instruments you can give a track: the built-in palette with each instrument's real range and how each sound behaves " +
+      "List the sounds you can give a track: the built-in palette with each instrument's real range and how each sound behaves " +
       "(fast or slow attack, whether it holds a long note or dies out, how long it rings after the note ends), and the sound banks the user installed. " +
+      "Also the instrument plugins Four Hands hosts on this computer (Kontakt, Omnisphere…), with their vendor and category. " +
       "With bank, that bank's sounds with the same profile and the keys each has samples for (silent outside them). The profile comes from the sound's own data: " +
       "trust it over the name (a slow-attack choir cannot do short hits; an unlooped sample dies out on a long note). " +
       "Use it before add_track or update_track, and to keep each part inside its range. Read-only.",
@@ -533,12 +534,13 @@ export const TOOLS: readonly ToolDefinition[] = [
     title: "Add a track",
     description:
       "Create a track. instrument: a name from list_instruments (e.g. 'Cellos', 'Chelos') or a General MIDI program number; " +
-      "sound: optional, a sound from an installed bank as 'bank file / sound name' (from list_instruments with bank). color: optional; by default the first colour no other track uses. Returns the track id.",
+      "sound: optional, a sound from an installed bank as 'bank file / sound name' (from list_instruments with bank), or a plugin as 'plugin / <name>' (e.g. 'plugin / Kontakt 8'). " +
+      "color: optional; by default the first colour no other track uses. Returns the track id.",
     inputSchema: {
       intervention_id: INTERVENTION,
       name: z.string().describe("Track name as the user will read it, in their language"),
       instrument: z.string().optional().describe("From list_instruments; piano if omitted"),
-      sound: z.string().optional().describe("'bank file / sound name'"),
+      sound: z.string().optional().describe("'bank file / sound name', or 'plugin / <name>'"),
       color: z.string().optional().describe(COLOR_HELP),
     },
     annotations: write,
@@ -548,7 +550,7 @@ export const TOOLS: readonly ToolDefinition[] = [
     title: "Change a track",
     description:
       "Change a track's name, instrument, installed sound, volume (0-100), pan (-100 left to 100 right), reverb (0 dry to 100), mute or colour. " +
-      "sound: 'bank file / sound name', or 'default' to go back to the built-in sound. " +
+      "sound: 'bank file / sound name', 'plugin / <name>' (a plugin from list_instruments), or 'default' to go back to the built-in sound. A track has one sound: a built-in one or a bank's replaces its plugin. " +
       "To balance several tracks at once, use set_mix. The current mix is in get_song_overview.",
     inputSchema: {
       intervention_id: INTERVENTION,

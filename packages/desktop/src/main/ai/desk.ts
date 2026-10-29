@@ -88,6 +88,7 @@ import {
 import { NAMED_PROGRAMS, PALETTE } from "../../shared/instruments.js";
 import type { AiApply, AiClientInfo, AiMark, AiRecent, AiState, AiTone, AiWriting, PatchMessage, SoundBankInfo } from "../../shared/protocol.js";
 import type { SongSession } from "../session.js";
+import type { EnginePlugin } from "../../shared/engine.js";
 import type { BankPreset } from "../../shared/soundbank-info.js";
 import { SkillError, type SkillSource, skillText, skillsFooter, skillsListText } from "./skills.js";
 import { DEFAULT_WINDOW, type WindowInfo, bankText, instrumentsText, mixText, overviewText, paletteItem, spanText, userContextText } from "./texts.js";
@@ -100,6 +101,8 @@ export interface AiDeskOptions {
   banks?: () => SoundBankInfo[];
   /** The default bank's presets with their profiles, for the built-in palette. */
   builtInSounds?: () => BankPreset[];
+  /** Instrument plugins the engine found on this computer (fase 2), for sound 'plugin / <name>'. */
+  plugins?: () => EnginePlugin[];
   /** Built-in and user skills (ESTUDIO_SKILLS.md, 3). */
   skills?: SkillSource;
   now?: () => number;
@@ -752,7 +755,7 @@ export class AiDesk {
     list_instruments: (_conn, args) => {
       const banks = this.options.banks?.() ?? [];
       const wanted = this.str(args, "bank", false);
-      if (!wanted) return instrumentsText(banks, this.options.builtInSounds?.() ?? []);
+      if (!wanted) return instrumentsText(banks, this.options.builtInSounds?.() ?? [], this.pluginList());
       return bankText(this.bank(wanted, banks));
     },
 
@@ -1235,14 +1238,19 @@ export class AiDesk {
       if (song.trackOrder.length >= MAX_TRACKS) throw new MusicError(`The song already has ${MAX_TRACKS} tracks, the most it can have`);
       const instrument = this.instrument(this.str(args, "instrument", false));
       const soundText = this.str(args, "sound", false);
-      const sound = soundText ? this.sound(soundText) : undefined;
-      const percussion = instrument === null && !sound;
+      const plugin = soundText && isPluginSound(soundText) ? this.plugin(soundText) : undefined;
+      const sound = soundText && !plugin ? this.sound(soundText) : undefined;
+      const percussion = instrument === null && !sound && !plugin;
       const channel = percussion ? 9 : this.freeChannel();
       if (channel === null) throw new MusicError("There is no free MIDI channel for another track");
       const colorText = this.str(args, "color", false);
       const color = colorText !== undefined ? colorIndex(colorText) : undefined;
       const id = this.write(iv, (tx) =>
-        addTrack(tx, { name, program: percussion ? null : (instrument ?? 0), channel, ...(sound ? { sound } : {}), ...(percussion ? { percussion: true } : {}), ...(color !== undefined ? { color } : {}) }),
+        {
+          const id = addTrack(tx, { name, program: percussion ? null : (instrument ?? 0), channel, ...(sound ? { sound } : {}), ...(percussion ? { percussion: true } : {}), ...(color !== undefined ? { color } : {}) });
+          if (plugin) updateTrack(tx, id, { output: "plugin", plugin });
+          return id;
+        },
       );
       iv.trackIds.add(id);
       iv.other.push(`track ${name}`);
@@ -1263,7 +1271,18 @@ export class AiDesk {
         changes.program = program;
       }
       const soundText = this.str(args, "sound", false);
-      if (soundText !== undefined) changes.sound = fold(soundText) === "default" ? null : this.sound(soundText);
+      const current = this.song.tracks[trackId]!;
+      if (soundText !== undefined && isPluginSound(soundText)) {
+        changes.plugin = this.plugin(soundText);
+        changes.output = "plugin";
+      } else {
+        if (soundText !== undefined) changes.sound = fold(soundText) === "default" ? null : this.sound(soundText);
+        // One sound per track (ESTUDIO_INTERFAZ_2.md, 5.2): a built-in sound or a bank's replaces the plugin.
+        if ((soundText !== undefined || instrumentText !== undefined) && current.plugin) {
+          changes.plugin = null;
+          if (current.output === "plugin") changes.output = "internal";
+        }
+      }
       const volume = this.num(args, "volume");
       if (volume !== undefined) changes.volume = Math.max(0, Math.min(100, volume)) / 100;
       const pan = this.num(args, "pan");
@@ -1427,6 +1446,19 @@ export class AiDesk {
     return bank;
   }
 
+  private pluginList(): EnginePlugin[] {
+    return (this.options.plugins?.() ?? []).filter((p) => p.instrument);
+  }
+
+  /** "plugin / Kontakt 8" → the plugin the engine found (by name, then by the start of it). */
+  private plugin(text: string): { id: string; name: string } {
+    const key = fold(text.slice(text.indexOf("/") + 1));
+    const list = this.pluginList();
+    const found = list.find((p) => fold(p.name) === key) ?? list.find((p) => fold(p.name).startsWith(key));
+    if (!found) throw new MusicError(list.length ? `There is no instrument plugin '${text.slice(text.indexOf("/") + 1).trim()}'. See list_instruments` : "Four Hands has not found any instrument plugin on this computer yet (Ajustes › Plugins)");
+    return { id: found.id, name: found.name };
+  }
+
   /** "Sonatina.sf2 / 1st Violins Sustain" → TrackSound. */
   private sound(text: string): TrackSound {
     const at = text.lastIndexOf("/");
@@ -1489,6 +1521,11 @@ export class AiDesk {
     for (const iv of this.interventions.values()) this.clearTimer(iv.timer);
     if (this.reading) this.clearTimer(this.reading.timer);
   }
+}
+
+/** "plugin / Kontakt 8" chooses a plugin; anything else with a slash is a bank's sound. */
+function isPluginSound(text: string): boolean {
+  return /^\s*plugins?\s*\//i.test(text);
 }
 
 const READ_TOOLS = new Set(["get_song_overview", "get_user_context", "read_notes", "analyze", "get_changes_since", "get_history", "summarize", "list_instruments", "list_skills", "load_skill", "point_to"]);

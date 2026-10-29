@@ -222,3 +222,41 @@ describe("SongSession", () => {
     s.dispose();
   });
 });
+
+describe("plugin states (F2.1): what Kontakt had loaded comes back with the song", () => {
+  const kontakt = { id: "VST3-Kontakt 8-1", name: "Kontakt 8" };
+  const b64 = (s: string) => Buffer.from(s).toString("base64");
+
+  it("asks the engine on every save, keeps the state with the file and gives it back on opening", async () => {
+    let engineSays: Record<string, { id: string; data: string }> = {};
+    const s = await SongSession.createNew(options({ collectPluginStates: async () => engineSays }));
+    const t = s.snapshot().song.trackOrder[0]!;
+    s.handle({ type: "run", label: "Kontakt", commands: [{ type: "updateTrack", id: t, changes: { output: "plugin", plugin: kontakt } }] });
+    engineSays = { [t]: { id: kontakt.id, data: b64("violins") } };
+    await s.saveNow();
+    const file = s.fileState().path;
+    expect(parseSongFile(fs.readFileSync(file, "utf8")).pluginStates).toEqual({ [t]: { id: kontakt.id, data: b64("violins") } });
+    // The engine restarted and has nothing yet: the saved state stays.
+    engineSays = {};
+    await s.saveNow();
+    const again = await SongSession.open(options(), file);
+    expect(again.pluginState(t, kontakt.id)).toBe(b64("violins"));
+    expect(again.pluginState(t, "VST3-Omnisphere")).toBeNull();
+    s.dispose();
+    again.dispose();
+  });
+
+  it("forgets the state of a track that no longer plays the plugin", async () => {
+    const engineSays: Record<string, { id: string; data: string }> = {};
+    const s = await SongSession.createNew(options({ collectPluginStates: async () => engineSays }));
+    const t = s.snapshot().song.trackOrder[0]!;
+    s.handle({ type: "run", label: "Kontakt", commands: [{ type: "updateTrack", id: t, changes: { output: "plugin", plugin: kontakt } }] });
+    engineSays[t] = { id: kontakt.id, data: b64("x") };
+    await s.saveNow();
+    s.handle({ type: "run", label: "Piano", commands: [{ type: "updateTrack", id: t, changes: { output: "internal", plugin: null } }] });
+    delete engineSays[t];
+    await s.saveNow();
+    expect(parseSongFile(fs.readFileSync(s.fileState().path, "utf8")).pluginStates).toBeUndefined();
+    s.dispose();
+  });
+});

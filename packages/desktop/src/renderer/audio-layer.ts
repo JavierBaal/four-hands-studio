@@ -155,6 +155,11 @@ export class AudioLayer {
     this.bridge.onSoundsChanged(() => void this.refreshBanks());
     void this.bridge.engineStatus().then((s) => this.engineChanged(s));
     this.bridge.onEngineStatus((s) => this.engineChanged(s));
+    // Another song: its plugins load again, each with what it had loaded in that song (F2.1).
+    this.bridge.onReload(() => {
+      this.engineLoaded.clear();
+      this.engineRefused.clear();
+    });
     void this.bridge.soundPrefs().then((p) => {
       this.soundPrefs = p;
       this.changed();
@@ -240,7 +245,7 @@ export class AudioLayer {
       const key = `${slot}:${plugin.id}`;
       if (this.engineLoaded.get(slot) === plugin.id || this.engineLoading.has(key) || this.engineRefused.has(key)) continue;
       this.engineLoading.add(key);
-      void this.bridge.engineLoad(slot, plugin.id).then((r) => {
+      void this.bridge.engineLoad(slot, plugin.id, id).then((r) => {
         this.engineLoading.delete(key);
         if (r.ok) {
           this.engineLoaded.set(slot, plugin.id);
