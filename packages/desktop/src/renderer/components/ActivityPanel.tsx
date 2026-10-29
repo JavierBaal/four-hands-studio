@@ -5,6 +5,7 @@
  * becomes the AI's interventions: where it wrote and how much, "Ir", and "Con / Sin · B" on the
  * last one while it can still be compared. Skills: SkillsPanel.tsx.
  */
+import { useState } from "react";
 import type { HistoryEntry, Song } from "@fourhands/core";
 import type { Translate } from "../../shared/i18n.js";
 import { barAt, barStart } from "@fourhands/core";
@@ -101,14 +102,108 @@ function AiInterventions({ now }: { now: number }) {
   );
 }
 
+const HISTORY_SHOWN = 30;
+
+/**
+ * The history (ESTUDIO_INTERFAZ_2.md, 9): a box with its own scroll, about six entries high, so the
+ * column does not grow with it; the wheel passes on to the column at its ends. As in Photoshop, a
+ * click on a step of this session goes back (or forward) to right after it; the steps undone are in
+ * grey until a new change drops them. Proposals and earlier sessions are there to read, not to
+ * click. While the AI writes, going back waits for it to finish.
+ */
+function HistoryBox({ now }: { now: number }) {
+  const { t, replica } = useApp();
+  useSong();
+  const ai = useAi();
+  const [all, setAll] = useState(false);
+  const steps = new Map((replica.undo.steps ?? []).map((s) => [s.revision, s.undone]));
+  const base = replica.undo.baseRevision ?? 0;
+  const here = (replica.undo.steps ?? []).filter((s) => !s.undone).at(-1)?.revision ?? 0;
+  const writer = ai.writing[0]?.name ?? null;
+  const shown = replica.history.filter((h) => !h.dropped && (h.kind === "propose" || (h.kind === "edit" && (h.revision <= base || steps.has(h.revision))))).reverse();
+  const list = all ? shown : shown.slice(0, HISTORY_SHOWN);
+  const session = list.filter((h) => h.revision > base);
+  const earlier = list.filter((h) => h.revision <= base);
+  const go = (revision: number) => void replica.goTo(revision);
+  const row = (h: HistoryEntry) => {
+    const { who, what, ai: byAi } = historyText(t, h);
+    const step = h.kind === "edit" && steps.has(h.revision);
+    const undone = steps.get(h.revision) === true;
+    const cur = step && h.revision === here;
+    const body = (
+      <>
+        <span className={byAi ? "dot ai" : "dot u"} />
+        <span className="htext">
+          <span className="hline">
+            <span className="hwho">{who}</span> {what}
+          </span>
+          <span className="hwhen">
+            {ago(t, h.at, now)}
+            {cur && <span className="hhere"> · {t("histHere")}</span>}
+          </span>
+        </span>
+      </>
+    );
+    const cls = `hi${undone ? " undone" : ""}${cur ? " cur" : ""}${h.kind === "propose" ? " prop" : ""}`;
+    if (!step || cur) {
+      return (
+        <li key={h.revision} className={cls} title={cur ? t("histHere") : step ? undefined : h.revision <= base ? t("histEarlier") : undefined} aria-current={cur ? "step" : undefined}>
+          {body}
+        </li>
+      );
+    }
+    return (
+      <li key={h.revision} className={cls}>
+        <button className="hgo" disabled={!!writer} title={writer ? t("histWait", { name: writer }) : undone ? t("histForward") : t("histBack")} onClick={() => go(h.revision)}>
+          {body}
+        </button>
+      </li>
+    );
+  };
+  const startCur = here === 0;
+  return (
+    <div>
+      <p className="ah">{t("history")}</p>
+      {shown.length === 0 ? (
+        <p className="hint">{t("noHistory")}</p>
+      ) : (
+        <div className="histbox">
+          <ul className="hist">
+            {session.map(row)}
+            {steps.size > 0 && session.length === shown.filter((h) => h.revision > base).length && (
+              <li className={startCur ? "hi start cur" : "hi start"} aria-current={startCur ? "step" : undefined}>
+                {startCur ? (
+                  <span className="hstart">
+                    {t("histStart")}
+                    <span className="hhere"> · {t("histHere")}</span>
+                  </span>
+                ) : (
+                  <button className="hgo" disabled={!!writer} title={writer ? t("histWait", { name: writer }) : t("histBack")} onClick={() => go(0)}>
+                    <span className="hstart">{t("histStart")}</span>
+                  </button>
+                )}
+              </li>
+            )}
+            {earlier.map(row)}
+          </ul>
+          {!all && shown.length > HISTORY_SHOWN && (
+            <button className="linkbtn hall" onClick={() => setAll(true)}>
+              {t("histAll", { n: shown.length })}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** The IA tab of the side column: the activity panel of the sketches, unchanged. */
 export function ActivityContent() {
-  const { t, replica } = useApp();
+  const { t } = useApp();
   const song = useSong();
   const now = useClock(30_000);
   const track = activeTrack(song);
   const loop = song.context.loop;
-  const history = [...replica.history].reverse().slice(0, 30);
   return (
     <>
       <ConceptCard />
@@ -134,29 +229,7 @@ export function ActivityContent() {
         </div>
       </div>
       <AiInterventions now={now} />
-      <div>
-        <p className="ah">{t("history")}</p>
-        {history.length === 0 ? (
-          <p className="hint">{t("noHistory")}</p>
-        ) : (
-          <ul className="hist">
-            {history.map((h) => {
-              const { who, what, ai } = historyText(t, h);
-              return (
-                <li key={h.revision} className="hi">
-                  <span className={ai ? "dot ai" : "dot u"} />
-                  <div>
-                    <div>
-                      <span className="hwho">{who}</span> {what}
-                    </div>
-                    <div className="hwhen">{ago(t, h.at, now)}</div>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </div>
+      <HistoryBox now={now} />
       <ActiveSkills />
     </>
   );

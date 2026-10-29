@@ -3,7 +3,7 @@
  * The song lives in the main process; the window keeps a replica updated with patches and
  * sends every change as a list of commands (one gesture = one transaction = one undo step).
  */
-import type { CommandData, CommandResult, HistoryEntry, Op, Patch, SharedContext, Song, SongDocument } from "@fourhands/core";
+import type { CommandData, CommandResult, HistoryEntry, Op, Patch, SharedContext, Song, SongDocument, StepState } from "@fourhands/core";
 import type { BankPreset } from "./soundbank-info.js";
 
 /** A sound bank the user installed (sound-library.ts). */
@@ -43,6 +43,10 @@ export interface UndoState {
   lastAi: { label: string; client: string; revision: number } | null;
   /** Pending proposals (H4, proposal mode): what each would do, to draw and hear it before accepting. */
   proposals?: ProposalInfo[];
+  /** This session's steps, oldest first: what the history panel can go back or forward to. */
+  steps?: StepState[];
+  /** The revision the song had when it was opened: history entries up to it are from earlier sessions. */
+  baseRevision?: number;
 }
 
 /** A pending proposal as the window receives it. */
@@ -54,6 +58,11 @@ export interface ProposalInfo {
   stale: boolean;
   /** What accepting would do to the song (core operations). */
   ops: Op[];
+}
+
+/** What the window needs to draw the undo state (session and harness alike). */
+export function undoStateOf(doc: SongDocument): UndoState {
+  return { canUndo: doc.canUndo, canRedo: doc.canRedo, undoLabel: doc.undoLabel, redoLabel: doc.redoLabel, lastAi: lastAiOf(doc), proposals: proposalsOf(doc), steps: doc.steps, baseRevision: doc.baseRevision };
 }
 
 export function proposalsOf(doc: SongDocument): ProposalInfo[] {
@@ -78,6 +87,8 @@ export type Request =
   | { type: "run"; label: string; commands: CommandData[] }
   | { type: "undo" }
   | { type: "redo" }
+  /** The history panel: back or forward to right after a step (its revision; 0, the song as opened). */
+  | { type: "goTo"; revision: number }
   | { type: "setContext"; changes: Partial<SharedContext> }
   /** Proposal mode (H4): accept (the label goes to the history) or discard a pending proposal. */
   | { type: "acceptProposal"; id: string; label: string }

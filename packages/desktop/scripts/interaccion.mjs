@@ -1137,6 +1137,42 @@ if (hasPanel) {
   await page.keyboard.press("Escape");
 }
 
+// The history (ESTUDIO_INTERFAZ_2.md, 9): its own box with a scroll, and a click goes back to a step.
+if ((await page.locator(".ptab.ai").count()) === 0) await page.keyboard.press("F6");
+await page.locator(".ptab.ai").click();
+await settle();
+const userWrites = (label, pitch) =>
+  page.evaluate(([label, pitch, bar]) => {
+    const doc = window.fhTest.ai.doc;
+    const you = { by: "user" };
+    doc.transact({ actor: you, label }, (tx) => {
+      const id = `n${9000 + pitch}`;
+      tx.set(["notes", id], { id, trackId: doc.song.trackOrder[0], pitch, start: 7 * bar, duration: 960, velocity: 80, createdBy: you, shapedBy: you });
+    });
+  }, [label, pitch, BAR]);
+for (let n = 0; n < 9; n++) await userWrites(`paso de prueba ${n}`, 40 + n);
+await settle();
+const box = await page.locator(".histbox").evaluate((el) => ({ h: el.getBoundingClientRect().height, scroll: el.scrollHeight, oy: getComputedStyle(el).overflowY, os: getComputedStyle(el).overscrollBehaviorY }));
+check("the history scrolls in its own box, about six entries high", box.oy === "auto" && box.h <= 280 && box.scroll > box.h && box.os === "auto", JSON.stringify(box));
+check("the newest step is marked as where you are", /paso de prueba 8/.test(await page.locator(".hi.cur").innerText()));
+const has = (pitch) => page.evaluate((p) => `n${9000 + p}` in window.fhTest.replica.song.notes, pitch);
+await page.locator(".hi .hgo", { hasText: "paso de prueba 5" }).click();
+await settle();
+check("a click on a step goes back to right after it", (await has(45)) && !(await has(46)) && !(await has(48)));
+check("the steps after it are in grey and it is where you are", (await page.locator(".hi.undone").count()) === 3 && /paso de prueba 5/.test(await page.locator(".hi.cur").innerText()));
+check("going back leaves no undo entries in the list", !/deshiciste/.test(await page.locator(".histbox").innerText()));
+await page.locator(".hi.undone .hgo", { hasText: "paso de prueba 7" }).click();
+await settle();
+check("a click on a grey step redoes up to it", (await has(47)) && !(await has(48)) && (await page.locator(".hi.undone").count()) === 1);
+await userWrites("otra cosa", 60);
+await settle();
+check("a new change drops the grey steps", (await page.locator(".hi.undone").count()) === 0 && !/paso de prueba 8/.test(await page.locator(".histbox").innerText()));
+await page.evaluate(() => window.fhTest.ai.setAi({ clients: [], reading: null, writing: [{ id: "i95", name: "Claude", description: "Bajo", notes: 0, trackIds: [], start: null, end: null }], mark: null }));
+await settle();
+check("while the AI writes, going back waits", (await page.locator(".hi .hgo:disabled").count()) > 0 && (await page.locator(".hi .hgo:not(:disabled)").count()) === 0);
+await page.evaluate(() => window.fhTest.ai.setAi({ clients: [], reading: null, writing: [], mark: null }));
+await settle();
+
 console.log(`${passed} passed, ${failures.length} failed`);
 for (const f of failures) console.log("FAIL", f);
 if (errors.length) console.log("page errors", errors);

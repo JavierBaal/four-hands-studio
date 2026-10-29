@@ -5,7 +5,7 @@
 import { ENGINE_OFF, type EngineLoadResult, type EngineMidiEvent, type EnginePlugin, type EnginePluginList, type EngineScanProgress, type EngineStatus, type PluginFolders } from "../shared/engine.js";
 import { NO_SOUND_PREFS, type SoundPrefs } from "../shared/sound-catalog.js";
 import { SongDocument, USER, runCommands, type Song } from "@fourhands/core";
-import { type AiApply, type AiState, type AiTone, DEFAULT_AI_APPLY, DEFAULT_AI_TONE, type FileState, type FolderKind, type Folders, type MenuAction, type ToolKind, NO_AI, type PatchMessage, type Reply, type Request, type SkillCardInfo, type SkillImportResult, type Snapshot, type SoundBankInfo, type ViewInfo, lastAiOf, proposalsOf } from "../shared/protocol.js";
+import { type AiApply, type AiState, type AiTone, DEFAULT_AI_APPLY, DEFAULT_AI_TONE, type FileState, type FolderKind, type Folders, type MenuAction, type ToolKind, NO_AI, type PatchMessage, type Reply, type Request, type SkillCardInfo, type SkillImportResult, type Snapshot, type SoundBankInfo, type ViewInfo, undoStateOf } from "../shared/protocol.js";
 
 export interface AppInfo {
   soundFont: string | null;
@@ -118,7 +118,7 @@ export function memoryBridge(
   const fileListeners = new Set<(s: FileState) => void>();
   let historySent = 0;
   const file: FileState = { name: options.name ?? song.title, path: `/${song.title}.fourhands`, savedAt: now(), dirty: false, error: null, provisional: false };
-  const undoState = () => ({ canUndo: doc.canUndo, canRedo: doc.canRedo, undoLabel: doc.undoLabel, redoLabel: doc.redoLabel, lastAi: lastAiOf(doc), proposals: proposalsOf(doc) });
+  const undoState = () => undoStateOf(doc);
   doc.subscribe((patch) => {
     const history = doc.history.slice(historySent);
     historySent = doc.history.length;
@@ -157,6 +157,9 @@ export function memoryBridge(
             return { ok: true, results: [] };
           case "redo":
             doc.redo(USER);
+            return { ok: true, results: [] };
+          case "goTo":
+            doc.goTo(r.revision, USER);
             return { ok: true, results: [] };
           case "setContext":
             doc.setContext(r.changes);

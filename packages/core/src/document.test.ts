@@ -133,6 +133,87 @@ describe("undo and redo", () => {
   });
 });
 
+describe("going back to a step from the history (ESTUDIO_INTERFAZ_2.md, 9)", () => {
+  const note = (start: number) => ({ pitch: 60, start, duration: PPQ, velocity: 80 });
+  function threeSteps() {
+    const { doc, t } = docWithTrack();
+    for (const n of [0, 1, 2]) doc.transact({ actor: n === 1 ? claude : USER, label: `Paso ${n}` }, (tx) => addNotes(tx, t, [note(n * PPQ)]));
+    return { doc, t, revs: doc.steps.map((s) => s.revision) };
+  }
+
+  it("names every step of the session by the revision of its history entry", () => {
+    const { doc, revs } = threeSteps();
+    expect(revs).toEqual([1, 2, 3, 4]);
+    expect(doc.steps.every((s) => !s.undone)).toBe(true);
+    for (const r of revs) expect(doc.history.find((e) => e.revision === r)?.kind).toBe("edit");
+  });
+
+  it("goes back several steps at once, and forward again, each with its own history entry", () => {
+    const { doc, revs } = threeSteps();
+    const atTrack = snapshot(doc);
+    expect(doc.goTo(revs[1]!, USER)).toBe(2);
+    expect(notesOf(doc.song)).toHaveLength(1);
+    expect(doc.steps.map((s) => s.undone)).toEqual([false, false, true, true]);
+    expect(doc.history.slice(-2).map((e) => [e.kind, e.label])).toEqual([["undo", "Paso 2"], ["undo", "Paso 1"]]);
+    expect(doc.goTo(revs[3]!, USER)).toBe(2);
+    expect(snapshot(doc)).toEqual(atTrack);
+    expect(doc.steps.every((s) => !s.undone)).toBe(true);
+    expect(doc.goTo(revs[3]!, USER)).toBe(0);
+  });
+
+  it("goes back to the song as it was opened with 0", () => {
+    const { doc } = threeSteps();
+    expect(doc.goTo(0, USER)).toBe(4);
+    expect(doc.song.trackOrder).toHaveLength(0);
+    expect(doc.canUndo).toBe(false);
+  });
+
+  it("keeps the step's name when it grows (an AI intervention) and after redo", () => {
+    const { doc, t } = docWithTrack();
+    const meta = { actor: claude, label: "Bajo", group: "i1" };
+    doc.transact(meta, (tx) => addNotes(tx, t, [note(0)]));
+    doc.transact(meta, (tx) => addNotes(tx, t, [note(PPQ)]));
+    const step = doc.steps.at(-1)!.revision;
+    expect(step).toBe(doc.history.at(-1)!.revision);
+    doc.undo(USER);
+    doc.redo(USER);
+    expect(doc.steps.at(-1)!.revision).toBe(step);
+  });
+
+  it("drops the undone steps on a new change, like undo: they cannot be reached", () => {
+    const { doc, t, revs } = threeSteps();
+    doc.goTo(revs[1]!, USER);
+    doc.transact({ actor: USER, label: "Otra cosa" }, (tx) => addNotes(tx, t, [note(8 * PPQ)]));
+    expect(doc.steps).toHaveLength(3);
+    expect(() => doc.goTo(revs[3]!, USER)).toThrow(CommandError);
+    const saved = doc.historyForFile();
+    expect(saved.filter((e) => e.dropped).map((e) => e.label)).toEqual(["Paso 1", "Paso 2"]);
+    expect(doc.history.some((e) => e.dropped)).toBe(false);
+  });
+
+  it("cannot reach the steps of an earlier session, and saves undone steps as dropped", () => {
+    const { doc, t, revs } = threeSteps();
+    doc.undo(USER);
+    const back = parseSongFile(serializeSong({ song: doc.song, history: doc.historyForFile(), proposals: [] }));
+    expect(back.history.find((e) => e.revision === revs[3])?.dropped).toBe(true);
+    const reopened = new SongDocument(back.song, { history: back.history });
+    expect(reopened.baseRevision).toBe(doc.song.revision);
+    expect(reopened.steps).toEqual([]);
+    expect(() => reopened.goTo(revs[1]!, USER)).toThrow(CommandError);
+    void t;
+  });
+
+  it("leaves out a proposal: its intervention is no longer a step", () => {
+    const { doc, t } = docWithTrack();
+    doc.transact({ actor: claude, label: "Contracanto", group: "i1" }, (tx) => addNotes(tx, t, [note(0)]));
+    doc.closeGroup("i1");
+    const lifted = doc.steps.at(-1)!.revision;
+    doc.liftLastStep("i1");
+    expect(doc.steps.map((s) => s.revision)).not.toContain(lifted);
+    expect(doc.historyForFile().find((e) => e.revision === lifted)?.dropped).toBe(true);
+  });
+});
+
 describe("patches", () => {
   it("are emitted after every change with the new revision", () => {
     const { doc, t } = docWithTrack();

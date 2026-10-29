@@ -32,6 +32,19 @@ export interface HistoryEntry {
   label: string;
   /** Milliseconds since the epoch. */
   at: number;
+  /**
+   * Set on saving: a step that was undone and is no longer in the song (it was dropped by a later
+   * change, or the song was closed with it undone). The history panel leaves it out.
+   */
+  dropped?: true;
+}
+
+/** A step of this session, oldest first: what the history panel can go back or forward to. */
+export interface StepState {
+  /** The revision of its history entry (an "edit" entry): how the panel finds it. */
+  revision: number;
+  /** Undone: still there to redo, shown in grey. */
+  undone: boolean;
 }
 
 /**
@@ -68,6 +81,8 @@ interface UndoStep {
   label: string;
   /** Transactions of the same group that follow each other become this one step (an AI intervention). */
   group?: string;
+  /** The revision of its "edit" history entry (the latest one, if the step grew). */
+  revision: number;
 }
 
 function clone<T>(value: T): T {
@@ -181,9 +196,12 @@ export class SongDocument {
   /** The step the last edit created or extended, while it can still be extended. */
   private openStep: UndoStep | null = null;
   private merged = false;
+  /** The revision the song had when this document opened it: steps before it cannot be reached. */
+  readonly baseRevision: number;
 
   constructor(song: Song, options: SongDocumentOptions = {}) {
     this.song = song;
+    this.baseRevision = song.revision;
     this.now = options.now ?? Date.now;
     this.history = options.history ? [...options.history] : [];
     this.proposals = options.proposals ? structuredClone(options.proposals) : [];
@@ -293,11 +311,12 @@ export class SongDocument {
     if (meta.group !== undefined && top !== undefined && top === this.openStep && top.group === meta.group) {
       top.ops.push(...tx.ops);
       top.inverses.push(...tx.inverses);
+      top.revision = this.song.revision + 1;
       this.redoStack.length = 0;
       this.commit("edit", top.actor, top.author, top.label, tx.ops, true);
       return result;
     }
-    const step: UndoStep = { ops: tx.ops, inverses: tx.inverses, actor: meta.actor, author, label: meta.label };
+    const step: UndoStep = { ops: tx.ops, inverses: tx.inverses, actor: meta.actor, author, label: meta.label, revision: this.song.revision + 1 };
     if (meta.group !== undefined) step.group = meta.group;
     this.undoStack.push(step);
     this.redoStack.length = 0;
@@ -363,6 +382,41 @@ export class SongDocument {
     this.undoStack.push({ ...step, inverses });
     this.commit("redo", actor, step.author, step.label, step.ops);
     return true;
+  }
+
+  /**
+   * The steps of this session, oldest first: done ones, then undone ones (the next to redo last).
+   * What the history panel shows as reachable (ESTUDIO_INTERFAZ_2.md, 9).
+   */
+  get steps(): StepState[] {
+    return [...this.undoStack.map((s) => ({ revision: s.revision, undone: false })), ...[...this.redoStack].reverse().map((s) => ({ revision: s.revision, undone: true }))];
+  }
+
+  /**
+   * Goes back or forward to the point right after a step (as in Photoshop's history): undoes or
+   * redoes one step at a time, each with its own history entry, so the AI reads what was undone.
+   * `revision` is the step's (see `steps`); 0 is the song as it was opened. Returns how many steps
+   * it moved. Throws if the step cannot be reached (another session, or dropped).
+   */
+  goTo(revision: number, actor: Authorship): number {
+    const done = revision === 0 ? -1 : this.undoStack.findIndex((s) => s.revision === revision);
+    if (revision !== 0 && done < 0 && !this.redoStack.some((s) => s.revision === revision)) throw new CommandError("That step can no longer be reached");
+    let moved = 0;
+    if (revision === 0 || done >= 0) {
+      while (this.undoStack.length - 1 > done) moved += this.undo(actor) ? 1 : 0;
+    } else {
+      while (this.undoStack.at(-1)?.revision !== revision && this.redo(actor)) moved += 1;
+    }
+    return moved;
+  }
+
+  /**
+   * The history to save: entries of this session's steps that are not in the song any more get
+   * `dropped` (after reopening there is no redo, so they are gone for good).
+   */
+  historyForFile(): HistoryEntry[] {
+    const live = new Set(this.undoStack.map((s) => s.revision));
+    return this.history.map((e) => (e.kind === "edit" && e.revision > this.baseRevision && !live.has(e.revision) ? { ...e, dropped: true as const } : e));
   }
 
   /** Changes the shared context. Not undoable, no new revision. */
