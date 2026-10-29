@@ -131,7 +131,9 @@ const fileSchema = z.object({
   song,
   history: z.array(historyEntry),
   proposals: z.array(z.unknown()),
-  pluginStates: z.record(z.string().regex(/^t\d+$/), z.object({ id: z.string().min(1).max(2000), data: z.string().regex(/^[A-Za-z0-9+/=]*$/).max(256 * 1024 * 1024) })).optional(),
+  // The data is the engine's text for the plugin's state, opaque here: JUCE's base64 ("5321.Ab+…",
+  // its own alphabet with "." in it), not the standard one. Only safe characters (prueba de Fran, 29/10/2026).
+  pluginStates: z.record(z.string().regex(/^t\d+$/), z.object({ id: z.string().min(1).max(2000), data: z.string().regex(/^[A-Za-z0-9+/=.]*$/).max(256 * 1024 * 1024) })).optional(),
 });
 
 /** Migrations from version N to N + 1, keyed by N. Empty while there is only version 1. */

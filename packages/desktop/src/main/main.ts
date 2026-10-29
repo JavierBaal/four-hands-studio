@@ -202,6 +202,7 @@ async function watchPluginStates(): Promise<void> {
 function sessionOptions(): SessionOptions {
   return {
     collectPluginStates,
+    onPluginStatesDropped: (error) => appendLog({ type: "plugin_states_dropped", error }),
     songsDir: songsDir(),
     backupsDir: path.join(dataDir(), "copias"),
     untitledName: t("untitled"),

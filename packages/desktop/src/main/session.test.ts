@@ -246,6 +246,56 @@ describe("plugin states (F2.1): what Kontakt had loaded comes back with the song
     again.dispose();
   });
 
+  it("keeps the engine's own encoding (JUCE's base64, with dots), as Kontakt sends it", async () => {
+    // What the engine really sends (prueba de Fran, 29/10/2026): every save failed with it.
+    const juce = "18342.4D2+8fa7.2hA9JqXCkt7BBb.Fe3D0K++.KwB..A";
+    let engineSays: Record<string, { id: string; data: string }> = {};
+    const s = await SongSession.createNew(options({ collectPluginStates: async () => engineSays }));
+    const t = s.snapshot().song.trackOrder[0]!;
+    s.handle({ type: "run", label: "Kontakt", commands: [{ type: "updateTrack", id: t, changes: { output: "plugin", plugin: kontakt } }] });
+    engineSays = { [t]: { id: kontakt.id, data: juce } };
+    await s.saveNow();
+    expect(s.fileState().error).toBeNull();
+    const again = await SongSession.open(options(), s.fileState().path);
+    expect(again.snapshot().song.tracks[t]!.plugin).toEqual(kontakt);
+    expect(again.pluginState(t, kontakt.id)).toBe(juce);
+    s.dispose();
+    again.dispose();
+  });
+
+  it("saves the song without plugin states the file cannot hold, and keeps saving after", async () => {
+    const dropped: string[] = [];
+    let engineSays: Record<string, { id: string; data: string }> = {};
+    const s = await SongSession.createNew(options({ collectPluginStates: async () => engineSays, onPluginStatesDropped: (e) => dropped.push(e) }));
+    const t = s.snapshot().song.trackOrder[0]!;
+    s.handle({ type: "run", label: "Kontakt", commands: [{ type: "updateTrack", id: t, changes: { output: "plugin", plugin: kontakt } }] });
+    engineSays = { [t]: { id: kontakt.id, data: "not allowed: spaces & <tags>" } };
+    await s.saveNow();
+    const file = s.fileState().path;
+    expect(dropped).toHaveLength(1);
+    expect(parseSongFile(fs.readFileSync(file, "utf8")).song.tracks[t]!.plugin).toEqual(kontakt);
+    s.handle({ type: "run", label: "Nombre", commands: [{ type: "updateTrack", id: t, changes: { name: "Coro" } }] });
+    await s.saveNow();
+    expect(parseSongFile(fs.readFileSync(file, "utf8")).song.tracks[t]!.name).toBe("Coro");
+    s.dispose();
+  });
+
+  it("keeps saving after a save that failed", async () => {
+    let fail = true;
+    const s = await SongSession.createNew(options({ collectPluginStates: async () => {
+      if (fail) throw new Error("engine gone");
+      return {};
+    } }));
+    const t = s.snapshot().song.trackOrder[0]!;
+    s.handle({ type: "run", label: "Kontakt", commands: [{ type: "updateTrack", id: t, changes: { output: "plugin", plugin: kontakt } }] });
+    await s.saveNow();
+    fail = false;
+    s.handle({ type: "run", label: "Nombre", commands: [{ type: "updateTrack", id: t, changes: { name: "Coro" } }] });
+    await s.saveNow();
+    expect(parseSongFile(fs.readFileSync(s.fileState().path, "utf8")).song.tracks[t]!.name).toBe("Coro");
+    s.dispose();
+  });
+
   it("forgets the state of a track that no longer plays the plugin", async () => {
     const engineSays: Record<string, { id: string; data: string }> = {};
     const s = await SongSession.createNew(options({ collectPluginStates: async () => engineSays }));
