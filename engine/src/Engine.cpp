@@ -183,6 +183,15 @@ bool Engine::showEditor (int slot)
     return true;
 }
 
+juce::Array<int> Engine::openWindows() const
+{
+    juce::Array<int> out;
+    for (int slot = 0; slot < kSlots; ++slot)
+        if (windows[(size_t) slot] != nullptr && windows[(size_t) slot]->isVisible())
+            out.add (slot);
+    return out;
+}
+
 juce::MemoryBlock Engine::state (int slot)
 {
     juce::MemoryBlock data;

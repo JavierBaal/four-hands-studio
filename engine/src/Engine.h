@@ -54,6 +54,8 @@ public:
     juce::String nameOf (int slot) const;
     /** Opens (or brings to front) the plugin's own window. False if it has none. */
     bool showEditor (int slot);
+    /** The slots whose window is on screen now: only their plugins can change from the user's hand. */
+    juce::Array<int> openWindows() const;
     /** The plugin's state (preset, loaded library…), to keep with the song. */
     juce::MemoryBlock state (int slot);
     bool setState (int slot, const juce::MemoryBlock& data);

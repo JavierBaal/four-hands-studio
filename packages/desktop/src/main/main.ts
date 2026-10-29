@@ -17,6 +17,7 @@ import { SkillImportError, SkillLibrary, importSkillZip } from "./ai/skills.js";
 import { AiServer } from "./ai/server.js";
 import { connectClaude, findMcpb } from "./ai/connect.js";
 import { type SessionOptions, SongSession } from "./session.js";
+import { PluginWatch } from "./plugin-watch.js";
 import type { PluginStates, Song } from "@fourhands/core";
 import { SoundLibrary } from "./sound-library.js";
 import { EngineHost } from "./engine/host.js";
@@ -172,12 +173,13 @@ function appendLog(entry: Record<string, unknown>): void {
  * F2.1: what each plugin track's plugin has loaded, from the engine (its slot is the channel).
  * Nothing when the engine is not running: the session keeps what the file had.
  */
-async function collectPluginStates(song: Song): Promise<PluginStates> {
+async function collectPluginStates(song: Song, slots?: Set<number>): Promise<PluginStates> {
   const out: PluginStates = {};
   if (!engine || engine.current.state !== "ready") return out;
   for (const id of song.trackOrder) {
     const track = song.tracks[id];
     if (track?.output !== "plugin" || !track.plugin) continue;
+    if (slots && !slots.has(track.channel)) continue;
     try {
       const reply = await engine.request({ type: "getState", slot: track.channel });
       const data = String(reply.data ?? "");
@@ -189,10 +191,24 @@ async function collectPluginStates(song: Song): Promise<PluginStates> {
   return out;
 }
 
-/** Every few seconds: if a plugin changed inside (its window), the song is saved with it. */
+const pluginWatch = new PluginWatch();
+
+/**
+ * Every few seconds: if a plugin changed inside (its window), the song is saved with it. Only the
+ * plugins whose window is open, or just closed, are asked (plugin-watch.ts).
+ */
 async function watchPluginStates(): Promise<void> {
   if (!songs || !engine || engine.current.state !== "ready") return;
-  const fresh = await collectPluginStates(songs.snapshot().song);
+  let open: number[] | null = null;
+  try {
+    const reply = await engine.request({ type: "windows" });
+    if (Array.isArray(reply.slots)) open = reply.slots.map(Number);
+  } catch {
+    // An engine built before 29/10/2026: it cannot tell.
+  }
+  const slots = pluginWatch.slotsToCheck(open, Date.now());
+  if (slots.size === 0) return;
+  const fresh = await collectPluginStates(songs.snapshot().song, slots);
   if (Object.entries(fresh).some(([trackId, s]) => songs!.pluginState(trackId, s.id) !== s.data)) {
     appendLog({ type: "plugin_state_changed", tracks: Object.keys(fresh) });
     songs.pluginsChanged();
@@ -631,6 +647,7 @@ function registerIpc(): void {
   });
   ipcMain.handle(CH.engineShow, async (_e, slot: unknown) => {
     try {
+      pluginWatch.shown(Number(slot), Date.now());
       return !!(await engineHost().request({ type: "show", slot: Number(slot) })).ok;
     } catch {
       return false;
