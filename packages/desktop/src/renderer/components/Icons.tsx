@@ -156,6 +156,15 @@ export const BankIcon = () => (
     <path d="M3 4.5v7c0 1.1 2.2 2 5 2s5-.9 5-2v-7M3 8c0 1.1 2.2 2 5 2s5-.9 5-2" {...line} />
   </svg>
 );
+/** A plugin instrument's own window: a little synth, knobs over keys (track headers). */
+export const PluginWindowIcon = () => (
+  <svg {...svg}>
+    <rect x="1.5" y="3" width="13" height="10" rx="1.5" {...line} />
+    <path d="M1.5 7.5h13M5.5 7.5V13M8 7.5V13M10.5 7.5V13" {...line} />
+    <circle cx="4.5" cy="5.25" r=".9" fill="currentColor" />
+    <circle cx="7.5" cy="5.25" r=".9" fill="currentColor" />
+  </svg>
+);
 export const WindowIcon = () => (
   <svg {...svg}>
     <rect x="2.5" y="3.5" width="11" height="9" rx="1" {...line} />
