@@ -36,14 +36,14 @@ canvas { display: block; }
 .saved { color: var(--text-2); font-size: 12px; white-space: nowrap; }
 .saved.err { color: var(--rec); }
 
-.main { display: flex; flex: 1; min-height: 0; }
+.main { display: flex; flex: 1; min-height: 0; position: relative; }
 .work { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 
 /* Arrangement */
 .arr { display: flex; border-bottom: 1px solid var(--line); background: var(--bg-lane); flex: none; }
 .thdrs { width: var(--hdr-w, 196px); flex: none; border-right: 1px solid var(--line); position: relative; }
 .strip { height: 22px; position: relative; border-bottom: 1px solid var(--line-soft); box-sizing: border-box; }
-.lh { height: 40px; box-sizing: border-box; border-bottom: 1px solid var(--lane-row); }
+.lh { height: 54px; box-sizing: border-box; border-bottom: 1px solid var(--lane-row); }
 .thdr { display: flex; flex-direction: column; justify-content: center; gap: 3px; padding: 0 8px 0 10px; cursor: pointer; }
 .trow { display: flex; align-items: center; gap: 8px; min-width: 0; height: 20px; }
 /* H3.2: volume and pan under the name, aligned with it (chip 10 px + gap 8 px). */
@@ -458,3 +458,50 @@ input.inline.mixval { height: 16px; padding: 0 2px; font-size: 10px; text-align:
   .setnavb { justify-content: center; }
 }
 .btn:disabled { opacity: .45; cursor: default; }
+/* Interfaz 2, parte 2 (ESTUDIO_INTERFAZ_2.md, 5.1–5.2; sketch interfaz2_1_pista): the side column with tabs. */
+.activity.side { padding: 0; gap: 0; overflow: hidden; }
+.ptabs { display: flex; align-items: center; gap: 2px; padding: 8px 8px 0 10px; border-bottom: 1px solid var(--line); flex: none; }
+.ptab { all: unset; display: flex; align-items: center; gap: 6px; padding: 7px 10px 8px; color: var(--text-2); border-bottom: 2px solid transparent; margin-bottom: -1px; cursor: pointer; }
+.ptab:hover { color: var(--text); }
+.ptab.on { color: var(--text); border-bottom-color: var(--author-user); }
+.ptab.ai svg, .rail .aitab svg { color: var(--author-ai); }
+.ptab:focus-visible { outline: 2px solid var(--proposal-line); outline-offset: -2px; border-radius: 4px; }
+.ptabs .grow { flex: 1; }
+.ptabs .pfold { min-width: 30px; height: 30px; margin-bottom: 4px; }
+.pbody { padding: 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 20px; flex: 1; min-height: 0; }
+.rail .ibtn { color: var(--text); }
+.rail .ibtn.on { background: var(--bg-control-on); border-color: var(--line-on); }
+.tcard { display: flex; flex-direction: column; gap: 18px; }
+.tcard section .ah { margin-bottom: 6px; }
+.tchead { display: flex; align-items: center; gap: 10px; }
+.tcbar { width: 10px; height: 22px; border-radius: 3px; flex: none; }
+.tcname { font-size: 15px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tcswatches { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.tcswatches .sw { all: unset; width: 18px; height: 18px; border-radius: 5px; cursor: pointer; }
+.tcswatches .sw.on { outline: 2px solid var(--text); outline-offset: 2px; }
+.tcswatches .sw:focus-visible { outline: 2px solid var(--proposal-line); outline-offset: 2px; }
+.tcsound { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 10px; align-items: center; padding: 10px 12px; }
+.tcicon { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; background: var(--bg-control); color: var(--text); }
+.tcsoundname { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tcbtns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.tcbtns .btn, .tcfoot .btn { height: 30px; padding: 0 10px; display: inline-flex; align-items: center; gap: 6px; }
+.tcout { display: grid; grid-template-columns: auto 1fr; }
+.tcout .segb { height: 30px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; }
+.tcsetup { display: inline-block; margin-top: 8px; font-size: 12px; }
+.tcmix .qrow { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; padding: 3px 0; }
+.tcmix .qrow input[type="range"] { min-width: 0; }
+.tcard .hint { margin-top: 6px; }
+.tcfoot { display: flex; gap: 8px; border-top: 1px solid var(--line-soft); padding-top: 12px; }
+.tcfoot .del { margin-left: auto; color: var(--rec); }
+/* The sound of each track, in its header (decision 5). */
+.tsnd { all: unset; display: flex; align-items: center; gap: 5px; min-width: 0; padding-left: 18px; height: 14px; color: var(--text-2); font-size: 11.5px; cursor: pointer; }
+.tsnd:hover { color: var(--text); }
+.tsnd svg { width: 12px; height: 12px; flex: none; }
+.tsnd span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rsubb { display: inline-flex; align-items: center; gap: 5px; }
+.rsubb svg { width: 13px; height: 13px; }
+/* Below 1000 px the column opens over the piano roll (sketch interfaz2_6_compacta_860). */
+@container app (max-width: 1000px) {
+  .activity.side.over { display: flex; position: absolute; top: 0; right: 49px; bottom: 0; width: min(320px, calc(100vw - 110px)); z-index: 12; box-shadow: -16px 0 40px rgba(0, 0, 0, .45); }
+  .ptab .plbl { display: none; }
+}

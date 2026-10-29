@@ -7,6 +7,8 @@ import type { GridValue } from "./roll/geometry.js";
 import type { NoteNames } from "./music.js";
 
 export type Tool = "arrow" | "pencil" | "eraser" | "zoom";
+/** "sounds" (the browser) comes with part 3 of ESTUDIO_INTERFAZ_2.md. */
+export type PanelTab = "track" | "ai";
 
 export interface ViewState {
   tool: Tool;
@@ -23,6 +25,10 @@ export interface ViewState {
   authorship: boolean;
   scale: boolean;
   panelOpen: boolean;
+  /** The tab of the side column (ESTUDIO_INTERFAZ_2.md, 5.1): the active track, or the AI's activity. */
+  panelTab: PanelTab;
+  /** Below 1000 px the column opens over the piano roll, only when asked for. */
+  compactPanel: boolean;
   noteNames: NoteNames;
   /** Ctrl/Cmd held: the arrow works as a pencil (ESPEC_PIANO_ROLL.md, 3). */
   pencilHeld: boolean;
@@ -221,6 +227,8 @@ export function initialView(lang: "es" | "en"): ViewState {
     authorship: true,
     scale: true,
     panelOpen: true,
+    panelTab: "ai",
+    compactPanel: false,
     noteNames: lang === "es" ? "solfege" : "letters",
     pencilHeld: false,
     centredTrack: null,

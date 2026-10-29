@@ -168,10 +168,12 @@ export class SongActions {
   setOutput(id: string, output: "internal" | "external" | "plugin"): void {
     const track = this.song.tracks[id];
     if (!track || (track.output ?? "internal") === output) return;
-    if (output === "plugin") {
+    if (output === "plugin" || (output === "internal" && track.output === "external" && track.plugin)) {
       if (track.plugin) this.choosePlugin(id, track.plugin);
       return;
     }
+    // A plugin sounds in Four Hands: "Four Hands" changes nothing.
+    if (output === "internal" && track.output === "plugin") return;
     const key = output === "external" ? "hOutputDaw" : "hOutputHere";
     void this.run(this.h(key, { name: track.name, ch: track.channel + 1 }), [{ type: "updateTrack", id, changes: { output } }]);
   }
@@ -192,7 +194,7 @@ export class SongActions {
     const track = this.song.tracks[id];
     if (!track || !this.bridge) return;
     const t = this.t;
-    const back = { label: t("soundsBack"), run: () => this.outputMenu(id, x, y) };
+    const back = { label: t("soundsBack"), run: () => this.soundMenu(id, x, y) };
     if (scan) {
       this.editor.openMenu(x, y, [back, { separator: true }, { label: t("pluginsScanning"), disabled: true }]);
       this.bridge.log({ type: "engine_scan_asked" });
@@ -227,8 +229,6 @@ export class SongActions {
       { label: `${t("trackMenuOutput")} · ${track.name}`, header: true },
       { label: t("outputHere"), active: track.output !== "external", run: pick("internal") },
       { label: t("outputDaw", { ch: track.channel + 1 }), active: track.output === "external", run: pick("external") },
-      ...(track.plugin ? [{ label: track.plugin.name, active: track.output === "plugin", run: pick("plugin") }] : []),
-      { label: t("outputPlugin"), run: () => void this.pluginMenu(id, x, y) },
       { separator: true },
       { label: t("outputSetup"), run: () => this.openMidiOut(true) },
     ]);
@@ -348,7 +348,10 @@ export class SongActions {
   setInstrument(id: string, choice: SoundChoice): void {
     const track = this.song.tracks[id];
     if (!track) return;
-    const changes: { program?: number | null; channel?: number; sound: TrackSound | null } = { sound: null };
+    const changes: { program?: number | null; channel?: number; sound: TrackSound | null; output?: "internal"; plugin?: null } = { sound: null };
+    // A sound of Four Hands replaces the plugin (one sound per track).
+    if (track.output === "plugin") changes.output = "internal";
+    if (track.plugin) changes.plugin = null;
     let inst: string;
     if (choice.kind === "bank") {
       inst = choice.preset.name;
@@ -400,6 +403,19 @@ export class SongActions {
     void this.run(this.h(onlyReverb ? "hReverb" : "hMix", { name: track.name }), [{ type: "updateTrack", id, changes: { volume, pan, reverb: rev } }]);
   }
 
+  /** What sounds on a track, for its header, its card and the toolbar: the plugin, the bank preset or the instrument. */
+  soundLabel(track: Track): string {
+    if (track.output === "plugin" && track.plugin) return track.plugin.name;
+    return this.instrumentLabel(track);
+  }
+
+  /** Where the sound comes from (its icon): Four Hands's own, a bank of yours, a plugin, or your DAW. */
+  soundOrigin(track: Track): "builtin" | "bank" | "plugin" | "daw" {
+    if (track.output === "external") return "daw";
+    if (track.output === "plugin" && track.plugin) return "plugin";
+    return track.sound ? "bank" : "builtin";
+  }
+
   instrumentLabel(track: Track): string {
     if (track.sound) {
       const state = this.audio?.bankStatus(track.sound.bank);
@@ -416,8 +432,10 @@ export class SongActions {
    * First the default bank's instruments, then "Your sounds": each installed bank opens its own
    * list of presets (a bank with a single instrument is picked directly).
    */
-  paletteMenu(x: number, y: number, onPick: (choice: SoundChoice) => void, current?: Track): void {
+  paletteMenu(x: number, y: number, onPick: (choice: SoundChoice) => void, current?: Track, extra: MenuItem[] = []): void {
     const t = this.t;
+    // A track that plays a plugin has no sound of Four Hands marked.
+    if (current?.output === "plugin") current = undefined;
     const pick = (choice: SoundChoice) => () => (this.editor.closeMenus(), onPick(choice));
     const items: MenuItem[] = [{ label: t("soundsDefault"), header: true }];
     for (const g of PALETTE) {
@@ -438,12 +456,30 @@ export class SongActions {
         items.push({ label: bank.name, active: usedHere, shortcut: `${bank.presets.length} ›`, run: () => this.bankMenu(x, y, bank, onPick, current) });
       }
     }
+    items.push(...extra);
     items.push(
       { separator: true },
       { label: t("soundsFolder"), run: () => (this.editor.closeMenus(), this.audio?.openSoundsFolder()) },
       { label: t("soundsMore"), run: () => this.openSoundsHelp(true) },
     );
     this.editor.openMenu(x, y, items);
+  }
+
+  /**
+   * The sound of a track, in one menu (ESTUDIO_INTERFAZ_2.md, 5.2): Four Hands's sounds, your banks
+   * and the plugins. The browser of part 3 replaces it; the door stays the same.
+   */
+  soundMenu(id: string, x: number, y: number): void {
+    const track = this.song.tracks[id];
+    if (!track) return;
+    const t = this.t;
+    const extra: MenuItem[] = [
+      { separator: true },
+      { label: t("pluginsHeader"), header: true },
+      ...(track.plugin ? [{ label: track.plugin.name, active: track.output === "plugin", run: () => (this.editor.closeMenus(), this.choosePlugin(id, track.plugin!)) }] : []),
+      { label: t("soundPlugins"), shortcut: "›", run: () => void this.pluginMenu(id, x, y) },
+    ];
+    this.paletteMenu(x, y, (choice) => this.setInstrument(id, choice), track, extra);
   }
 
   /** The presets of one installed bank. */
@@ -469,11 +505,11 @@ export class SongActions {
     const close = (fn: () => void) => () => (this.editor.closeMenus(), fn());
     this.editor.openMenu(x, y, [
       { label: track.name, header: true },
-      { label: t("trackMenuInstrument"), run: () => this.paletteMenu(x, y, (item) => this.setInstrument(id, item), track) },
+      { label: t("trackMenuSound"), shortcut: this.soundLabel(track), run: () => this.soundMenu(id, x, y) },
       { label: t("trackMenuMix"), run: () => this.openMixer(id, x, y) },
       {
         label: t("trackMenuOutput"),
-        shortcut: track.output === "external" ? t("outputDawShort") : track.output === "plugin" && track.plugin ? track.plugin.name : "Four Hands",
+        shortcut: track.output === "external" ? t("outputDawShort") : "Four Hands",
         run: () => this.outputMenu(id, x, y),
       },
       ...this.pluginItems(track),
