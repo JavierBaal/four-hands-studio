@@ -49,6 +49,10 @@ private:
     std::vector<std::unique_ptr<Connection>> connections;
     Connection* current = nullptr;
     bool connected = false;
+    /** Loads sound banks one at a time, off the message thread (an SF3 takes seconds). */
+    juce::ThreadPool loader { 1 };
+
+    JUCE_DECLARE_WEAK_REFERENCEABLE (Link)
 };
 
 } // namespace fh

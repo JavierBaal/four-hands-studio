@@ -22,7 +22,9 @@ juce_add_gui_app(FourHandsEngine
   BUNDLE_ID com.fourhandsstudio.engine
   VERSION 0.1.0)
 
-target_sources(FourHandsEngine PRIVATE src/Main.cpp src/Engine.cpp src/Link.cpp)
+target_sources(FourHandsEngine PRIVATE src/Main.cpp src/Engine.cpp src/Link.cpp src/SoundFontSynth.cpp)
+# The built-in sounds (F2.1, 31/10/2026): TinySoundFont (MIT) and stb_vorbis (MIT or public domain),
+# single files kept in third_party with their licences.
 
 target_compile_definitions(FourHandsEngine PRIVATE
   JUCE_PLUGINHOST_VST3=1

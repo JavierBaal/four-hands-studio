@@ -1,4 +1,5 @@
 #include "Engine.h"
+#include "SoundFontSynth.h"
 
 namespace fh
 {
@@ -211,11 +212,37 @@ bool Engine::setState (int slot, const juce::MemoryBlock& data)
 }
 
 // -----------------------------------------------------------------------------
+// Built-in sounds
+
+SoundFontSynth& Engine::sounds()
+{
+    if (slots[(size_t) kSoundsSlot] == nullptr)
+    {
+        auto synth = std::make_unique<SoundFontSynth>();
+        synth->prepareToPlay (sampleRate, blockSize);
+        {
+            const juce::SpinLock::ScopedLockType sl (lock);
+            live[(size_t) kSoundsSlot] = synth.get();
+        }
+        slots[(size_t) kSoundsSlot] = std::move (synth);
+    }
+    return *static_cast<SoundFontSynth*> (slots[(size_t) kSoundsSlot].get());
+}
+
+juce::String Engine::loadSoundBank (int offset, const juce::File& file, int& presets)
+{
+    auto* synth = static_cast<SoundFontSynth*> (slots[(size_t) kSoundsSlot].get());
+    if (synth == nullptr)
+        return "The built-in sounds are not ready";
+    return synth->loadBank (offset, file, presets);
+}
+
+// -----------------------------------------------------------------------------
 // MIDI
 
 void Engine::schedule (int slot, double delaySeconds, const juce::MidiMessage& message)
 {
-    if (slot < 0 || slot >= kSlots)
+    if (slot < 0 || slot >= kAllSlots)
         return;
     const auto at = position.load() + (juce::int64) std::llround (juce::jmax (0.0, delaySeconds) * sampleRate);
     const juce::SpinLock::ScopedLockType sl (lock);
@@ -227,7 +254,7 @@ void Engine::panic()
     const juce::SpinLock::ScopedLockType sl (lock);
     pending.clear();
     const auto now = position.load();
-    for (int s = 0; s < kSlots; ++s)
+    for (int s = 0; s < kAllSlots; ++s)
         for (int ch = 1; ch <= 16; ++ch)
         {
             pending.push_back ({ now, s, juce::MidiMessage::controllerEvent (ch, 64, 0) });
@@ -294,7 +321,7 @@ void Engine::process (float* const* outputs, int numOutputs, int numSamples)
     if (scratch.getNumSamples() < numSamples)
         scratch.setSize (scratch.getNumChannels(), numSamples, false, true, true);
 
-    for (int s = 0; s < kSlots; ++s)
+    for (int s = 0; s < kAllSlots; ++s)
     {
         auto* plugin = live[(size_t) s];
         if (plugin == nullptr)

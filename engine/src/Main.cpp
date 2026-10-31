@@ -3,11 +3,14 @@
 //   FourHandsEngine --port 0 --token <t> --cache <file>   normal use: Four Hands starts it
 //   FourHandsEngine --selftest <folder with VST3>          loads the first instrument, plays a note
 //                                                          offline and checks it sounds (exit code)
+//   FourHandsEngine --render <bank> <song.mid> <out.wav>   plays a MIDI file with the built-in sounds
+//                                                          offline, to compare them with the app's
 //
 // On start it prints "FH_ENGINE_READY <port>" so Four Hands knows where to connect. It quits when
 // Four Hands goes (connection lost) or never comes (30 s): it must not outlive the app.
 #include "Engine.h"
 #include "Link.h"
+#include "SoundFontSynth.h"
 
 #include <iostream>
 
@@ -71,6 +74,72 @@ int selfTest (const juce::String& folder)
     std::cout << "OK" << std::endl;
     return 0;
 }
+/**
+ * The built-in sounds without a device: a MIDI file through slot 16, written as a 24-bit WAV.
+ * Optional `extra` banks go at offsets 20, 30… (as the app adds them).
+ */
+int renderSong (const juce::String& bankPath, const juce::String& midiPath, const juce::String& wavPath, const juce::StringArray& extra)
+{
+    fh::Engine engine;
+    const double rate = 48000.0;
+    engine.prepareOffline (rate, 512);
+    engine.sounds();
+    int presets = 0;
+    auto problem = engine.loadSoundBank (0, juce::File (bankPath), presets);
+    if (problem.isNotEmpty())
+    {
+        std::cout << "FAIL bank: " << problem << std::endl;
+        return 2;
+    }
+    std::cout << "bank " << presets << " presets" << std::endl;
+    for (int i = 0; i < extra.size(); ++i)
+    {
+        problem = engine.loadSoundBank (fh::SoundFontSynth::kFirstOffset + i * fh::SoundFontSynth::kOffsetStep, juce::File (extra[i]), presets);
+        if (problem.isNotEmpty())
+        {
+            std::cout << "FAIL bank: " << problem << std::endl;
+            return 2;
+        }
+    }
+
+    juce::MidiFile file;
+    juce::FileInputStream in ((juce::File (midiPath)));
+    if (! in.openedOk() || ! file.readFrom (in))
+    {
+        std::cout << "FAIL midi" << std::endl;
+        return 3;
+    }
+    file.convertTimestampTicksToSeconds();
+    juce::MidiMessageSequence all;
+    for (int t = 0; t < file.getNumTracks(); ++t)
+        all.addSequence (*file.getTrack (t), 0.0);
+    all.updateMatchedPairs();
+    double end = 0.0;
+    for (const auto* e : all)
+    {
+        if (e->message.isMetaEvent())
+            continue;
+        engine.schedule (fh::kSoundsSlot, e->message.getTimeStamp(), e->message);
+        end = juce::jmax (end, e->message.getTimeStamp());
+    }
+    juce::AudioBuffer<float> out (2, (int) ((end + 3.0) * rate));
+    out.clear();
+    engine.renderOffline (out);
+    std::cout << "rms " << out.getRMSLevel (0, 0, out.getNumSamples()) << " peak " << out.getMagnitude (0, out.getNumSamples()) << std::endl;
+
+    juce::File wav (wavPath);
+    wav.deleteFile();
+    juce::WavAudioFormat format;
+    std::unique_ptr<juce::AudioFormatWriter> writer (format.createWriterFor (new juce::FileOutputStream (wav), rate, 2, 24, {}, 0));
+    if (writer == nullptr)
+    {
+        std::cout << "FAIL wav" << std::endl;
+        return 4;
+    }
+    writer->writeFromAudioSampleBuffer (out, 0, out.getNumSamples());
+    std::cout << "OK" << std::endl;
+    return 0;
+}
 } // namespace
 
 class EngineApp final : public juce::JUCEApplication, private juce::Timer
@@ -83,6 +152,16 @@ public:
     void initialise (const juce::String& commandLine) override
     {
         const auto args = juce::StringArray::fromTokens (commandLine, true);
+        if (args.contains ("--render"))
+        {
+            const auto i = args.indexOf ("--render");
+            juce::StringArray extra;
+            for (int k = i + 4; k < args.size(); ++k)
+                extra.add (args[k].unquoted());
+            setApplicationReturnValue (renderSong (args[i + 1].unquoted(), args[i + 2].unquoted(), args[i + 3].unquoted(), extra));
+            quit();
+            return;
+        }
         if (args.contains ("--selftest"))
         {
             const auto code = selfTest (argAfter (args, "--selftest"));

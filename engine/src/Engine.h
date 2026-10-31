@@ -17,6 +17,11 @@ namespace fh
 {
 /** One per track that sounds through a plugin; 16 like MIDI channels. */
 constexpr int kSlots = 16;
+/** After them, the built-in sounds (SoundFontSynth): all 16 MIDI channels, as the app sends them. */
+constexpr int kSoundsSlot = kSlots;
+constexpr int kAllSlots = kSlots + 1;
+
+class SoundFontSynth;
 
 class Engine : public juce::AudioIODeviceCallback
 {
@@ -61,9 +66,20 @@ public:
     bool setState (int slot, const juce::MemoryBlock& data);
 
     // -------------------------------------------------------------------------
+    // Built-in sounds (F2.1, 31/10/2026)
+
+    /** Creates the built-in sounds in their slot if they are not there (message thread). */
+    SoundFontSynth& sounds();
+    /**
+     * Loads a bank into the built-in sounds at its bank select offset (0: the default bank).
+     * Thread-safe against the audio thread; call it from a worker, SF3 takes seconds.
+     */
+    juce::String loadSoundBank (int offset, const juce::File& file, int& presets);
+
+    // -------------------------------------------------------------------------
     // MIDI
 
-    /** Plays `message` on `slot`, `delaySeconds` from now (Four Hands schedules ahead). */
+    /** Plays `message` on `slot` (kSoundsSlot: the built-in sounds, on the message's own channel), `delaySeconds` from now (Four Hands schedules ahead). */
     void schedule (int slot, double delaySeconds, const juce::MidiMessage& message);
     /** All notes off and pedal up in every slot, now. */
     void panic();
@@ -100,9 +116,9 @@ private:
     juce::KnownPluginList knownPlugins;
 
     // Owned on the message thread; the audio thread sees `live` under `lock`.
-    std::array<std::unique_ptr<juce::AudioPluginInstance>, kSlots> slots;
-    std::array<juce::AudioPluginInstance*, kSlots> live {};
-    std::array<std::unique_ptr<juce::DocumentWindow>, kSlots> windows;
+    std::array<std::unique_ptr<juce::AudioPluginInstance>, kAllSlots> slots;
+    std::array<juce::AudioPluginInstance*, kAllSlots> live {};
+    std::array<std::unique_ptr<juce::DocumentWindow>, kAllSlots> windows;
 
     juce::SpinLock lock;
     std::vector<Pending> pending;
@@ -111,7 +127,7 @@ private:
     double sampleRate = 48000.0;
     int blockSize = 512;
     juce::AudioBuffer<float> scratch;
-    std::array<juce::MidiBuffer, kSlots> midi;
+    std::array<juce::MidiBuffer, kAllSlots> midi;
 
     juce::SpinLock statsLock;
     Stats stats;
