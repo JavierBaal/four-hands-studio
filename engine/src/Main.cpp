@@ -12,6 +12,7 @@
 #include "Link.h"
 #include "SoundFontSynth.h"
 
+#include <cmath>
 #include <iostream>
 
 namespace
@@ -115,11 +116,17 @@ int renderSong (const juce::String& bankPath, const juce::String& midiPath, cons
         all.addSequence (*file.getTrack (t), 0.0);
     all.updateMatchedPairs();
     double end = 0.0;
+    const int quantize = juce::SystemStats::getEnvironmentVariable ("FH_RENDER_BLOCK", "0").getIntValue();
     for (const auto* e : all)
     {
         if (e->message.isMetaEvent())
             continue;
-        engine.schedule (fh::kSoundsSlot, e->message.getTimeStamp(), e->message);
+        // FH_RENDER_BLOCK=128: events at the start of their 128-sample block, as SpessaSynth's own
+        // sequencer plays a file (to compare the two sample by sample).
+        auto t = e->message.getTimeStamp();
+        if (quantize > 0)
+            t = std::ceil (t * rate / quantize - 1e-9) * quantize / rate;
+        engine.schedule (fh::kSoundsSlot, t, e->message);
         end = juce::jmax (end, e->message.getTimeStamp());
     }
     juce::AudioBuffer<float> out (2, (int) ((end + 3.0) * rate));

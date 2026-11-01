@@ -343,9 +343,6 @@ struct tsf
 	float outSampleRate;
 	float globalGainDB;
 	int* refCount;
-	// Four Hands (31/10/2026): modulation wheel depth in cents, added to the modulation LFO's pitch
-	// depth like the SoundFont 2 default modulator (CC1 -> +50 cents of vibrato).
-	float modWheelCents;
 };
 
 #ifndef TSF_NO_STDIO
@@ -421,6 +418,10 @@ static void tsf_hydra_read_shdr(struct tsf_hydra_shdr* i, struct tsf_stream* str
 #undef TSFR
 
 struct tsf_riffchunk { tsf_fourcc id; tsf_u32 size; };
+
+// Four Hands (01/11/2026): called once per load, before the hydra is freed (see tsf_load).
+static void (*tsf_fh_on_hydra)(void* user, const struct tsf_hydra* hydra, const float* samples, unsigned int sampleCount) = TSF_NULL;
+static void* tsf_fh_user = TSF_NULL;
 struct tsf_envelope { float delay, attack, hold, decay, sustain, release, keynumToHold, keynumToDecay; };
 struct tsf_voice_envelope { unsigned char segment, segmentIsExponential : 1, isAmpEnv : 1; short midiVelocity; float level, slope; int samplesUntilNextSegment; struct tsf_envelope parameters; };
 struct tsf_voice_lowpass { double QInv, a0, a1, b1, b2, z1, z2; TSF_BOOL active; };
@@ -964,7 +965,7 @@ static int tsf_decode_sf3_samples(const void* rawBuffer, float** pFloatBuffer, u
 
 			// Convert the samples from short to float
 			for (out = res + oldResNum; in < inEnd;)
-				*(out++) = (float)(*(in++) / 32767.0);
+				*(out++) = (float)(*(in++) / 32768.0);
 		}
 	}
 
@@ -1000,7 +1001,7 @@ static int tsf_load_samples(void** pRawBuffer, float** pFloatBuffer, unsigned in
 	*pFloatBuffer = (float*)TSF_MALLOC(*pSmplCount * sizeof(float));
 	if (!*pFloatBuffer || !stream->read(stream->data, *pFloatBuffer, chunkSmpl->size)) return 0;
 	for (res = *pFloatBuffer, out = res + *pSmplCount, in = (short*)res + *pSmplCount; out != res;)
-		*(--out) = (float)(*(--in) / 32767.0);
+		*(--out) = (float)(*(--in) / 32768.0);
 	return 1;
 	#endif
 }
@@ -1229,7 +1230,7 @@ static void tsf_voice_render(tsf* f, struct tsf_voice* v, float* outputBuffer, i
 
 	// Cache some values, to give them at least some chance of ending up in registers.
 	TSF_BOOL updateModEnv = (region->modEnvToPitch || region->modEnvToFilterFc);
-	TSF_BOOL updateModLFO = (v->modlfo.delta && (region->modLfoToPitch || region->modLfoToFilterFc || region->modLfoToVolume || f->modWheelCents));
+	TSF_BOOL updateModLFO = (v->modlfo.delta && (region->modLfoToPitch || region->modLfoToFilterFc || region->modLfoToVolume));
 	TSF_BOOL updateVibLFO = (v->viblfo.delta && (region->vibLfoToPitch));
 	TSF_BOOL isLooping    = (v->loopStart < v->loopEnd);
 	unsigned int tmpLoopStart = v->loopStart, tmpLoopEnd = v->loopEnd;
@@ -1240,7 +1241,7 @@ static void tsf_voice_render(tsf* f, struct tsf_voice* v, float* outputBuffer, i
 	TSF_BOOL dynamicLowpass = (region->modLfoToFilterFc || region->modEnvToFilterFc);
 	float tmpSampleRate = f->outSampleRate, tmpInitialFilterFc, tmpModLfoToFilterFc, tmpModEnvToFilterFc;
 
-	TSF_BOOL dynamicPitchRatio = (region->modLfoToPitch || region->modEnvToPitch || region->vibLfoToPitch || f->modWheelCents);
+	TSF_BOOL dynamicPitchRatio = (region->modLfoToPitch || region->modEnvToPitch || region->vibLfoToPitch);
 	double pitchRatio;
 	float tmpModLfoToPitch, tmpVibLfoToPitch, tmpModEnvToPitch;
 
@@ -1250,7 +1251,7 @@ static void tsf_voice_render(tsf* f, struct tsf_voice* v, float* outputBuffer, i
 	if (dynamicLowpass) tmpInitialFilterFc = (float)region->initialFilterFc, tmpModLfoToFilterFc = (float)region->modLfoToFilterFc, tmpModEnvToFilterFc = (float)region->modEnvToFilterFc;
 	else tmpInitialFilterFc = 0, tmpModLfoToFilterFc = 0, tmpModEnvToFilterFc = 0;
 
-	if (dynamicPitchRatio) pitchRatio = 0, tmpModLfoToPitch = (float)region->modLfoToPitch + f->modWheelCents, tmpVibLfoToPitch = (float)region->vibLfoToPitch, tmpModEnvToPitch = (float)region->modEnvToPitch;
+	if (dynamicPitchRatio) pitchRatio = 0, tmpModLfoToPitch = (float)region->modLfoToPitch, tmpVibLfoToPitch = (float)region->vibLfoToPitch, tmpModEnvToPitch = (float)region->modEnvToPitch;
 	else pitchRatio = tsf_timecents2Secsd(v->pitchInputTimecents) * v->pitchOutputFactor, tmpModLfoToPitch = 0, tmpVibLfoToPitch = 0, tmpModEnvToPitch = 0;
 
 	if (dynamicGain) tmpModLfoToVolume = (float)region->modLfoToVolume * 0.1f;
@@ -1451,6 +1452,9 @@ TSFDEF tsf* tsf_load(struct tsf_stream* stream)
 		res = TSF_NULL;
 		//if (e) *e = TSF_OUT_OF_MEMORY;
 	}
+	// Four Hands (01/11/2026): the bank as the file has it (zones, generators, modulators and the
+	// samples, with SF3 positions already fixed up), for a synthesizer that follows SoundFont 2.
+	if (res && tsf_fh_on_hydra) tsf_fh_on_hydra(tsf_fh_user, &hydra, res->fontSamples, smplCount);
 	TSF_FREE(hydra.phdrs); TSF_FREE(hydra.pbags); TSF_FREE(hydra.pmods);
 	TSF_FREE(hydra.pgens); TSF_FREE(hydra.insts); TSF_FREE(hydra.ibags);
 	TSF_FREE(hydra.imods); TSF_FREE(hydra.igens); TSF_FREE(hydra.shdrs);
@@ -1555,8 +1559,7 @@ TSFDEF int tsf_set_max_voices(tsf* f, int max_voices)
 
 TSFDEF int tsf_note_on(tsf* f, int preset_index, int key, float vel)
 {
-	// Four Hands (31/10/2026): rounded, so velocity 100 picks the layer of 100 and not of 99.
-	short midiVelocity = (short)(vel * 127 + 0.5f);
+	short midiVelocity = (short)(vel * 127);
 	unsigned int voicePlayIndex;
 	struct tsf_region *region, *regionEnd;
 
@@ -1620,8 +1623,7 @@ TSFDEF int tsf_note_on(tsf* f, int preset_index, int key, float vel)
 		voice->playingKey = key;
 		voice->playIndex = voicePlayIndex;
 		voice->heldSustain = 0;
-		// Four Hands (31/10/2026): the SoundFont 2 default velocity curve (40*log10), not a linear one.
-		voice->noteGainDB = f->globalGainDB - region->attenuation - tsf_gainToDecibels(1.0f / (vel * vel));
+		voice->noteGainDB = f->globalGainDB - region->attenuation - tsf_gainToDecibels(1.0f / vel);
 
 		if (f->channels)
 		{
