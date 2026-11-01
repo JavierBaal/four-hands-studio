@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SynthEvent } from "../shared/messages.js";
-import { SoundRouter, isOwnLoopback, midiBytes } from "./router.js";
+import { SoundRouter, isOwnLoopback, midiBytes, soundsBytes } from "./router.js";
+import type { EngineMidiEvent } from "../shared/engine.js";
 
 function setup(external = new Set([3])) {
   const inner = { ctx: { currentTime: 10 }, nowed: [] as SynthEvent[], scheduled: [] as { time: number; ev: SynthEvent }[], panics: 0 };
@@ -103,5 +104,61 @@ describe("tracks through a plugin of the engine (prueba S2)", () => {
     router.silence(5);
     expect(batches.at(-1)!.map((e) => e.data[1])).toEqual([64, 123, 120]);
     expect(batches.at(-1)!.every((e) => e.slot === 5 && e.data[0] === 0xb0)).toBe(true);
+  });
+});
+
+describe("the built-in sounds in the engine (F2.1, Fran 01/11/2026)", () => {
+  function withEngine(ready: { value: boolean }) {
+    const inner = { ctx: { currentTime: 10 }, nowed: [] as SynthEvent[], scheduled: [] as { time: number; ev: SynthEvent }[], panics: 0 };
+    const midi: EngineMidiEvent[] = [];
+    const port = { midi: (e: EngineMidiEvent[]) => midi.push(...e), panic: () => {}, latency: () => 0.02 };
+    const router = new SoundRouter({
+      inner: { ctx: inner.ctx, now: (ev) => inner.nowed.push(ev), sched: (evs) => inner.scheduled.push(...evs), panic: () => inner.panics++ },
+      external: () => new Set([3]),
+      port: () => null,
+      delayMs: () => 40,
+      plugin: () => new Set([2]),
+      engine: () => port,
+      builtin: () => (ready.value ? port : null),
+    });
+    return { router, inner, midi };
+  }
+
+  it("sends programs with their bank, unlike the plugins and the MIDI out", () => {
+    expect(soundsBytes({ kind: "prog", ch: 4, prog: 48, bank: 20 })).toEqual([[0xb4, 0, 20], [0xc4, 48]]);
+    expect(soundsBytes({ kind: "prog", ch: 4, prog: 48 })).toEqual([[0xc4, 48]]);
+    expect(soundsBytes({ kind: "on", ch: 4, note: 60, vel: 90 })).toEqual([[0x94, 60, 90]]);
+    expect(soundsBytes({ kind: "panic" })).toEqual([]);
+  });
+
+  it("plays the built-in tracks in slot 16 on their own channel, at the plugins' moment", () => {
+    const { router, inner, midi } = withEngine({ value: true });
+    router.sched([
+      { time: 10.5, ev: { kind: "on", ch: 0, note: 60, vel: 80 } },
+      { time: 10.5, ev: { kind: "on", ch: 2, note: 62, vel: 80 } },
+      { time: 10.5, ev: { kind: "prog", ch: 0, prog: 40, bank: 0 } },
+    ]);
+    expect(inner.scheduled).toEqual([]);
+    // 0.5 s ahead, plus the window's 40 ms, minus the engine's own 20 ms.
+    expect(midi).toEqual([
+      { slot: 16, delay: 0.52, data: [0x90, 60, 80] },
+      { slot: 2, delay: 0.52, data: [0x90, 62, 80] },
+      { slot: 16, delay: 0.52, data: [0xb0, 0, 0] },
+      { slot: 16, delay: 0.52, data: [0xc0, 40] },
+    ]);
+    router.now({ kind: "cc", ch: 5, cc: 11, value: 90 });
+    expect(midi.at(-1)).toEqual({ slot: 16, delay: 0, data: [0xb5, 11, 90] });
+    expect(inner.nowed).toEqual([]);
+  });
+
+  it("falls back to the window's synth while the engine has no sounds (not built, starting, restarting)", () => {
+    const ready = { value: false };
+    const { router, inner, midi } = withEngine(ready);
+    router.now({ kind: "on", ch: 0, note: 60, vel: 80 });
+    expect(inner.nowed).toEqual([{ kind: "on", ch: 0, note: 60, vel: 80 }]);
+    expect(midi).toEqual([]);
+    ready.value = true;
+    router.silence(0);
+    expect(midi.filter((e) => e.slot === 16).map((e) => e.data)).toEqual([[0xb0, 64, 0], [0xb0, 123, 0], [0xb0, 120, 0]]);
   });
 });

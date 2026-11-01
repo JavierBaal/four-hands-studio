@@ -5,7 +5,7 @@
  * and splits by channel. Program changes never go out (they would change the preset loaded in the
  * other program); notes, pedal, expression, modulation, volume, pan and reverb send do.
  */
-import type { EngineMidiEvent } from "../shared/engine.js";
+import { type EngineMidiEvent, SOUNDS_SLOT } from "../shared/engine.js";
 import type { SynthEvent } from "../shared/messages.js";
 
 /** What the player plays through: the synth itself, or this router around it. */
@@ -74,6 +74,17 @@ export function engineBytes(ev: SynthEvent): number[] | null {
   return bytes;
 }
 
+/**
+ * F2.1: the bytes of an event for the engine's built-in sounds, on the track's own channel.
+ * Unlike the other outputs, program changes go too (with the bank select first, as the worklet
+ * does with an added bank's offset): they choose the sound.
+ */
+export function soundsBytes(ev: SynthEvent): number[][] {
+  if (ev.kind === "prog") return ev.bank === undefined ? [[0xc0 | ev.ch, ev.prog & 0x7f]] : [[0xb0 | ev.ch, 0, ev.bank & 0x7f], [0xc0 | ev.ch, ev.prog & 0x7f]];
+  const bytes = midiBytes(ev);
+  return bytes ? [bytes] : [];
+}
+
 export interface RouterOptions {
   /** The built-in synth. */
   inner: SoundOut;
@@ -91,9 +102,14 @@ export interface RouterOptions {
   /** Channels of the tracks that sound through a plugin of the engine. */
   plugin?: () => ReadonlySet<number>;
   engine?: () => EnginePort | null;
+  /**
+   * F2.1: the engine, when it plays the built-in sounds (its bank is loaded); null while it is not
+   * ready, and then the window's synth plays them as before.
+   */
+  builtin?: () => EnginePort | null;
 }
 
-type Side = "inner" | "port" | "engine";
+type Side = "inner" | "port" | "engine" | "builtin";
 
 export class SoundRouter implements SoundOut {
   constructor(private readonly options: RouterOptions) {}
@@ -105,7 +121,8 @@ export class SoundRouter implements SoundOut {
   private side(ev: SynthEvent): Side {
     if (ev.kind === "panic") return "inner";
     if (this.options.plugin?.().has(ev.ch)) return "engine";
-    return this.options.external().has(ev.ch) ? "port" : "inner";
+    if (this.options.external().has(ev.ch)) return "port";
+    return this.options.builtin?.() ? "builtin" : "inner";
   }
 
   now(ev: SynthEvent, inputTime?: number, source?: "keyboard" | "midi"): void {
@@ -119,6 +136,11 @@ export class SoundRouter implements SoundOut {
       if (data) this.options.engine?.()?.midi([{ slot: ev.kind === "panic" ? 0 : ev.ch, delay: 0, data }]);
       return;
     }
+    if (side === "builtin") {
+      const events = soundsBytes(ev).map((data) => ({ slot: SOUNDS_SLOT, delay: 0, data }));
+      if (events.length) this.options.builtin?.()?.midi(events);
+      return;
+    }
     const bytes = midiBytes(ev);
     if (bytes) this.options.port()?.send(bytes);
   }
@@ -127,7 +149,7 @@ export class SoundRouter implements SoundOut {
     const inside: Array<{ time: number; ev: SynthEvent }> = [];
     const toEngine: EngineMidiEvent[] = [];
     const port = this.options.port();
-    const engine = this.options.engine?.() ?? null;
+    const engine = this.options.engine?.() ?? this.options.builtin?.() ?? null;
     const perfNow = (this.options.perfNow ?? (() => performance.now()))();
     const nowSec = this.ctx.currentTime;
     const delay = this.options.delayMs?.() ?? 0;
@@ -144,11 +166,16 @@ export class SoundRouter implements SoundOut {
         if (data && engine && e.ev.kind !== "panic") toEngine.push({ slot: e.ev.ch, delay: Math.max(0, e.time - nowSec + engineShift), data });
         continue;
       }
+      if (side === "builtin") {
+        // Same moment as the plugin tracks: both leave the engine with its own delay.
+        for (const data of soundsBytes(e.ev)) toEngine.push({ slot: SOUNDS_SLOT, delay: Math.max(0, e.time - nowSec + engineShift), data });
+        continue;
+      }
       const bytes = midiBytes(e.ev);
       if (bytes && port) port.send(bytes, Math.max(perfNow, perfNow + (e.time - nowSec) * 1000 + delay));
     }
     if (inside.length) this.options.inner.sched(inside);
-    if (toEngine.length) engine!.midi(toEngine);
+    if (toEngine.length) engine?.midi(toEngine);
   }
 
   panic(): void {
@@ -159,10 +186,16 @@ export class SoundRouter implements SoundOut {
     for (const ch of this.options.external()) for (const bytes of silenceBytes(ch)) port.send(bytes);
   }
 
+  /** F2.1: the window's synth only, when the engine takes over the built-in sounds. */
+  innerPanic(): void {
+    this.options.inner.panic();
+  }
+
   /** A channel changed sides while something sounded: stop it everywhere. */
   silence(ch: number): void {
     for (const bytes of silenceBytes(ch)) this.options.port()?.send(bytes);
     this.options.engine?.()?.midi(silenceBytes(0).map((data) => ({ slot: ch, delay: 0, data })));
+    this.options.builtin?.()?.midi(silenceBytes(ch).map((data) => ({ slot: SOUNDS_SLOT, delay: 0, data })));
     this.options.inner.now({ kind: "cc", ch, cc: 64, value: 0 });
     this.options.inner.now({ kind: "cc", ch, cc: 123, value: 0 });
   }

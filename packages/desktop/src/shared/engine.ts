@@ -22,6 +22,20 @@ export interface EngineStatus {
 
 export const ENGINE_OFF: EngineStatus = { state: "off", generation: 0 };
 
+/**
+ * F2.1 (Fran, 01/11/2026): the engine's slot for the built-in sounds, after the 16 plugin slots. It
+ * listens on all 16 MIDI channels, so the tracks keep their own channel there.
+ */
+export const SOUNDS_SLOT = 16;
+
+/** What the engine says when a sound bank is ready in it (or could not load). */
+export interface EngineSoundsResult {
+  ok: boolean;
+  error?: string | undefined;
+  presets?: number | undefined;
+  ms?: number | undefined;
+}
+
 /** A plugin the engine found on this computer. */
 export interface EnginePlugin {
   id: string;

@@ -2,7 +2,7 @@
  * The window's door to the main process (exposed by the preload as `window.fh`), plus an in-page
  * stand-in that runs the core directly, for the browser harness and the interface tests.
  */
-import { ENGINE_OFF, type EngineLoadResult, type EngineMidiEvent, type EnginePlugin, type EnginePluginList, type EngineScanProgress, type EngineStatus, type PluginFolders } from "../shared/engine.js";
+import { ENGINE_OFF, type EngineLoadResult, type EngineMidiEvent, type EnginePlugin, type EnginePluginList, type EngineScanProgress, type EngineSoundsResult, type EngineStatus, type PluginFolders } from "../shared/engine.js";
 import { NO_SOUND_PREFS, type SoundPrefs } from "../shared/sound-catalog.js";
 import { SongDocument, USER, runCommands, type Song } from "@fourhands/core";
 import { type AiApply, type AiState, type AiTone, DEFAULT_AI_APPLY, DEFAULT_AI_TONE, type FileState, type FolderKind, type Folders, type MenuAction, type ToolKind, NO_AI, type PatchMessage, type Reply, type Request, type SkillCardInfo, type SkillImportResult, type Snapshot, type SoundBankInfo, type ViewInfo, undoStateOf } from "../shared/protocol.js";
@@ -78,6 +78,13 @@ export interface Bridge {
   engineShow(slot: number): Promise<boolean>;
   engineMidi(events: EngineMidiEvent[]): void;
   enginePanic(): void;
+  /**
+   * F2.1: loads a sound bank into the engine's built-in sounds at its bank select offset ("main":
+   * the built-in bank, at 0) and says when it is ready. It starts the engine if needed.
+   */
+  engineSounds(id: string, offset: number): Promise<EngineSoundsResult>;
+  /** F2.1: where the built-in sounds play (ajustes.json, `builtinSounds`). */
+  builtinSounds(): Promise<"engine" | "app">;
   /** Ajustes › Carpetas. */
   folders(): Promise<Folders>;
   openFolder(kind: FolderKind): void;
@@ -245,6 +252,9 @@ export function memoryBridge(
     },
     engineMidi: (events) => void engine.midi.push(...structuredClone(events)),
     enginePanic: () => {},
+    // The pretend engine has no sounds: the interface tests keep the window's synth.
+    engineSounds: async () => ({ ok: false, error: "The engine is not built on this computer" }),
+    builtinSounds: async () => "app",
     folders: async () => ({ songs: "C:\\Users\\fran\\Documents\\Four Hands", backups: "C:\\Users\\fran\\AppData\\Roaming\\Four Hands Studio\\copias", sounds: "C:\\Users\\fran\\Documents\\Four Hands\\Sonidos", skills: "C:\\Users\\fran\\Documents\\Four Hands\\Skills" }),
     openFolder: (kind) => console.log("[fh] open folder", kind),
     openTool: (kind) => console.log("[fh] open tool", kind),

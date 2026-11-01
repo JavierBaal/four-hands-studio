@@ -61,6 +61,23 @@ describe("engine host (prueba S2)", () => {
     expect(log.find((e) => e.type === "engine_chatter")).toMatchObject({ lines: 20, logged: 5 });
   });
 
+  it("passes on what the engine says by itself without taking it for a reply (F2.1, sound banks)", async () => {
+    const { h } = host();
+    const events: Record<string, unknown>[] = [];
+    (h as unknown as { options: { onEvent: (e: Record<string, unknown>) => void } }).options.onEvent = (e) => events.push(e);
+    const loading = await h.request({ type: "sounds", id: "main", offset: 0, path: "/sf/MuseScore_General.sf3" });
+    expect(loading).toMatchObject({ type: "soundsLoading", id: "main", offset: 0 });
+    // The bank's event arrives between a request and its reply: the reply still matches.
+    await new Promise((r) => setTimeout(r, 10));
+    const stats = h.request({ type: "stats" });
+    await new Promise((r) => setTimeout(r, 80));
+    expect((await stats).type).toBe("stats");
+    expect(events).toEqual([{ type: "event", event: "soundsLoaded", id: "main", offset: 0, ok: true, error: "", presets: 3, ms: 5 }]);
+    expect((await h.request({ type: "stats" })).type).toBe("stats");
+    h.stop();
+    await new Promise((r) => setTimeout(r, 300));
+  });
+
   it("survives the engine crashing: the request fails, Four Hands goes on, the next one restarts it", async () => {
     const { h, log } = host();
     await expect(h.request({ type: "load", slot: 0, id: "crash" })).rejects.toThrow(/closed|stopped/);

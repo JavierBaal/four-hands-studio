@@ -51,6 +51,14 @@ const server = net.createServer((socket) => {
         case "midi":
           midi += m.events.length;
           break;
+        case "sounds":
+          // F2.1: the reply at once, the load later as an event (a missing file fails).
+          send({ type: "soundsLoading", id: m.id, offset: m.offset });
+          setTimeout(() => {
+            const ok = typeof m.path === "string" && !m.path.includes("missing");
+            send({ type: "event", event: "soundsLoaded", id: m.id, offset: m.offset, ok, error: ok ? "" : "Sound bank not found", presets: ok ? 3 : 0, ms: 5 });
+          }, 30);
+          break;
         case "stats":
           send({ type: "stats", blocks: midi, maxLoad: 0, late: 0 });
           break;

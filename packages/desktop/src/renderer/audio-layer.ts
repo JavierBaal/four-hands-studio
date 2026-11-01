@@ -97,6 +97,16 @@ export class AudioLayer {
   pluginScan: EngineScanProgress | null = null;
   /** The Sonidos browser's marks: favourites, recents, hidden plugins, moved categories. */
   soundPrefs: SoundPrefs = { ...NO_SOUND_PREFS };
+  /**
+   * F2.1 (Fran, 01/11/2026): the built-in sounds play in the engine once its banks are there (the
+   * same banks, at the same bank select offsets as the window's synth). Until then, and if the
+   * engine is not built or stops, they play here as before. `builtinWhere` comes from
+   * ajustes.json (`builtinSounds`); the banks loaded are kept per engine generation.
+   */
+  builtinWhere: "engine" | "app" = "app";
+  private engineBanks = new Map<string, number>();
+  private engineBanksLoading = new Set<string>();
+  private engineBanksRefused = new Map<string, number>();
   /** Listens to the MIDI inputs again (the output port changed: skip its loopback). */
   private relisten: () => void = () => {};
 
@@ -208,9 +218,18 @@ export class AudioLayer {
   private engineChanged(status: EngineStatus): void {
     // A new engine (it started, or started again after a crash) has no plugins yet.
     if (status.generation !== this.engineStatus.generation || status.state !== "ready") this.engineLoaded.clear();
+    const hadSounds = this.soundsInEngine();
     const was = this.engineStatus.state;
     this.engineStatus = status;
-    if (status.state === "ready") this.ensurePlugins();
+    // Its sounds went with it: the window plays them again, with the song's programs.
+    if (hadSounds && !this.soundsInEngine()) {
+      this.bridge.log({ type: "builtin_sounds", where: "app", reason: status.state });
+      this.player.setup();
+    }
+    if (status.state === "ready") {
+      this.ensurePlugins();
+      this.ensureEngineSounds();
+    }
     // It stopped by itself (a plugin crashed it): start it again with the plugins of the song.
     if (status.state === "failed" && was === "ready") {
       this.bridge.log({ type: "engine_restart", error: status.error });
@@ -227,6 +246,57 @@ export class AudioLayer {
       if (t?.output === "plugin") out.add(t.channel);
     }
     return out;
+  }
+
+  /** F2.1: the engine has the built-in bank of its current run. */
+  soundsInEngine(): boolean {
+    return this.builtinWhere === "engine" && this.engineStatus.state === "ready" && this.engineBanks.get("main@0") === this.engineStatus.generation;
+  }
+
+  private builtinPort(): EnginePort | null {
+    return this.soundsInEngine() ? this.enginePort() : null;
+  }
+
+  /**
+   * F2.1: the engine gets the built-in bank and every bank the window's synth has loaded, at the
+   * same offset. Asking starts the engine; a bank that fails is not asked again in that run.
+   */
+  private ensureEngineSounds(): void {
+    if (this.builtinWhere !== "engine" || !this.engine) return;
+    if (this.engineStatus.state === "missing" || this.engineStatus.state === "starting") return;
+    const wanted: Array<[string, number]> = [["main", 0]];
+    for (const b of this.banks) {
+      const offset = this.engine.bankOffset(b.id);
+      if (offset !== undefined) wanted.push([b.id, offset]);
+    }
+    for (const [id, offset] of wanted) {
+      const key = `${id}@${offset}`;
+      const generation = this.engineStatus.generation;
+      if (this.engineBanks.get(key) === generation || this.engineBanksLoading.has(key) || this.engineBanksRefused.get(key) === generation) continue;
+      // The user's banks wait for the built-in one: it decides whether the engine plays at all.
+      if (id !== "main" && this.engineBanks.get("main@0") !== generation) continue;
+      this.engineBanksLoading.add(key);
+      void this.bridge.engineSounds(id, offset).then((r) => {
+        this.engineBanksLoading.delete(key);
+        const now = this.engineStatus.generation;
+        if (!r.ok) {
+          this.engineBanksRefused.set(key, now);
+          if (id === "main") this.bridge.log({ type: "builtin_sounds", where: "app", reason: r.error ?? "failed" });
+          this.changed();
+          return;
+        }
+        const before = this.soundsInEngine();
+        this.engineBanks.set(key, now);
+        if (!before && this.soundsInEngine()) {
+          // From here the engine plays them: the window's synth goes quiet and the engine gets the programs.
+          this.router?.innerPanic();
+          this.bridge.log({ type: "builtin_sounds", where: "engine", presets: r.presets, ms: r.ms });
+        }
+        this.player.setup();
+        this.ensureEngineSounds();
+        this.changed();
+      });
+    }
   }
 
   private enginePort(): EnginePort | null {
@@ -367,9 +437,12 @@ export class AudioLayer {
         delayMs: () => engine.outputLatencyMs,
         plugin: () => this.pluginChannels(),
         engine: () => this.enginePort(),
+        builtin: () => this.builtinPort(),
       });
       this.player.setEngine(this.router);
       this.ensureBanks();
+      this.builtinWhere = await this.bridge.builtinSounds();
+      this.ensureEngineSounds();
       this.status = "ready";
       this.bridge.log({ type: "sound_ready", ...info, baseLatencyMs: engine.baseLatencyMs, outputLatencyMs: engine.outputLatencyMs });
     } catch (error) {
@@ -439,6 +512,7 @@ export class AudioLayer {
           this.bankStates.set(id, "ready");
           this.bridge.log({ type: "bank_loaded", bank: id, ms: Math.round(performance.now() - t0) });
           this.player.setup();
+          this.ensureEngineSounds();
         })
         .catch((error: unknown) => {
           this.bankStates.set(id, "error");

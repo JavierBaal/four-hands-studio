@@ -21,7 +21,7 @@ import { PluginWatch } from "./plugin-watch.js";
 import type { PluginStates, Song } from "@fourhands/core";
 import { SoundLibrary } from "./sound-library.js";
 import { EngineHost } from "./engine/host.js";
-import type { EngineLoadResult, EngineMidiEvent, EnginePlugin } from "../shared/engine.js";
+import type { EngineLoadResult, EngineMidiEvent, EnginePlugin, EngineSoundsResult } from "../shared/engine.js";
 import { CATEGORIES, RECENT_MAX, type SoundCategory, type SoundPrefs } from "../shared/sound-catalog.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url)); // packages/desktop/dist
@@ -72,6 +72,12 @@ interface Settings {
   pluginsScannedAt?: number;
   /** The Sonidos browser (ESTUDIO_INTERFAZ_2.md, 5.3): favourites, recents, hidden plugins, moved categories. */
   soundPrefs?: SoundPrefs;
+  /**
+   * F2.1 (Fran, 01/11/2026): where the built-in sounds play. "engine" (the default): in the native
+   * engine, with everything else; "app": in the window, as before (SpessaSynth), to go back if
+   * something sounds wrong. With no engine built they play in the window either way.
+   */
+  builtinSounds?: "engine" | "app";
 }
 
 const aiTone = (): AiTone => (readSettings().aiTone === "gentle" ? "gentle" : DEFAULT_AI_TONE);
@@ -145,8 +151,53 @@ function engineHost(): EngineHost {
     log: appendLog,
     onStatus: (status) => win?.webContents.send(CH.engineStatusChanged, status),
     onScanning: (file, progress) => win?.webContents.send(CH.engineScanning, { file, progress }),
+    onEvent: (event) => {
+      if (event.event !== "soundsLoaded") return;
+      const key = `${String(event.id)}@${Number(event.offset)}`;
+      const waiting = soundsWaiting.get(key);
+      soundsWaiting.delete(key);
+      waiting?.({ ok: !!event.ok, error: event.error ? String(event.error) : undefined, presets: Number(event.presets ?? 0), ms: Number(event.ms ?? 0) });
+    },
   });
   return engine;
+}
+
+/** F2.1: sound banks the engine is loading, by "id@offset", waiting for its "soundsLoaded". */
+const soundsWaiting = new Map<string, (r: EngineSoundsResult) => void>();
+
+/** The file of a bank: "main" is the built-in one (MuseScore_General); the rest, the user's. */
+function soundBankPath(id: string): string | null {
+  if (id === "main") return soundFontPath;
+  return library?.files().get(id) ?? null;
+}
+
+/**
+ * F2.1: loads a bank into the engine's built-in sounds at its bank select offset (the same the
+ * window's synth gave it) and waits until it is ready. It starts the engine if needed.
+ */
+async function loadEngineSounds(id: string, offset: number): Promise<EngineSoundsResult> {
+  const file = soundBankPath(id);
+  if (!file) return { ok: false, error: `Sound bank not found: ${id}` };
+  const key = `${id}@${offset}`;
+  const done = new Promise<EngineSoundsResult>((resolve) => {
+    soundsWaiting.get(key)?.({ ok: false, error: "Asked again" });
+    soundsWaiting.set(key, resolve);
+    // An SF3 of 85 MB takes a few seconds; a minute is plenty.
+    setTimeout(() => {
+      if (soundsWaiting.get(key) !== resolve) return;
+      soundsWaiting.delete(key);
+      resolve({ ok: false, error: "The engine did not load the sound bank in time" });
+    }, 60000).unref();
+  });
+  try {
+    await engineHost().request({ type: "sounds", id, offset, path: file });
+  } catch (error) {
+    soundsWaiting.get(key)?.({ ok: false, error: (error as Error).message });
+    soundsWaiting.delete(key);
+  }
+  const result = await done;
+  appendLog(result.ok ? { type: "engine_sounds_loaded", bank: id, offset, presets: result.presets, ms: result.ms } : { type: "engine_sounds_failed", bank: id, offset, error: result.error });
+  return result;
 }
 
 function pluginsOf(reply: Record<string, unknown>): EnginePlugin[] {
@@ -657,6 +708,9 @@ function registerIpc(): void {
     if (Array.isArray(events) && events.length) engine?.send({ type: "midi", events });
   });
   ipcMain.on(CH.enginePanic, () => engine?.send({ type: "panic" }));
+  // F2.1: the built-in sounds in the engine.
+  ipcMain.handle(CH.engineSounds, (_e, id: unknown, offset: unknown) => loadEngineSounds(String(id), Number(offset)));
+  ipcMain.handle(CH.builtinSounds, () => (readSettings().builtinSounds === "app" ? "app" : "engine"));
   // Ajustes: folders, test tools and where the engine looks for plugins.
   ipcMain.handle(CH.folders, () => userFolders());
   ipcMain.on(CH.openFolder, (_e, kind: unknown) => {
