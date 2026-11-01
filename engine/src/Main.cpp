@@ -77,7 +77,7 @@ int selfTest (const juce::String& folder)
 }
 /**
  * The built-in sounds without a device: a MIDI file through slot 16, written as a 24-bit WAV.
- * Optional `extra` banks go at offsets 20, 30… (as the app adds them).
+ * Optional `extra` banks go at offsets 60, 66… (as the app adds them).
  */
 int renderSong (const juce::String& bankPath, const juce::String& midiPath, const juce::String& wavPath, const juce::StringArray& extra)
 {

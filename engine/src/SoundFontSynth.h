@@ -3,7 +3,7 @@
 // The sounds that come with Four Hands (MuseScore_General) and the banks the user adds play here,
 // in the engine, like a plugin: everything leaves through the same place and can be exported.
 // It plays the same MIDI the window's SoundFont player (SpessaSynth) gets: 16 channels, program
-// changes with bank select, and an added bank reached at its bank select offset (20, 30…), as in
+// changes with bank select, and an added bank reached at its bank select offset (60, 66…), as in
 // audio/engine.ts of the app.
 //
 // The voices follow SpessaSynth (Apache-2.0) step by step: generators and modulators as SoundFont 2
@@ -30,8 +30,9 @@ public:
     static constexpr int kChannels = 16;
     /** The default bank plus the user's banks loaded at once (MAX_EXTRA_BANKS in the app). */
     static constexpr int kBanks = 11;
-    static constexpr int kFirstOffset = 20;
-    static constexpr int kOffsetStep = 10;
+    /** The bank selects of the user's banks: 60, 66, 72… (BANK_OFFSET_FIRST and _STEP in the app). */
+    static constexpr int kFirstOffset = 60;
+    static constexpr int kOffsetStep = 6;
     /** SpessaSynth's voice cap. */
     static constexpr int kVoices = 350;
 
@@ -40,7 +41,7 @@ public:
 
     /**
      * Loads a bank file (off the audio thread; an SF3 takes seconds). `offset` is its bank select
-     * offset: 0 for the default bank, 20, 30… for the user's. Returns an error or empty.
+     * offset: 0 for the default bank, 60, 66… for the user's. Returns an error or empty.
      */
     juce::String loadBank (int offset, const juce::File& file, int& presets);
 

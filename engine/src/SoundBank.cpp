@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <mutex>
 
 // TinySoundFont reads SF3 (Ogg Vorbis samples) when stb_vorbis is included before it.
@@ -377,7 +378,16 @@ juce::String Bank::load (const juce::File& file)
     BankReader reader { *this };
     tsf_fh_on_hydra = &BankReader::onHydra;
     tsf_fh_user = &reader;
-    font = tsf_load_filename (file.getFullPathName().toRawUTF8());
+    // Read with JUCE, not fopen: on Windows a path with accents (a folder named after a person)
+    // would not open.
+    juce::MemoryBlock data;
+    if (! file.loadFileAsData (data) || data.getSize() > (size_t) std::numeric_limits<int>::max())
+    {
+        tsf_fh_on_hydra = nullptr;
+        tsf_fh_user = nullptr;
+        return "The sound bank could not be read: " + file.getFileName();
+    }
+    font = tsf_load_memory (data.getData(), (int) data.getSize());
     tsf_fh_on_hydra = nullptr;
     tsf_fh_user = nullptr;
     if (font == nullptr)
