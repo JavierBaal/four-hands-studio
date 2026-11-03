@@ -1274,13 +1274,14 @@ await page.keyboard.press("F2");
 await settle();
 check("F2 goes back to the editor", (await page.locator(".console").count()) === 0 && (await page.locator("section.roll").count()) === 1);
 
-// The Editor / Mezcla tabs in the arrangement's corner open and close the console without F3.
-await page.locator(".arrcorner").getByRole("tab", { name: "Mezcla" }).click();
+// One Mezcla / Editor button (proposal, 03/11/2026): it says where it takes you, in both bars.
+await page.locator(".rtools .modeb").click();
 await settle();
-check("«Mezcla» in the arrangement's corner opens the console", (await page.locator(".console").count()) === 1);
-await page.locator(".arrcorner").getByRole("tab", { name: "Editor" }).click();
+check("«Mezcla» in the piano roll's bar opens the console", (await page.locator(".console").count()) === 1);
+check("in the console the same button says «Editor»", /Editor/.test(await page.locator(".ctoolbar .modeb").innerText()));
+await page.locator(".ctoolbar .modeb").click();
 await settle();
-check("«Editor» there goes back to the piano roll", (await page.locator("section.roll").count()) === 1);
+check("«Editor» goes back to the piano roll", (await page.locator("section.roll").count()) === 1);
 
 console.log(`${passed} passed, ${failures.length} failed`);
 for (const f of failures) console.log("FAIL", f);

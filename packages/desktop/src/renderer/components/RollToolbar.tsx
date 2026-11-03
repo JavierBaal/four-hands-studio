@@ -3,13 +3,11 @@ import { barAt } from "@fourhands/core";
 import { SoundOriginIcon } from "./SidePanel.js";
 import { activeTrack, useActions, useApp, useSong, useView } from "../context.js";
 import { barRange } from "../music.js";
-import { ArrowToolIcon, EraserIcon, PencilIcon, ZoomIcon } from "./Icons.js";
+import { ArrowToolIcon, EditorIcon, EraserIcon, MixIcon, PencilIcon, ZoomIcon } from "./Icons.js";
 import type { Tool } from "../view.js";
 
 export interface RollToolbarProps {
   onGridMenu(anchor: HTMLElement): void;
-  /** Compact window: the arrangement's corner has no room for Editor / Mezcla, so they go here. */
-  compact?: boolean;
 }
 
 /** "Melodía · c. 25–26": the track and the selection, or the loop, or the cursor's bar. */
@@ -32,26 +30,25 @@ export function aiSeesText(song: ReturnType<typeof useSong>, t: ReturnType<typeo
 }
 
 /**
- * F2.2 parte B (Fran, 03/11/2026): Editor / Mezcla in sight, so nobody has to know F2 and F3: small
- * in the arrangement's top-left corner (empty until now, seen in both modes) and in the console's bar.
+ * PROPUESTA (Fran, 03/11/2026, por decidir): one button that says where it takes you, «Mezcla» in
+ * the editor and «Editor» in the console, in the same place of both bars. `?switch=right` (banco de
+ * pruebas) puts it at the end of the bar instead of the start, to compare.
  */
-export function EditorMixTabs({ keys = true, small = false }: { keys?: boolean; small?: boolean }) {
+export const SWITCH_PLACE: "left" | "right" = typeof location !== "undefined" && new URLSearchParams(location.search).get("switch") === "right" ? "right" : "left";
+
+export function ModeButton() {
   const { t, view } = useApp();
   const v = useView();
   const mix = v.bottom === "mix";
   return (
-    <div className={small ? "cseg small" : "cseg"} role="tablist" aria-label={t("consoleLabel")}>
-      <button role="tab" className={mix ? "cseg1" : "cseg1 on"} aria-selected={!mix} title={`${t("consoleEditor")} (F2)`} onClick={() => view.set({ bottom: "editor" })}>
-        {t("consoleEditor")} {keys && <span className="kbd">F2</span>}
-      </button>
-      <button role="tab" className={mix ? "cseg1 on" : "cseg1"} aria-selected={mix} title={t("consoleOpenTitle")} onClick={() => view.set({ bottom: "mix" })}>
-        {t("consoleMix")} {keys && <span className="kbd">F3</span>}
-      </button>
-    </div>
+    <button className="tool modeb" title={mix ? t("consoleBackTitle") : t("consoleOpenTitle")} onClick={() => view.set({ bottom: mix ? "editor" : "mix" })}>
+      {mix ? <EditorIcon /> : <MixIcon />}
+      {mix ? t("consoleEditor") : t("consoleMix")}
+    </button>
   );
 }
 
-export function RollToolbar({ onGridMenu, compact = false }: RollToolbarProps) {
+export function RollToolbar({ onGridMenu }: RollToolbarProps) {
   const { t, view } = useApp();
   const actions = useActions();
   const song = useSong();
@@ -66,9 +63,9 @@ export function RollToolbar({ onGridMenu, compact = false }: RollToolbarProps) {
   );
   return (
     <div className="rtools">
-      {compact && (
+      {SWITCH_PLACE === "left" && (
         <>
-          <EditorMixTabs keys={false} />
+          <ModeButton />
           <span className="sep" />
         </>
       )}
@@ -107,6 +104,12 @@ export function RollToolbar({ onGridMenu, compact = false }: RollToolbarProps) {
             <span className="dot ai" /> {t("aiName")}
           </span>
         </span>
+      )}
+      {SWITCH_PLACE === "right" && (
+        <>
+          <span className="sep" />
+          <ModeButton />
+        </>
       )}
       <span style={{ flex: 1 }} />
       <span className="sees">{t("aiSees", { what: aiSeesText(song, t) })}</span>
