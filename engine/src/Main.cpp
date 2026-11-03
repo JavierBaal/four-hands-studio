@@ -191,6 +191,16 @@ public:
             return;
         }
         std::cout << "FH_ENGINE_READY " << link->getBoundPort() << std::endl;
+        // Windows changes its output (the TV, the headphones): the engine goes with it and says so.
+        engine->followDefaultOutput ([this] (const juce::String& device, double latency) {
+            auto* o = new juce::DynamicObject();
+            o->setProperty ("type", "event");
+            o->setProperty ("event", "deviceChanged");
+            o->setProperty ("device", device);
+            o->setProperty ("latency", latency);
+            o->setProperty ("deviceError", engine->deviceError());
+            link->notify (juce::var (o));
+        });
         startedAt = juce::Time::getMillisecondCounter();
         startTimer (1000);
     }

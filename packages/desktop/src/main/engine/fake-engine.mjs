@@ -59,6 +59,10 @@ const server = net.createServer((socket) => {
             send({ type: "event", event: "soundsLoaded", id: m.id, offset: m.offset, ok, error: ok ? "" : "Sound bank not found", presets: ok ? 3 : 0, ms: 5 });
           }, 30);
           break;
+        case "device":
+          // Test only: as if Windows had switched its output.
+          send({ type: "event", event: "deviceChanged", device: "Fake · Auriculares · 48000 Hz", latency: 0.015, deviceError: "" });
+          break;
         case "stats":
           send({ type: "stats", blocks: midi, maxLoad: 0, late: 0 });
           break;

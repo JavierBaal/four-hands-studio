@@ -120,6 +120,12 @@ juce::var Link::pluginList() const
     return obj ({ { "type", "plugins" }, { "list", list } });
 }
 
+void Link::notify (const juce::var& event)
+{
+    if (current != nullptr)
+        current->send (event);
+}
+
 juce::var Link::handle (const juce::var& m, Connection& from)
 {
     const auto type = m["type"].toString();

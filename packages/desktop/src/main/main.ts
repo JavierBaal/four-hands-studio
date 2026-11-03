@@ -152,6 +152,10 @@ function engineHost(): EngineHost {
     onStatus: (status) => win?.webContents.send(CH.engineStatusChanged, status),
     onScanning: (file, progress) => win?.webContents.send(CH.engineScanning, { file, progress }),
     onEvent: (event) => {
+      if (event.event === "deviceChanged") {
+        engine?.deviceChanged(String(event.device ?? ""), Number(event.latency ?? 0), event.deviceError ? String(event.deviceError) : undefined);
+        return;
+      }
       if (event.event !== "soundsLoaded") return;
       const key = `${String(event.id)}@${Number(event.offset)}`;
       const waiting = soundsWaiting.get(key);

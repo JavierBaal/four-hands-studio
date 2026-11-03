@@ -264,6 +264,16 @@ export class EngineHost {
     if (child && child.exitCode === null) child.kill();
   }
 
+  /**
+   * The engine moved to another output (Windows changed its default, Fran 03/11/2026): the new
+   * device and its delay, so the plugin tracks stay in time with the rest.
+   */
+  deviceChanged(device: string, latency: number, error?: string): void {
+    if (this.status.state !== "ready") return;
+    this.options.log({ type: "engine_device_changed", device, latency, error });
+    this.setStatus({ device, latency, error });
+  }
+
   /** Closes the engine (the app is quitting). */
   stop(): void {
     if (!this.child) return;

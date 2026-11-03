@@ -78,6 +78,19 @@ describe("engine host (prueba S2)", () => {
     await new Promise((r) => setTimeout(r, 300));
   });
 
+  it("follows the engine to another output, with its delay (Windows switched to the headphones)", async () => {
+    const { h, statuses, log } = host();
+    (h as unknown as { options: { onEvent: (e: Record<string, unknown>) => void } }).options.onEvent = (e) => h.deviceChanged(String(e.device), Number(e.latency));
+    await h.start();
+    h.send({ type: "device" });
+    await new Promise((r) => setTimeout(r, 100));
+    expect(h.current).toMatchObject({ state: "ready", device: "Fake · Auriculares · 48000 Hz", latency: 0.015, generation: 1 });
+    expect(statuses.at(-1)?.device).toBe("Fake · Auriculares · 48000 Hz");
+    expect(log.find((e) => e.type === "engine_device_changed")).toMatchObject({ device: "Fake · Auriculares · 48000 Hz", latency: 0.015 });
+    h.stop();
+    await new Promise((r) => setTimeout(r, 300));
+  });
+
   it("survives the engine crashing: the request fails, Four Hands goes on, the next one restarts it", async () => {
     const { h, log } = host();
     await expect(h.request({ type: "load", slot: 0, id: "crash" })).rejects.toThrow(/closed|stopped/);

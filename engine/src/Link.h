@@ -37,6 +37,8 @@ public:
     /** True once Four Hands has connected at least once. */
     bool everConnected() const { return connected; }
     bool hasConnection() const { return current != nullptr; }
+    /** Says something to Four Hands on the engine's own initiative (`{ type: "event", event, … }`). */
+    void notify (const juce::var& event);
 
 private:
     juce::InterprocessConnection* createConnectionObject() override;

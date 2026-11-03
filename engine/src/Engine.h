@@ -23,7 +23,7 @@ constexpr int kAllSlots = kSlots + 1;
 
 class SoundFontSynth;
 
-class Engine : public juce::AudioIODeviceCallback
+class Engine : public juce::AudioIODeviceCallback, private juce::ChangeListener, private juce::Timer
 {
 public:
     Engine();
@@ -34,6 +34,12 @@ public:
 
     /** Opens the default output (WASAPI on Windows). Returns an error, or an empty string. */
     juce::String openDevice();
+    /**
+     * Follows the system's default output (Fran, 03/11/2026): when Windows switches, say, from the
+     * TV to the headphones, the engine moves to them. Without this it kept the output it opened.
+     * `onDeviceChanged` gets the new device's text and latency, for Four Hands.
+     */
+    void followDefaultOutput (std::function<void (const juce::String& device, double latency)> onDeviceChanged);
     /** What openDevice said when it failed (empty if the device is open). */
     juce::String deviceError() const { return lastDeviceError; }
     /** "Altavoces (Realtek) · 48000 Hz · 480 muestras", or "none". */
@@ -100,6 +106,13 @@ public:
     Stats takeStats();
 
 private:
+    void changeListenerCallback (juce::ChangeBroadcaster*) override { checkDefaultOutput (false); }
+    void timerCallback() override { checkDefaultOutput (true); }
+    /** Moves to the system's default output if it is not the one open. `rescan`: ask the system again. */
+    void checkDefaultOutput (bool rescan);
+    std::function<void (const juce::String&, double)> deviceChanged;
+    bool checkingDevice = false;
+
     struct Pending
     {
         juce::int64 at;

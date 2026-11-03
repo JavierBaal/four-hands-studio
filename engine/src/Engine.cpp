@@ -32,6 +32,8 @@ Engine::Engine()
 
 Engine::~Engine()
 {
+    stopTimer();
+    device.removeChangeListener (this);
     device.removeAudioCallback (this);
     device.closeAudioDevice();
     for (auto& w : windows)
@@ -55,6 +57,43 @@ juce::String Engine::openDevice()
     if (lastDeviceError.isEmpty())
         device.addAudioCallback (this);
     return lastDeviceError;
+}
+
+void Engine::followDefaultOutput (std::function<void (const juce::String&, double)> onDeviceChanged)
+{
+    deviceChanged = std::move (onDeviceChanged);
+    // The device manager says when the system's list changes (the default too, with WASAPI); the
+    // timer is a second look in case a change does not come through.
+    device.addChangeListener (this);
+    startTimer (2000);
+}
+
+void Engine::checkDefaultOutput (bool rescan)
+{
+    if (checkingDevice)
+        return;
+    auto* type = device.getCurrentDeviceTypeObject();
+    if (type == nullptr)
+        return;
+    const juce::ScopedValueSetter<bool> busy (checkingDevice, true);
+    if (rescan)
+        type->scanForDevices();
+    const auto names = type->getDeviceNames (false);
+    const auto index = type->getDefaultDeviceIndex (false);
+    if (! juce::isPositiveAndBelow (index, names.size()))
+        return;
+    const auto wanted = names[index];
+    auto setup = device.getAudioDeviceSetup();
+    if (setup.outputDeviceName == wanted && device.getCurrentAudioDevice() != nullptr)
+        return;
+    // Same rate and buffer as before when the new output allows it; the voices go on sounding.
+    setup.outputDeviceName = wanted;
+    const auto error = device.setAudioDeviceSetup (setup, true);
+    lastDeviceError = error.isNotEmpty() ? error : (device.getCurrentAudioDevice() == nullptr ? juce::String ("There is no audio output device") : juce::String());
+    if (lastDeviceError.isEmpty() && device.getCurrentAudioDevice() != nullptr)
+        device.addAudioCallback (this); // no-op if it is already there
+    if (deviceChanged)
+        deviceChanged (deviceText(), outputLatencySeconds());
 }
 
 juce::String Engine::deviceText() const
