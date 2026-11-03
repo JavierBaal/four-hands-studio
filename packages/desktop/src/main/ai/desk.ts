@@ -86,6 +86,7 @@ import {
   setCurve,
   type CurveKind,
   CURVE_KINDS,
+  nextChannel,
 } from "@fourhands/core";
 import { NAMED_PROGRAMS, PALETTE } from "../../shared/instruments.js";
 import type { AiApply, AiClientInfo, AiMark, AiRecent, AiState, AiTone, AiWriting, PatchMessage, SoundBankInfo } from "../../shared/protocol.js";
@@ -108,7 +109,8 @@ export interface AiDeskOptions {
   /** Built-in and user skills (ESTUDIO_SKILLS.md, 3). */
   skills?: SkillSource;
   /** F2.2: what the engine measured in the last playback (the window asks it when playback stops). */
-  levels?: () => { levels: EngineLevels; at: number } | null;
+  /** The last playback's levels, and the strip each track had then (A2). */
+  levels?: () => { levels: EngineLevels; at: number; strips?: Record<string, number> } | null;
   now?: () => number;
   /** 5 minutes (ESQUEMA_MCP.md, 5.1). */
   autoCloseMs?: number;
@@ -124,8 +126,8 @@ export interface AiDeskOptions {
   log?: (entry: Record<string, unknown>) => void;
 }
 
-/** At most 15 tracks: channel 16 is the metronome's (H2.8). */
-const MAX_TRACKS = 15;
+/** A2 (03/11/2026): as in the window (song-actions.ts); before, 15, one per MIDI channel. */
+const MAX_TRACKS = 500;
 const PAGE_NOTES = 800;
 const SNAPSHOTS_MAX = 12;
 /** Calls after which the AI has seen everything that changed. */
@@ -766,7 +768,8 @@ export class AiDesk {
     get_levels: () => {
       const last = this.options.levels?.() ?? null;
       const song = this.options.session().snapshot().song;
-      return levelsText(last?.levels ?? null, song.trackOrder.map((id) => song.tracks[id]!).filter(Boolean), last?.at ?? null);
+      const tracks = song.trackOrder.map((id) => song.tracks[id]!).filter(Boolean);
+      return levelsText(last?.levels ?? null, tracks.map((t) => ({ name: t.name, channel: t.channel, strip: last?.strips?.[t.id] })), last?.at ?? null);
     },
 
     list_skills: () => skillsListText(this.skillList()),
@@ -1251,8 +1254,7 @@ export class AiDesk {
       const plugin = soundText && isPluginSound(soundText) ? this.plugin(soundText) : undefined;
       const sound = soundText && !plugin ? this.sound(soundText) : undefined;
       const percussion = instrument === null && !sound && !plugin;
-      const channel = percussion ? 9 : this.freeChannel();
-      if (channel === null) throw new MusicError("There is no free MIDI channel for another track");
+      const channel = percussion ? 9 : nextChannel(Object.values(song.tracks));
       const colorText = this.str(args, "color", false);
       const color = colorText !== undefined ? colorIndex(colorText) : undefined;
       const id = this.write(iv, (tx) =>
@@ -1517,13 +1519,6 @@ export class AiDesk {
     }
     if (Object.keys(changes).length === 0) throw new MusicError("nothing to change");
     return { trackId, changes };
-  }
-
-  /** A free melodic channel: never 10 (drums) nor 16 (the metronome). */
-  private freeChannel(): number | null {
-    const used = new Set(Object.values(this.song.tracks).map((t) => t.channel));
-    for (let ch = 0; ch < 15; ch++) if (ch !== 9 && !used.has(ch)) return ch;
-    return null;
   }
 
   dispose(): void {

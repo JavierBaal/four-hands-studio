@@ -146,8 +146,9 @@ void Engine::prepare (double rate, int block)
         scratch.setSize (channels, block, false, true, true);
         for (auto& m : midi)
             m.ensureSize (2048);
-        strips.setSize (2 * kSlots, block, false, true, true);
-        sends.setSize (kSlots, block, false, true, true);
+        strips.setSize (2 * kStrips, block, false, true, true);
+        sends.setSize (kStrips, block, false, true, true);
+        soundsEvents.reserve (8192);
         master.setSize (2, block, false, true, true);
         busIn.setSize (1, block, false, true, true);
         // The Reverb bus (F2.2): the GS reverb the built-in sounds had inside, now for every track.
@@ -204,6 +205,7 @@ juce::String Engine::load (int slot, const juce::PluginDescription& description)
     {
         const juce::SpinLock::ScopedLockType sl (lock);
         live[(size_t) slot] = instance.get();
+        touch (slot);
         const auto channels = juce::jmax (2, instance->getTotalNumInputChannels(), instance->getTotalNumOutputChannels());
         if (scratch.getNumChannels() < channels)
             scratch.setSize (channels, blockSize, false, true, true);
@@ -318,13 +320,21 @@ juce::String Engine::loadSoundBank (int offset, const juce::File& file, int& pre
 // -----------------------------------------------------------------------------
 // MIDI
 
-void Engine::schedule (int slot, double delaySeconds, const juce::MidiMessage& message)
+void Engine::schedule (int slot, double delaySeconds, const juce::MidiMessage& message, int strip)
 {
-    if (slot < 0 || slot >= kAllSlots)
+    if (slot < 0 || slot >= kAllSlots || strip >= kStrips)
         return;
     const auto at = position.load() + (juce::int64) std::llround (juce::jmax (0.0, delaySeconds) * sampleRate);
     const juce::SpinLock::ScopedLockType sl (lock);
-    pending.push_back ({ at, slot, message });
+    pending.push_back ({ at, slot, message, strip });
+}
+
+void Engine::touch (int strip)
+{
+    int now = used.load();
+    while (strip >= now && ! used.compare_exchange_weak (now, juce::jmin (strip + 1, kStrips)))
+    {
+    }
 }
 
 void Engine::panic()
@@ -332,12 +342,16 @@ void Engine::panic()
     const juce::SpinLock::ScopedLockType sl (lock);
     pending.clear();
     const auto now = position.load();
-    for (int s = 0; s < kAllSlots; ++s)
-        for (int ch = 1; ch <= 16; ++ch)
-        {
-            pending.push_back ({ now, s, juce::MidiMessage::controllerEvent (ch, 64, 0) });
-            pending.push_back ({ now, s, juce::MidiMessage::allNotesOff (ch) });
-        }
+    for (int s = 0; s < kSlots; ++s)
+        if (live[(size_t) s] != nullptr)
+            for (int ch = 1; ch <= 16; ++ch)
+            {
+                pending.push_back ({ now, s, juce::MidiMessage::controllerEvent (ch, 64, 0) });
+                pending.push_back ({ now, s, juce::MidiMessage::allNotesOff (ch) });
+            }
+    // The built-in sounds have a channel per strip: all of them at once.
+    if (auto* synth = static_cast<SoundFontSynth*> (live[(size_t) kSoundsSlot]))
+        synth->releaseAll();
 }
 
 // -----------------------------------------------------------------------------
@@ -375,6 +389,7 @@ void Engine::process (float* const* outputs, int numOutputs, int numSamples)
     // Due events go to their slot's buffer at their exact sample; late ones at sample 0.
     for (auto& m : midi)
         m.clear();
+    soundsEvents.clear();
     int late = 0;
     auto it = pending.begin();
     while (it != pending.end())
@@ -384,12 +399,24 @@ void Engine::process (float* const* outputs, int numOutputs, int numSamples)
             if (it->at < start)
                 ++late;
             const auto offset = (int) juce::jlimit<juce::int64> (0, numSamples - 1, it->at - start);
-            midi[(size_t) it->slot].addEvent (it->message, offset);
+            if (it->slot == kSoundsSlot)
+            {
+                // A2: the strip is the synth channel; without one (before A2), the MIDI channel.
+                const int channel = it->strip >= 0 ? it->strip : it->message.getChannel() - 1;
+                touch (channel);
+                soundsEvents.push_back ({ offset, channel, it->message });
+            }
+            else
+                midi[(size_t) it->slot].addEvent (it->message, offset);
             it = pending.erase (it);
         }
         else
             ++it;
     }
+    // In time order, keeping the order they came in at the same sample (as a MidiBuffer does).
+    for (size_t i = 1; i < soundsEvents.size(); ++i)
+        for (size_t j = i; j > 0 && soundsEvents[j - 1].offset > soundsEvents[j].offset; --j)
+            std::swap (soundsEvents[j - 1], soundsEvents[j]);
     if (late > 0)
     {
         const juce::SpinLock::ScopedLockType st (statsLock);
@@ -398,20 +425,26 @@ void Engine::process (float* const* outputs, int numOutputs, int numSamples)
 
     if (scratch.getNumSamples() < numSamples)
         scratch.setSize (scratch.getNumChannels(), numSamples, false, true, true);
-    // F2.2: one channel strip per track (the track's MIDI channel), its reverb send and the master.
+    // F2.2: one strip per track (A2: numbered by Four Hands), its reverb send and the master.
     if (strips.getNumSamples() < numSamples)
     {
-        strips.setSize (2 * kSlots, numSamples, false, false, true);
-        sends.setSize (kSlots, numSamples, false, false, true);
+        strips.setSize (2 * kStrips, numSamples, false, false, true);
+        sends.setSize (kStrips, numSamples, false, false, true);
         master.setSize (2, numSamples, false, false, true);
         busIn.setSize (1, numSamples, false, false, true);
     }
-    strips.clear (0, numSamples);
-    sends.clear (0, numSamples);
+    // Only the strips in use: a song with 20 tracks does not pay for 512.
+    const int inUse = used.load();
+    for (int s = 0; s < inUse; ++s)
+    {
+        strips.clear (2 * s, 0, numSamples);
+        strips.clear (2 * s + 1, 0, numSamples);
+        sends.clear (s, 0, numSamples);
+    }
     master.clear (0, numSamples);
     busIn.clear (0, numSamples);
 
-    for (int s = 0; s < kSlots; ++s)
+    for (int s = 0; s < inUse; ++s)
     {
         auto* plugin = live[(size_t) s];
         if (plugin == nullptr)
@@ -428,11 +461,11 @@ void Engine::process (float* const* outputs, int numOutputs, int numSamples)
             strips.addFrom (2 * s + c, 0, buffer, juce::jmin (c, outChannels - 1), 0, numSamples);
     }
     if (auto* sounds = static_cast<SoundFontSynth*> (live[(size_t) kSoundsSlot]))
-        sounds->processSplit (midi[(size_t) kSoundsSlot], numSamples, strips.getArrayOfWritePointers(), sends.getArrayOfWritePointers(), master.getWritePointer (0), master.getWritePointer (1));
+        sounds->processSplit (soundsEvents, numSamples, strips.getArrayOfWritePointers(), sends.getArrayOfWritePointers(), master.getWritePointer (0), master.getWritePointer (1));
 
     // The strips: fader and balance, meters, into the master and the Reverb bus (post-fader).
     float* busData = busIn.getWritePointer (0);
-    for (int ch = 0; ch < kSlots; ++ch)
+    for (int ch = 0; ch < inUse; ++ch)
     {
         const auto& p = mix[(size_t) ch];
         float* L = strips.getWritePointer (2 * ch);
@@ -454,7 +487,7 @@ void Engine::process (float* const* outputs, int numOutputs, int numSamples)
     }
     if (busReverb != nullptr)
         busReverb->process (busData, master.getWritePointer (0), master.getWritePointer (1), 0, numSamples);
-    meters[(size_t) kSlots].add (master.getReadPointer (0), master.getReadPointer (1), numSamples);
+    meters[(size_t) kStrips].add (master.getReadPointer (0), master.getReadPointer (1), numSamples);
 
     for (int c = 0; c < numOutputs; ++c)
         if (outputs[c] != nullptr)
@@ -487,21 +520,26 @@ void Engine::Meter::add (const float* L, const float* R, int n)
     totalCount += n;
 }
 
-void Engine::setMix (int channel, double gain, double pan, double reverb)
+void Engine::setMix (int strip, double gain, double pan, double reverb)
 {
-    if (! juce::isPositiveAndBelow (channel, kSlots))
+    if (! juce::isPositiveAndBelow (strip, kStrips))
         return;
     const juce::SpinLock::ScopedLockType sl (lock);
-    mix[(size_t) channel] = { juce::jlimit (0.0, 4.0, gain), juce::jlimit (-1.0, 1.0, pan), juce::jlimit (0.0, 1.0, reverb) };
+    mix[(size_t) strip] = { juce::jlimit (0.0, 4.0, gain), juce::jlimit (-1.0, 1.0, pan), juce::jlimit (0.0, 1.0, reverb) };
+    // A neutral strip does not need to be counted; one with a mix does (its plugin may come later).
+    if (gain != 1.0 || pan != 0.0 || reverb != 0.0)
+        touch (strip);
 }
 
-std::array<Engine::Level, kSlots + 1> Engine::takeMeters (bool sinceReset)
+std::vector<Engine::Level> Engine::takeMeters (bool sinceReset)
 {
-    std::array<Level, kSlots + 1> out {};
+    // The strips in use, then the master.
+    const int n = used.load();
+    std::vector<Level> out ((size_t) n + 1);
     const juce::SpinLock::ScopedLockType sl (lock);
     for (size_t i = 0; i < out.size(); ++i)
     {
-        auto& m = meters[i];
+        auto& m = meters[i < (size_t) n ? i : (size_t) kStrips];
         if (sinceReset)
             out[i] = { m.totalPeak, m.totalCount > 0 ? std::sqrt (m.totalSum / (double) m.totalCount) : 0.0, m.clips };
         else

@@ -4,13 +4,14 @@
  * as one command at the end, so the whole take undoes in one step, and it is never quantized.
  */
 import { currentProposal, songWithProposal } from "./proposals.js";
-import { type Note, type PedalSpan, type Song, PPQ, barAt, barStart, orderedSections } from "@fourhands/core";
+import { type Note, type PedalSpan, type Song, type Track, PPQ, barAt, barStart, orderedSections } from "@fourhands/core";
 import type { Lang, Strings, Translate } from "../shared/i18n.js";
 import { Engine } from "../audio/engine.js";
 import { INITIAL_KEYBOARD, type KeyboardState, keyAction } from "../audio/keyboard.js";
-import { Player } from "../audio/player.js";
+import { Player, type Target } from "../audio/player.js";
 import { type EnginePort, type MidiPort, SoundRouter, isOwnLoopback } from "../audio/router.js";
 import { engineStrips, levelsReport } from "../shared/mix.js";
+import { METRONOME_KEY, StripMap } from "../shared/strips.js";
 import { NO_SOUND_PREFS, type SoundItem, type SoundPrefs, buildCatalog, withRecent } from "../shared/sound-catalog.js";
 import { ENGINE_OFF, type EnginePluginList, type EngineScanProgress, type EngineStatus } from "../shared/engine.js";
 import type { Bridge } from "./bridge.js";
@@ -90,6 +91,12 @@ export class AudioLayer {
    */
   engineStatus: EngineStatus = { ...ENGINE_OFF };
   private engineLoaded = new Map<number, string>();
+  /**
+   * A2 (03/11/2026): each track's strip in the engine (shared/strips.ts), and strips to put back to
+   * neutral at the next mix (their track went).
+   */
+  private strips = new StripMap();
+  private stripReset: number[] = [];
   private engineLoading = new Set<string>();
   private engineRefused = new Set<string>();
   pluginProblem: { name: string; error: string } | null = null;
@@ -117,6 +124,9 @@ export class AudioLayer {
     private readonly t: Translate,
   ) {
     this.player = new Player(() => this.heard());
+    this.player.stripOf = (t) => this.stripOf(t);
+    this.player.metronomeStrip = () => this.strips.of(METRONOME_KEY, 15);
+    this.syncStrips();
     this.player.subscribe(() => this.changed());
     this.player.onLive = (kind, n) => this.recordLive(kind, n.pitch, n.velocity, n.tick);
     this.player.onLiveCc = (cc, value, tick) => this.recordCc(cc, value, tick);
@@ -129,7 +139,7 @@ export class AudioLayer {
         void this.bridge.engineLevels(false).then((levels) => {
           if (!levels) return;
           const tracks = this.replica.song.trackOrder.map((id) => this.replica.song.tracks[id]!).filter(Boolean);
-          this.bridge.log({ type: "engine_levels", ...levelsReport(levels, tracks) });
+          this.bridge.log({ type: "engine_levels", ...levelsReport(levels, tracks.map((t) => ({ ...t, strip: this.stripOf(t) }))) });
         });
       }, 1500);
     };
@@ -146,9 +156,10 @@ export class AudioLayer {
         this.player.setup();
         this.changed();
       }
+      this.syncStrips();
       const sig = this.replica.song.trackOrder.map((id) => {
         const tr = this.replica.song.tracks[id];
-        return tr ? `${tr.output ?? ""}:${tr.channel}:${tr.program}:${tr.volume}:${tr.pan}:${tr.reverb ?? 0}:${tr.sound ? `${tr.sound.bank}/${tr.sound.bankMSB}/${tr.sound.program}` : ""}` : "";
+        return tr ? `${this.stripOf(tr)}:${tr.output ?? ""}:${tr.channel}:${tr.program}:${tr.volume}:${tr.pan}:${tr.reverb ?? 0}:${tr.sound ? `${tr.sound.bank}/${tr.sound.bankMSB}/${tr.sound.program}` : ""}` : "";
       }).join("|");
       if (sig !== this.trackSignature) {
         this.trackSignature = sig;
@@ -161,7 +172,7 @@ export class AudioLayer {
       for (const id of this.replica.song.trackOrder) {
         const tr = this.replica.song.tracks[id]!;
         const out = tr.output ?? "internal";
-        if (this.outSides.has(id) && this.outSides.get(id) !== out) this.router?.silence(tr.channel);
+        if (this.outSides.has(id) && this.outSides.get(id) !== out) this.router?.silence(tr.channel, this.stripOf(tr));
         this.outSides.set(id, out);
       }
     });
@@ -180,6 +191,10 @@ export class AudioLayer {
     this.bridge.onReload(() => {
       this.engineLoaded.clear();
       this.engineRefused.clear();
+      // Its tracks take their strips again (from their channels); the old ones go back to neutral.
+      for (const [, strip] of this.strips.entries()) this.stripReset.push(strip);
+      this.strips.clear();
+      this.syncStrips();
     });
     void this.bridge.soundPrefs().then((p) => {
       this.soundPrefs = p;
@@ -251,20 +266,50 @@ export class AudioLayer {
     this.changed();
   }
 
-  /** Channels of the tracks that sound through a plugin. */
-  pluginChannels(): Set<number> {
-    const out = new Set<number>();
-    for (const id of this.replica.song.trackOrder) {
-      const t = this.replica.song.tracks[id];
-      if (t?.output === "plugin") out.add(t.channel);
+  // -------------------------------------------------------------------------
+  // A2: strips
+
+  /**
+   * Gives every track (and the metronome) its strip; the strips of tracks that went lose their
+   * plugin here and go back to neutral at the next mix. The song heard may have a track the
+   * replica does not (a proposal that adds one).
+   */
+  private syncStrips(): void {
+    const tracks: Track[] = [];
+    for (const song of [this.replica.song, this.heard()]) for (const id of song.trackOrder) if (song.tracks[id]) tracks.push(song.tracks[id]!);
+    const { freed } = this.strips.sync(tracks);
+    for (const strip of freed) {
+      this.engineLoaded.delete(strip);
+      this.stripReset.push(strip);
     }
+  }
+
+  /** The engine strip a track plays on. */
+  stripOf(track: Pick<Track, "id" | "channel">): number {
+    if (!this.strips.has(track.id)) this.syncStrips();
+    return this.strips.of(track.id, track.channel);
+  }
+
+  /** Strips of the tracks that sound through a plugin. */
+  pluginStrips(): Set<number> {
+    const out = new Set<number>();
+    for (const t of this.heardTracks()) if (t.output === "plugin") out.add(this.stripOf(t));
     return out;
+  }
+
+  /** The song's tracks (read for every event: not the song with a proposal, which is built each time). */
+  private heardTracks(): Track[] {
+    const song = this.replica.song;
+    return song.trackOrder.map((id) => song.tracks[id]!).filter(Boolean);
   }
 
   /** F2.2: the engine's strips for the song's tracks (plugin tracks: fader, balance, reverb send). */
   private sendMix(): void {
     if (this.engineStatus.state !== "ready") return;
-    this.bridge.engineMix(engineStrips(this.replica.song.trackOrder.map((id) => this.replica.song.tracks[id]!).filter(Boolean)));
+    const tracks = this.replica.song.trackOrder.map((id) => this.replica.song.tracks[id]!).filter(Boolean);
+    const reset = [...this.stripReset, this.strips.of(METRONOME_KEY, 15)];
+    this.stripReset = [];
+    this.bridge.engineMix(engineStrips(tracks.map((t) => ({ ...t, strip: this.stripOf(t) })), reset));
   }
 
   /** F2.1: the engine has the built-in bank of its current run. */
@@ -325,13 +370,13 @@ export class AudioLayer {
     return { midi: (events) => this.bridge.engineMidi(events), panic: () => this.bridge.enginePanic(), latency: () => this.engineStatus.latency ?? 0 };
   }
 
-  /** Each plugin track has its plugin loaded in its slot (the slot is the track's channel). */
+  /** Each plugin track has its plugin loaded in its slot (the slot is the track's strip, A2). */
   private ensurePlugins(): void {
     if (this.engineStatus.state === "missing" || this.engineStatus.state === "starting") return;
     for (const id of this.replica.song.trackOrder) {
       const track = this.replica.song.tracks[id];
       if (track?.output !== "plugin" || !track.plugin) continue;
-      const slot = track.channel;
+      const slot = this.stripOf(track);
       const plugin = track.plugin;
       const key = `${slot}:${plugin.id}`;
       if (this.engineLoaded.get(slot) === plugin.id || this.engineLoading.has(key) || this.engineRefused.has(key)) continue;
@@ -356,22 +401,27 @@ export class AudioLayer {
     }
   }
 
-  /** The user chose this plugin for a slot: try it again even if it failed before. */
-  retryPlugin(slot: number, pluginId: string): void {
-    this.engineRefused.delete(`${slot}:${pluginId}`);
+  /** The user chose this plugin for a track: try it again even if it failed before. */
+  retryPlugin(trackId: string, pluginId: string): void {
+    const track = this.replica.song.tracks[trackId];
+    if (track) this.engineRefused.delete(`${this.stripOf(track)}:${pluginId}`);
     this.pluginProblem = null;
   }
 
   /** "Abrir ventana del instrumento": the plugin's own window, from the engine. */
-  async showPlugin(slot: number): Promise<boolean> {
+  async showPlugin(trackId: string): Promise<boolean> {
+    const track = this.replica.song.tracks[trackId];
+    if (!track) return false;
+    const slot = this.stripOf(track);
     const ok = await this.bridge.engineShow(slot);
     this.bridge.log({ type: "engine_window", slot, ok });
     return ok;
   }
 
   /** Is the plugin of this track loaded and ready to sound? */
-  pluginReady(slot: number, pluginId: string): boolean {
-    return this.engineStatus.state === "ready" && this.engineLoaded.get(slot) === pluginId;
+  pluginReady(trackId: string, pluginId: string): boolean {
+    const track = this.replica.song.tracks[trackId];
+    return !!track && this.engineStatus.state === "ready" && this.engineLoaded.get(this.stripOf(track)) === pluginId;
   }
 
   subscribe = (l: () => void): (() => void) => {
@@ -458,10 +508,11 @@ export class AudioLayer {
       this.engine = engine;
       this.router = new SoundRouter({
         inner: engine,
-        external: () => this.externalChannels(),
+        external: () => this.externalStrips(),
+        externalChannels: () => this.externalChannels(),
         port: () => this.outPort(),
         delayMs: () => engine.outputLatencyMs,
-        plugin: () => this.pluginChannels(),
+        plugin: () => this.pluginStrips(),
         engine: () => this.enginePort(),
         builtin: () => this.builtinPort(),
       });
@@ -548,8 +599,10 @@ export class AudioLayer {
     }
   }
 
-  private channel(): number {
-    return activeTrack(this.replica.song)?.channel ?? 0;
+  /** Where live input and auditions play: the active track's channel and strip. */
+  private channel(): Target {
+    const track = activeTrack(this.replica.song);
+    return track ? { ch: track.channel, strip: this.stripOf(track) } : { ch: 0, strip: 0 };
   }
 
   // -------------------------------------------------------------------------
@@ -754,7 +807,14 @@ export class AudioLayer {
   // -------------------------------------------------------------------------
   // MIDI out (H4): to Studio One through a virtual port (loopMIDI on Windows)
 
-  /** Channels of the tracks that sound in the other program. */
+  /** Strips of the tracks that sound in the other program. */
+  externalStrips(): Set<number> {
+    const out = new Set<number>();
+    for (const t of this.heardTracks()) if (t.output === "external") out.add(this.stripOf(t));
+    return out;
+  }
+
+  /** Their MIDI channels. */
   externalChannels(): Set<number> {
     const out = new Set<number>();
     for (const id of this.replica.song.trackOrder) {
@@ -827,7 +887,7 @@ export class AudioLayer {
   /** A fader moving: hear it now; the song gets the value on release. */
   previewMix(trackId: string, volume: number, pan: number, reverb?: number): void {
     const track = this.replica.song.tracks[trackId];
-    if (track) this.player.previewMix(track.channel, volume, pan, reverb);
+    if (track) this.player.previewMix({ ch: track.channel, strip: this.stripOf(track) }, volume, pan, reverb);
   }
 
   audition(pitch: number, velocity: number): void {

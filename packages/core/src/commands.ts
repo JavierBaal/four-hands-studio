@@ -170,10 +170,22 @@ function freeColor(tx: Transaction): number {
   return best;
 }
 
+/**
+ * The MIDI channel for a new melodic track: the first one no track uses, never 10 (drums) nor 16
+ * (the metronome's when the song plays in the window). A2 (03/11/2026): with all of them taken, the
+ * least used one, so a song can have more tracks than channels. Each track still has a strip of its
+ * own in the engine; the channel is what goes out to a DAW and into a .mid file.
+ */
+export function nextChannel(tracks: Iterable<{ channel: number }>): number {
+  const count = new Array<number>(15).fill(0);
+  for (const t of tracks) if (t.channel >= 0 && t.channel < 15) count[t.channel]!++;
+  let best = 0;
+  for (let ch = 1; ch < 15; ch++) if (ch !== 9 && count[ch]! < count[best]!) best = ch;
+  return best;
+}
+
 function freeChannel(tx: Transaction): number {
-  const used = new Set(Object.values(tx.song.tracks).map((t) => t.channel));
-  for (let ch = 0; ch < 16; ch++) if (ch !== 9 && !used.has(ch)) return ch;
-  return 0;
+  return nextChannel(Object.values(tx.song.tracks));
 }
 
 export function addTrack(tx: Transaction, spec: TrackSpec): string {

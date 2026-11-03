@@ -74,7 +74,7 @@ function TrackCard({ audio }: { audio: AudioLayer }) {
   const i = order.indexOf(track.id);
   const origin = actions.soundOrigin(track);
   const inFh = track.output !== "external";
-  const pluginReady = track.output === "plugin" && track.plugin ? audio.pluginReady(track.channel, track.plugin.id) : false;
+  const pluginReady = track.output === "plugin" && track.plugin ? audio.pluginReady(track.id, track.plugin.id) : false;
   return (
     <div className="tcard" data-track={track.id}>
       <div>
@@ -106,7 +106,7 @@ function TrackCard({ audio }: { audio: AudioLayer }) {
             <LibraryIcon /> {t("cardChange")}
           </button>
           {track.output === "plugin" && track.plugin && (
-            <button className="btn" disabled={!pluginReady} onClick={() => void audio.showPlugin(track.channel)}>
+            <button className="btn" disabled={!pluginReady} onClick={() => void audio.showPlugin(track.id)}>
               <WindowIcon /> {t("cardOpenWindow")}
             </button>
           )}

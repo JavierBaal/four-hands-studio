@@ -9,7 +9,7 @@
 import { PPQ, type Song, barTicks, beatTicks, bpmAt, secondsBetween, songEnd, tickAfter } from "@fourhands/core";
 import type { SynthEvent } from "../shared/messages.js";
 import type { SoundOut } from "./router.js";
-import { type LoopRange, METRONOME_CHANNEL, type SoundResolver, clickEvents, curveResetEvents, curveStateEvents, noteEvents, setupEvents, windowPieces } from "./schedule.js";
+import { type LoopRange, METRONOME_CHANNEL, type SoundResolver, type StripResolver, clickEvents, curveResetEvents, curveStateEvents, noteEvents, setupEvents, windowPieces } from "./schedule.js";
 
 const LOOKAHEAD = 0.2;
 const TICK_MS = 25;
@@ -22,6 +22,12 @@ export interface PlayOptions {
   metronome?: boolean;
   /** Ignore the loop (recording plays straight on). */
   noLoop?: boolean;
+}
+
+/** Where live input, an audition or a mix preview plays: a track's MIDI channel and its strip (A2). */
+export interface Target {
+  ch: number;
+  strip: number;
 }
 
 export interface LiveNote {
@@ -63,12 +69,15 @@ export class Player {
   private anchorTime = 0;
   private timer: ReturnType<typeof setInterval> | null = null;
   private listeners = new Set<() => void>();
-  private held = new Map<number, { ch: number; pitch: number }>();
+  private held = new Map<number, { to: Target; pitch: number }>();
   private setupDone = false;
   /** Send where the curves stand before the next piece: playback just started or jumped. */
   private needCurveState = true;
   /** Which bank and preset each track plays with (set by the audio layer). */
   soundFor: SoundResolver = () => null;
+  /** A2: each track's strip in the engine, and the metronome's (set by the audio layer). */
+  stripOf: StripResolver = (t) => t.channel;
+  metronomeStrip = (): number => METRONOME_CHANNEL;
 
   constructor(
     private readonly song: () => Song,
@@ -102,7 +111,7 @@ export class Player {
   /** Sends programs, volume and pan. Called before playing and whenever tracks change. */
   setup(): void {
     if (!this.engine) return;
-    for (const ev of setupEvents(this.song(), this.soundFor)) this.engine.now(ev);
+    for (const ev of setupEvents(this.song(), this.soundFor, this.stripOf, this.metronomeStrip())) this.engine.now(ev);
     this.setupDone = true;
   }
 
@@ -139,7 +148,7 @@ export class Player {
     this.stopTimer();
     this.playing = false;
     this.engine?.panic();
-    if (this.engine) for (const ev of curveResetEvents(this.song())) this.engine.now(ev);
+    if (this.engine) for (const ev of curveResetEvents(this.song(), this.stripOf)) this.engine.now(ev);
     this.held.clear();
     this.changed();
     this.onStop?.();
@@ -250,8 +259,9 @@ export class Player {
       for (let l = Math.ceil(this.done / beat) * beat; l < to; l += beat) {
         const down = (l + this.countInTicks) % bar === 0;
         const note = down ? 84 : 77;
-        events.push({ time: at(l), ev: { kind: "on", ch: METRONOME_CHANNEL, note, vel: down ? 110 : 80 } });
-        events.push({ time: at(l + beat / 8), ev: { kind: "off", ch: METRONOME_CHANNEL, note } });
+        const strip = this.metronomeStrip();
+        events.push({ time: at(l), ev: { kind: "on", ch: METRONOME_CHANNEL, note, vel: down ? 110 : 80, strip } });
+        events.push({ time: at(l + beat / 8), ev: { kind: "off", ch: METRONOME_CHANNEL, note, strip } });
       }
       this.done = to;
     }
@@ -261,11 +271,11 @@ export class Player {
         const base = this.done + piece.offset - piece.from;
         if (this.needCurveState) {
           // Just before the piece, so the points at its very first tick still win.
-          for (const ev of curveStateEvents(song, piece.from)) events.push({ time: at(base + piece.from) - 0.001, ev });
+          for (const ev of curveStateEvents(song, piece.from, this.stripOf)) events.push({ time: at(base + piece.from) - 0.001, ev });
           this.needCurveState = false;
         }
-        for (const e of noteEvents(song, piece.from, piece.to, this.loop?.end)) events.push({ time: at(base + e.tick), ev: e.ev });
-        if (this.metronome) for (const e of clickEvents(song, piece.from, piece.to)) events.push({ time: at(base + e.tick), ev: e.ev });
+        for (const e of noteEvents(song, piece.from, piece.to, this.loop?.end, this.stripOf)) events.push({ time: at(base + e.tick), ev: e.ev });
+        if (this.metronome) for (const e of clickEvents(song, piece.from, piece.to, this.metronomeStrip())) events.push({ time: at(base + e.tick), ev: e.ev });
         this.doneSong = this.loop && piece.to >= this.loop.end ? this.loop.start : piece.to;
         if (this.loop && piece.to >= this.loop.end) this.needCurveState = true;
       }
@@ -291,10 +301,11 @@ export class Player {
   // -------------------------------------------------------------------------
   // Live input: plays right away on the active track's channel
 
-  liveOn(pitch: number, velocity: number, channel: number, inputTime?: number, source: "keyboard" | "midi" = "keyboard"): void {
+  liveOn(pitch: number, velocity: number, to: Target | number, inputTime?: number, source: "keyboard" | "midi" = "keyboard"): void {
     if (this.held.has(pitch)) this.liveOff(pitch);
-    this.held.set(pitch, { ch: channel, pitch });
-    this.engine?.now({ kind: "on", ch: channel, note: pitch, vel: velocity }, inputTime, source);
+    const t = target(to);
+    this.held.set(pitch, { to: t, pitch });
+    this.engine?.now({ kind: "on", ch: t.ch, note: pitch, vel: velocity, strip: t.strip }, inputTime, source);
     this.onLive?.("on", { pitch, velocity, tick: this.liveTick() });
   }
 
@@ -302,19 +313,21 @@ export class Player {
     const h = this.held.get(pitch);
     if (!h) return;
     this.held.delete(pitch);
-    this.engine?.now({ kind: "off", ch: h.ch, note: pitch });
+    this.engine?.now({ kind: "off", ch: h.to.ch, note: pitch, strip: h.to.strip });
     this.onLive?.("off", { pitch, velocity: 0, tick: this.liveTick() });
   }
 
   /** Volume, pan and reverb heard at once while a fader moves, before the song has the new value (H3.2). */
-  previewMix(channel: number, volume: number, pan: number, reverb?: number): void {
-    this.engine?.now({ kind: "cc", ch: channel, cc: 7, value: Math.round(Math.max(0, Math.min(1, volume)) * 127) });
-    this.engine?.now({ kind: "cc", ch: channel, cc: 10, value: Math.round(64 + Math.max(-1, Math.min(1, pan)) * 63) });
-    if (reverb !== undefined) this.engine?.now({ kind: "cc", ch: channel, cc: 91, value: Math.round(Math.max(0, Math.min(1, reverb)) * 127) });
+  previewMix(to: Target | number, volume: number, pan: number, reverb?: number): void {
+    const { ch, strip } = target(to);
+    this.engine?.now({ kind: "cc", ch, cc: 7, value: Math.round(Math.max(0, Math.min(1, volume)) * 127), strip });
+    this.engine?.now({ kind: "cc", ch, cc: 10, value: Math.round(64 + Math.max(-1, Math.min(1, pan)) * 63), strip });
+    if (reverb !== undefined) this.engine?.now({ kind: "cc", ch, cc: 91, value: Math.round(Math.max(0, Math.min(1, reverb)) * 127), strip });
   }
 
-  liveCc(cc: number, value: number, channel: number): void {
-    this.engine?.now({ kind: "cc", ch: channel, cc, value });
+  liveCc(cc: number, value: number, to: Target | number): void {
+    const { ch, strip } = target(to);
+    this.engine?.now({ kind: "cc", ch, cc, value, strip });
     this.onLiveCc?.(cc, value, this.liveTick());
   }
 
@@ -331,9 +344,15 @@ export class Player {
   }
 
   /** A short preview of a note (clicking a note, creating one, the side keyboard). Not recorded. */
-  audition(pitch: number, velocity: number, channel: number, ms = 350): void {
+  audition(pitch: number, velocity: number, to: Target | number, ms = 350): void {
     if (!this.engine) return;
-    this.engine.now({ kind: "on", ch: channel, note: pitch, vel: velocity });
-    setTimeout(() => this.engine?.now({ kind: "off", ch: channel, note: pitch }), ms);
+    const { ch, strip } = target(to);
+    this.engine.now({ kind: "on", ch, note: pitch, vel: velocity, strip });
+    setTimeout(() => this.engine?.now({ kind: "off", ch, note: pitch, strip }), ms);
   }
+}
+
+/** A bare number: a channel that is also its strip (as before A2). */
+function target(to: Target | number): Target {
+  return typeof to === "number" ? { ch: to, strip: to } : to;
 }

@@ -85,10 +85,13 @@ export function parseReverb(text: string): number | null {
  * as MIDI inside their synth (they sound exactly as before), so their strip stays neutral.
  */
 export interface EngineStrip {
+  /** The strip (A2: the track's, from shared/strips.ts). */
   ch: number;
   gain: number;
   pan: number;
   reverb: number;
+  /** Whose strip it is: the main process keeps the map for the levels and the plugins' state. */
+  track?: string;
 }
 
 export function stripGain(volume: number): number {
@@ -96,10 +99,22 @@ export function stripGain(volume: number): number {
   return db === -Infinity ? 0 : Math.pow(10, db / 20);
 }
 
-export function engineStrips(tracks: ReadonlyArray<{ channel: number; output?: string | undefined; volume: number; pan: number; reverb?: number | undefined }>): EngineStrip[] {
+/**
+ * Every track's strip (neutral for the built-in sounds and outside tracks), and `reset` strips back
+ * to neutral (they belonged to tracks that are gone, or to the metronome).
+ */
+export function engineStrips(
+  tracks: ReadonlyArray<{ id?: string; channel: number; strip?: number; output?: string | undefined; volume: number; pan: number; reverb?: number | undefined }>,
+  reset: Iterable<number> = [],
+): EngineStrip[] {
   const out = new Map<number, EngineStrip>();
-  for (let ch = 0; ch < 16; ch++) out.set(ch, { ch, gain: 1, pan: 0, reverb: 0 });
-  for (const t of tracks) if (t.output === "plugin") out.set(t.channel, { ch: t.channel, gain: stripGain(t.volume), pan: t.pan, reverb: t.reverb ?? 0 });
+  for (const ch of reset) out.set(ch, { ch, gain: 1, pan: 0, reverb: 0 });
+  for (const t of tracks) {
+    const ch = t.strip ?? t.channel;
+    const strip: EngineStrip = t.output === "plugin" ? { ch, gain: stripGain(t.volume), pan: t.pan, reverb: t.reverb ?? 0 } : { ch, gain: 1, pan: 0, reverb: 0 };
+    if (t.id !== undefined) strip.track = t.id;
+    out.set(ch, strip);
+  }
   return [...out.values()];
 }
 
@@ -115,12 +130,13 @@ export function levelDb(linear: number): number {
 }
 
 /** The levels of the song's tracks and the master, in dB, for the log (and the AI's reading). */
-export function levelsReport(levels: EngineLevels, tracks: ReadonlyArray<{ name: string; channel: number }>) {
+export function levelsReport(levels: EngineLevels, tracks: ReadonlyArray<{ name: string; channel: number; strip?: number | undefined }>) {
   return {
     master: { peakDb: levelDb(levels.master.peak), rmsDb: levelDb(levels.master.rms), clips: levels.master.clips },
     tracks: tracks.map((t) => {
-      const c = levels.channels[t.channel] ?? { peak: 0, rms: 0, clips: 0 };
-      return { track: t.name, ch: t.channel, peakDb: levelDb(c.peak), rmsDb: levelDb(c.rms), clips: c.clips };
+      const strip = t.strip ?? t.channel;
+      const c = levels.channels[strip] ?? { peak: 0, rms: 0, clips: 0 };
+      return { track: t.name, strip, peakDb: levelDb(c.peak), rmsDb: levelDb(c.rms), clips: c.clips };
     }),
   };
 }

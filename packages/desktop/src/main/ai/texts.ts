@@ -284,7 +284,7 @@ export { barStart };
  * F2.2: get_levels. Peak and RMS per track after its fader, and the master, from the last playback.
  * A meter, not ears: it says how loud, not which frequencies (that comes with F2.3).
  */
-export function levelsText(levels: EngineLevels | null, tracks: ReadonlyArray<{ name: string; channel: number }>, at: number | null): string {
+export function levelsText(levels: EngineLevels | null, tracks: ReadonlyArray<{ name: string; channel: number; strip?: number | undefined }>, at: number | null): string {
   if (!levels) return "No levels yet: they are measured in the audio engine while the song plays. Ask the user to play it (or the part you care about) and stop; then call get_levels again.";
   const r = levelsReport(levels, tracks);
   const db = (v: number) => (Number.isFinite(v) ? `${v.toFixed(1)}` : "silent");

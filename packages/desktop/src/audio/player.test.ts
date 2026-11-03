@@ -62,7 +62,7 @@ describe("Player", () => {
     expect(cc11.slice(0, 2)).toEqual([90, 90]); // the state at 960, then the point at 960
     expect(cc11.length).toBeGreaterThanOrEqual(4); // and again after the jump
     player.stop();
-    expect(immediate).toContainEqual({ kind: "cc", ch: 0, cc: 11, value: 127 });
+    expect(immediate).toContainEqual({ kind: "cc", ch: 0, cc: 11, value: 127, strip: 0 });
   });
 
   it("follows the tempo map: a jump and a ritardando delay what comes after (H4)", () => {

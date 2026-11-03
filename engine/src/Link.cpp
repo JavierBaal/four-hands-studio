@@ -137,9 +137,11 @@ juce::var Link::handle (const juce::var& m, Connection& from)
                       { "sampleRate", engine.getSampleRate() },
                       { "latency", engine.outputLatencySeconds() },
                       { "deviceError", engine.deviceError() },
-                      // F2.1 (31/10/2026): it plays the built-in sounds (requests "sounds" and slot 16).
+                      // F2.1 (31/10/2026): it plays the built-in sounds (requests "sounds" and their slot).
                       { "sounds", true },
-                      { "soundsSlot", kSoundsSlot } });
+                      { "soundsSlot", kSoundsSlot },
+                      // A2 (03/11/2026): strips numbered by Four Hands, not by MIDI channel.
+                      { "strips", kStrips } });
 
     if (type == "plugins")
         return pluginList();
@@ -182,7 +184,8 @@ juce::var Link::handle (const juce::var& m, Connection& from)
 
     if (type == "midi")
     {
-        // Several events at once: { slot, delay (seconds from now), data: [status, data1, data2] }.
+        // Several events at once: { slot, delay (seconds from now), data: [status, data1, data2] },
+        // and for the built-in sounds `ch`, the strip (A2).
         if (auto* events = m["events"].getArray())
             for (const auto& e : *events)
             {
@@ -192,7 +195,8 @@ juce::var Link::handle (const juce::var& m, Connection& from)
                 const int b0 = (*bytes)[0];
                 const int b1 = bytes->size() > 1 ? (int) (*bytes)[1] : 0;
                 const int b2 = bytes->size() > 2 ? (int) (*bytes)[2] : 0;
-                engine.schedule ((int) e["slot"], (double) e["delay"], juce::MidiMessage (b0, b1, b2));
+                const auto strip = e.hasProperty ("ch") ? (int) e["ch"] : -1;
+                engine.schedule ((int) e["slot"], (double) e["delay"], juce::MidiMessage (b0, b1, b2), strip);
             }
         return {};
     }
@@ -257,7 +261,7 @@ juce::var Link::handle (const juce::var& m, Connection& from)
 
     if (type == "mix")
     {
-        // F2.2: the strips of the tracks that changed, { ch, gain, pan, reverb }. No reply.
+        // F2.2: the strips of the tracks that changed, { ch (the strip), gain, pan, reverb }. No reply.
         if (auto* list = m["channels"].getArray())
             for (const auto& c : *list)
                 engine.setMix ((int) c["ch"], (double) c["gain"], (double) c["pan"], (double) c["reverb"]);
@@ -269,9 +273,10 @@ juce::var Link::handle (const juce::var& m, Connection& from)
         // "meters": since the last time (the mixer's meters); "levels": since resetLevels (the AI).
         const auto levels = engine.takeMeters (type == "levels");
         juce::Array<juce::var> list;
-        for (int i = 0; i < kSlots; ++i)
-            list.add (obj ({ { "peak", levels[(size_t) i].peak }, { "rms", levels[(size_t) i].rms }, { "clips", (juce::int64) levels[(size_t) i].clips } }));
-        const auto& mst = levels[(size_t) kSlots];
+        // A2: one per strip in use (the app maps them to its tracks), then the master.
+        for (size_t i = 0; i + 1 < levels.size(); ++i)
+            list.add (obj ({ { "peak", levels[i].peak }, { "rms", levels[i].rms }, { "clips", (juce::int64) levels[i].clips } }));
+        const auto& mst = levels.back();
         return obj ({ { "type", type }, { "channels", list }, { "master", obj ({ { "peak", mst.peak }, { "rms", mst.rms }, { "clips", (juce::int64) mst.clips } }) } });
     }
 

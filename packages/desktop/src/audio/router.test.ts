@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SynthEvent } from "../shared/messages.js";
 import { SoundRouter, engineBytes, isOwnLoopback, midiBytes, soundsBytes } from "./router.js";
-import type { EngineMidiEvent } from "../shared/engine.js";
+import { type EngineMidiEvent, SOUNDS_SLOT } from "../shared/engine.js";
 
 function setup(external = new Set([3])) {
   const inner = { ctx: { currentTime: 10 }, nowed: [] as SynthEvent[], scheduled: [] as { time: number; ev: SynthEvent }[], panics: 0 };
@@ -131,7 +131,7 @@ describe("the built-in sounds in the engine (F2.1, Fran 01/11/2026)", () => {
     expect(soundsBytes({ kind: "panic" })).toEqual([]);
   });
 
-  it("plays the built-in tracks in slot 16 on their own channel, at the plugins' moment", () => {
+  it("plays the built-in tracks in their slot on their own channel, at the plugins' moment", () => {
     const { router, inner, midi } = withEngine({ value: true });
     router.sched([
       { time: 10.5, ev: { kind: "on", ch: 0, note: 60, vel: 80 } },
@@ -141,13 +141,13 @@ describe("the built-in sounds in the engine (F2.1, Fran 01/11/2026)", () => {
     expect(inner.scheduled).toEqual([]);
     // 0.5 s ahead, plus the window's 40 ms, minus the engine's own 20 ms.
     expect(midi).toEqual([
-      { slot: 16, delay: 0.52, data: [0x90, 60, 80] },
+      { slot: SOUNDS_SLOT, delay: 0.52, data: [0x90, 60, 80], ch: 0 },
       { slot: 2, delay: 0.52, data: [0x90, 62, 80] },
-      { slot: 16, delay: 0.52, data: [0xb0, 0, 0] },
-      { slot: 16, delay: 0.52, data: [0xc0, 40] },
+      { slot: SOUNDS_SLOT, delay: 0.52, data: [0xb0, 0, 0], ch: 0 },
+      { slot: SOUNDS_SLOT, delay: 0.52, data: [0xc0, 40], ch: 0 },
     ]);
     router.now({ kind: "cc", ch: 5, cc: 11, value: 90 });
-    expect(midi.at(-1)).toEqual({ slot: 16, delay: 0, data: [0xb5, 11, 90] });
+    expect(midi.at(-1)).toEqual({ slot: SOUNDS_SLOT, delay: 0, data: [0xb5, 11, 90], ch: 5 });
     expect(inner.nowed).toEqual([]);
   });
 
@@ -158,8 +158,42 @@ describe("the built-in sounds in the engine (F2.1, Fran 01/11/2026)", () => {
     expect(inner.nowed).toEqual([{ kind: "on", ch: 0, note: 60, vel: 80 }]);
     expect(midi).toEqual([]);
     ready.value = true;
-    router.silence(0);
-    expect(midi.filter((e) => e.slot === 16).map((e) => e.data)).toEqual([[0xb0, 64, 0], [0xb0, 123, 0], [0xb0, 120, 0]]);
+    router.silence(0, 30);
+    expect(midi.filter((e) => e.slot === SOUNDS_SLOT).map((e) => [e.ch, e.data])).toEqual([[30, [0xb0, 64, 0]], [30, [0xb0, 123, 0]], [30, [0xb0, 120, 0]]]);
+    expect(midi.filter((e) => e.slot === 30)).toHaveLength(3);
+  });
+});
+
+describe("tracks past the 16 MIDI channels (A2, 03/11/2026)", () => {
+  it("routes by the track's strip: two tracks on the same channel play apart, each where it sounds", () => {
+    const inner = { ctx: { currentTime: 10 }, nowed: [] as SynthEvent[], scheduled: [] as { time: number; ev: SynthEvent }[] };
+    const midi: EngineMidiEvent[] = [];
+    const sent: number[][] = [];
+    const port = { midi: (e: EngineMidiEvent[]) => midi.push(...e), panic: () => {}, latency: () => 0 };
+    const router = new SoundRouter({
+      inner: { ctx: inner.ctx, now: (ev) => inner.nowed.push(ev), sched: (evs) => inner.scheduled.push(...evs), panic: () => {} },
+      external: () => new Set([40]),
+      externalChannels: () => [1],
+      port: () => ({ send: (d) => sent.push(d) }),
+      plugin: () => new Set([20]),
+      engine: () => port,
+      builtin: () => port,
+    });
+    // Channel 1 three times: built-in on strip 0, plugin on strip 20, the DAW on strip 40; drums on strip 17.
+    router.sched([
+      { time: 10, ev: { kind: "on", ch: 0, note: 60, vel: 80, strip: 0 } },
+      { time: 10, ev: { kind: "on", ch: 0, note: 61, vel: 80, strip: 20 } },
+      { time: 10, ev: { kind: "on", ch: 1, note: 62, vel: 80, strip: 40 } },
+      { time: 10, ev: { kind: "on", ch: 9, note: 36, vel: 100, strip: 17 } },
+    ]);
+    expect(midi).toEqual([
+      { slot: SOUNDS_SLOT, delay: 0, data: [0x90, 60, 80], ch: 0 },
+      { slot: 20, delay: 0, data: [0x90, 61, 80] },
+      { slot: SOUNDS_SLOT, delay: 0, data: [0x99, 36, 100], ch: 17 },
+    ]);
+    expect(sent).toEqual([[0x91, 62, 80]]);
+    router.panic();
+    expect(sent.slice(1).map((d) => d[0])).toEqual([0xb1, 0xb1, 0xb1]);
   });
 });
 

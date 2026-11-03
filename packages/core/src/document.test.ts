@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addNotes, addSection, addTrack, deleteNotes, moveNotes, removeTrack, setChord, setCurve, setSongProperties, updateNotes, updateTrack } from "./commands.js";
+import { addNotes, addSection, addTrack, deleteNotes, nextChannel, moveNotes, removeTrack, setChord, setCurve, setSongProperties, updateNotes, updateTrack } from "./commands.js";
 import { CommandError, type Patch, SongDocument } from "./document.js";
 import { parseSongFile, serializeSong } from "./file.js";
 import { TRACK_COLOR_COUNT, USER, ai, barAt, barStart, beatTicks, curveValueAt, emptySong, notesOf } from "./model.js";
@@ -17,6 +17,23 @@ function snapshot(doc: SongDocument) {
   const { revision: _r, counters: _c, ...rest } = structuredClone(doc.song);
   return rest;
 }
+
+describe("channels for new tracks (A2, 03/11/2026)", () => {
+  it("takes the first free channel, never 10 nor 16, and past 15 tracks the least used one", () => {
+    const doc = new SongDocument(emptySong("Prueba"), { now: () => 1000 });
+    const channels: number[] = [];
+    for (let i = 0; i < 30; i++) {
+      const id = doc.transact({ actor: USER, label: "Pista" }, (tx) => addTrack(tx, { name: `P${i}` }));
+      channels.push(doc.song.tracks[id]!.channel);
+    }
+    expect(channels.slice(0, 14)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14]);
+    // The 15th onwards: round again, each channel used twice before any three times.
+    expect(channels.slice(14, 28)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14]);
+    expect(channels).not.toContain(9);
+    expect(channels).not.toContain(15);
+    expect(nextChannel([{ channel: 9 }, { channel: 15 }])).toBe(0);
+  });
+});
 
 describe("meter helpers", () => {
   it("measures bars and beats in 4/4 and 6/8", () => {

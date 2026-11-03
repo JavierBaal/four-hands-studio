@@ -97,11 +97,30 @@ int selfTest (const juce::String& folder)
         std::cout << "FAIL no reverb from the send" << std::endl;
         return 7;
     }
+    // A2: a strip far past the 16 MIDI channels plays the same as the first one.
+    engine.unload (0);
+    if (const auto again = engine.load (300, chosen); again.isNotEmpty())
+    {
+        std::cout << "FAIL load on strip 300: " << again << std::endl;
+        return 8;
+    }
+    engine.schedule (300, 0.0, juce::MidiMessage::noteOn (1, 60, (juce::uint8) 100));
+    engine.schedule (300, 0.5, juce::MidiMessage::noteOff (1, 60));
+    juce::AudioBuffer<float> high (2, 48000);
+    high.clear();
+    engine.renderOffline (high);
+    const auto far = high.getRMSLevel (0, 4800, 9600);
+    std::cout << "strip 300: rms " << far << " (" << far / during << " of strip 0), strips in use " << engine.stripsInUse() << std::endl;
+    if (std::abs (far / during - 1.0f) > 0.08f)
+    {
+        std::cout << "FAIL strip 300" << std::endl;
+        return 9;
+    }
     std::cout << "OK" << std::endl;
     return 0;
 }
 /**
- * The built-in sounds without a device: a MIDI file through slot 16, written as a 24-bit WAV.
+ * The built-in sounds without a device: a MIDI file through their slot, written as a 24-bit WAV.
  * Optional `extra` banks go at offsets 60, 66… (as the app adds them).
  */
 int renderSong (const juce::String& bankPath, const juce::String& midiPath, const juce::String& wavPath, const juce::StringArray& extra)
@@ -144,9 +163,12 @@ int renderSong (const juce::String& bankPath, const juce::String& midiPath, cons
     const int quantize = juce::SystemStats::getEnvironmentVariable ("FH_RENDER_BLOCK", "0").getIntValue();
     // FH_RENDER_SEND=1: every strip sends this much to the Reverb bus, as a plugin track does (tests).
     const auto send = juce::SystemStats::getEnvironmentVariable ("FH_RENDER_SEND", "0").getDoubleValue();
+    // FH_RENDER_STRIP=n (A2): MIDI channel c plays on strip n + c instead of on its own channel (tests:
+    // the strip must not change the sound).
+    const int stripBase = juce::SystemStats::getEnvironmentVariable ("FH_RENDER_STRIP", "-1").getIntValue();
     if (send > 0)
-        for (int ch = 0; ch < fh::kSlots; ++ch)
-            engine.setMix (ch, 1.0, 0.0, send);
+        for (int ch = 0; ch < 16; ++ch)
+            engine.setMix (stripBase >= 0 ? stripBase + ch : ch, 1.0, 0.0, send);
     for (const auto* e : all)
     {
         if (e->message.isMetaEvent())
@@ -156,7 +178,7 @@ int renderSong (const juce::String& bankPath, const juce::String& midiPath, cons
         auto t = e->message.getTimeStamp();
         if (quantize > 0)
             t = std::ceil (t * rate / quantize - 1e-9) * quantize / rate;
-        engine.schedule (fh::kSoundsSlot, t, e->message);
+        engine.schedule (fh::kSoundsSlot, t, e->message, stripBase >= 0 ? stripBase + e->message.getChannel() - 1 : -1);
         end = juce::jmax (end, e->message.getTimeStamp());
     }
     juce::AudioBuffer<float> out (2, (int) ((end + 3.0) * rate));

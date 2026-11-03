@@ -131,6 +131,12 @@ export class EngineHost {
         this.connect(port, token).then(
           (hello) => {
             if (settled) return;
+            // A2 (03/11/2026): strips numbered by Four Hands. An engine built before them would
+            // drop the built-in sounds' slot and every plugin past the 16th: built again, it has them.
+            if (!(Number(hello.strips) > 16)) {
+              fail("The engine was built before A2 (strips per track): build it again");
+              return;
+            }
             settled = true;
             this.abortStart = null;
             clearTimeout(timer);

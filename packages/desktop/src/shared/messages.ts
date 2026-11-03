@@ -3,12 +3,16 @@
  * Times: `time` is AudioContext time in seconds; omitted = apply at the start of the next block.
  */
 
+/**
+ * `ch` is the MIDI channel (what goes out to a DAW and what the window's synth plays on). `strip`
+ * (A2, 03/11/2026) is the track's strip in the engine (shared/strips.ts); without it, the channel.
+ */
 export type SynthEvent =
-  | { kind: "on"; ch: number; note: number; vel: number }
-  | { kind: "off"; ch: number; note: number }
+  | { kind: "on"; ch: number; note: number; vel: number; strip?: number }
+  | { kind: "off"; ch: number; note: number; strip?: number }
   /** Program change; `bank` (MSB) first if given: 0 is the default bank, others are added banks. */
-  | { kind: "prog"; ch: number; prog: number; bank?: number }
-  | { kind: "cc"; ch: number; cc: number; value: number }
+  | { kind: "prog"; ch: number; prog: number; bank?: number; strip?: number }
+  | { kind: "cc"; ch: number; cc: number; value: number; strip?: number }
   | { kind: "panic" };
 
 export type ToWorklet =

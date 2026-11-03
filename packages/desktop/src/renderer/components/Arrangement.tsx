@@ -458,7 +458,7 @@ function PluginButton({ audio, track }: { audio: AudioLayer; track: Track }) {
   const { t } = useApp();
   useSyncExternalStore(audio.subscribe ?? noSubscribe, audio.getVersion);
   const plugin = track.plugin!;
-  const ready = audio.pluginReady(track.channel, plugin.id);
+  const ready = audio.pluginReady(track.id, plugin.id);
   const label = ready ? t("openPlugin", { plugin: plugin.name }) : t("cardSubPluginLoading");
   return (
     <button
@@ -469,7 +469,7 @@ function PluginButton({ audio, track }: { audio: AudioLayer; track: Track }) {
       onPointerDown={(e) => e.stopPropagation()}
       onClick={(e) => {
         e.stopPropagation();
-        void audio.showPlugin(track.channel);
+        void audio.showPlugin(track.id);
       }}
       onDoubleClick={(e) => e.stopPropagation()}
     >

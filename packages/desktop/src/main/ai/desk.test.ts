@@ -554,6 +554,15 @@ describe("form, harmony, pedal, properties, tracks and annotations", () => {
     expect(back.program).toBe(40);
   });
 
+  it("adds tracks past 15, sharing MIDI channels but never the drums' or the metronome's (A2, 03/11/2026)", () => {
+    const id = begin("Orquesta grande");
+    for (let i = 0; i < 20; i++) ok("add_track", { intervention_id: id, name: `Atril ${i + 1}`, instrument: "Violines" });
+    expect(session.song.trackOrder.length).toBeGreaterThan(16);
+    const channels = Array.from({ length: 20 }, (_, i) => trackByName(`Atril ${i + 1}`).channel);
+    expect(channels.filter((c) => c === 9 || c === 15)).toEqual([]);
+    ok("end_intervention", { intervention_id: id });
+  });
+
   it("warns, without refusing, when notes leave the instrument's range", () => {
     const id = begin("Grave");
     ok("add_track", { intervention_id: id, name: "Chelo", instrument: "Chelos" });

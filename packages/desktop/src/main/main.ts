@@ -177,7 +177,13 @@ function engineHost(): EngineHost {
 }
 
 /** F2.2: the engine's levels in the last playback, for the AI's get_levels. */
-let lastLevels: { levels: EngineLevels; at: number } | null = null;
+let lastLevels: { levels: EngineLevels; at: number; strips: Record<string, number> } | null = null;
+/**
+ * A2 (03/11/2026): each track's strip in the engine, as the window last sent it with the mix (the
+ * window numbers them: shared/strips.ts). Plugins' state and the levels are read by strip.
+ */
+let trackStrips: Record<string, number> = {};
+const stripOfTrack = (track: { id: string; channel: number }): number => trackStrips[track.id] ?? track.channel;
 
 /** F2.1: sound banks the engine is loading, by "id@offset", waiting for its "soundsLoaded". */
 const soundsWaiting = new Map<string, (r: EngineSoundsResult) => void>();
@@ -238,7 +244,7 @@ function appendLog(entry: Record<string, unknown>): void {
 // The song
 
 /**
- * F2.1: what each plugin track's plugin has loaded, from the engine (its slot is the channel).
+ * F2.1: what each plugin track's plugin has loaded, from the engine (its slot is the track's strip).
  * Nothing when the engine is not running: the session keeps what the file had.
  */
 async function collectPluginStates(song: Song, slots?: Set<number>): Promise<PluginStates> {
@@ -247,9 +253,10 @@ async function collectPluginStates(song: Song, slots?: Set<number>): Promise<Plu
   for (const id of song.trackOrder) {
     const track = song.tracks[id];
     if (track?.output !== "plugin" || !track.plugin) continue;
-    if (slots && !slots.has(track.channel)) continue;
+    const slot = stripOfTrack(track);
+    if (slots && !slots.has(slot)) continue;
     try {
-      const reply = await engine.request({ type: "getState", slot: track.channel });
+      const reply = await engine.request({ type: "getState", slot });
       const data = String(reply.data ?? "");
       if (data) out[id] = { id: track.plugin.id, data };
     } catch {
@@ -734,14 +741,16 @@ function registerIpc(): void {
     try {
       const reply = await engine.request({ type: reset ? "resetLevels" : "levels" });
       // What the AI reads with get_levels: the last playback's levels, as the window asked them.
-      if (!reset) lastLevels = { levels: reply as unknown as EngineLevels, at: Date.now() };
+      if (!reset) lastLevels = { levels: reply as unknown as EngineLevels, at: Date.now(), strips: { ...trackStrips } };
       return reply;
     } catch {
       return null;
     }
   });
   ipcMain.on(CH.engineMix, (_e, channels: unknown) => {
-    if (Array.isArray(channels)) engine?.send({ type: "mix", channels });
+    if (!Array.isArray(channels)) return;
+    for (const c of channels as Array<{ ch?: unknown; track?: unknown }>) if (typeof c?.track === "string") trackStrips[c.track] = Number(c.ch);
+    engine?.send({ type: "mix", channels });
   });
   ipcMain.handle(CH.builtinSounds, () => (readSettings().builtinSounds === "app" ? "app" : "engine"));
   // Ajustes: folders, test tools and where the engine looks for plugins.

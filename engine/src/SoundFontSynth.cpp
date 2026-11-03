@@ -706,12 +706,22 @@ void SoundFontSynth::selectPreset (int ch)
 // -----------------------------------------------------------------------------
 // MIDI
 
-void SoundFontSynth::handle (const juce::MidiMessage& m)
+void SoundFontSynth::handle (int ch, const juce::MidiMessage& m)
 {
-    const int ch = m.getChannel() - 1;
     if (ch < 0 || ch >= kChannels)
         return;
     auto& c = (*channels)[(size_t) ch];
+    // A2: the drum kit follows the MIDI channel the track plays on (10), not the synth channel.
+    if (m.isNoteOn() || m.isProgramChange())
+    {
+        const bool drum = m.getChannel() - 1 == kDrumChannel;
+        if (drum != c.drum)
+        {
+            c.drum = drum;
+            if (! m.isProgramChange())
+                selectPreset (ch);
+        }
+    }
     if (m.isNoteOn())
         noteOn (ch, m.getNoteNumber(), m.getVelocity());
     else if (m.isNoteOff())
@@ -1110,22 +1120,32 @@ void SoundFontSynth::render (float* left, float* right, int start, int count)
     }
 }
 
-void SoundFontSynth::processSplit (juce::MidiBuffer& midi, int numSamples, float* const* channelOut, float* const* reverbSends, float* masterLeft, float* masterRight)
+void SoundFontSynth::processSplit (const std::vector<SynthEvent>& events, int numSamples, float* const* channelOut, float* const* reverbSends, float* masterLeft, float* masterRight)
 {
     const juce::SpinLock::ScopedLockType sl (lock);
     splitOut = channelOut;
     splitReverb = reverbSends;
     int done = 0;
-    for (const auto meta : midi)
+    for (const auto& e : events)
     {
-        const int at = juce::jlimit (0, numSamples, meta.samplePosition);
+        const int at = juce::jlimit (0, numSamples, e.offset);
         render (masterLeft, masterRight, done, at - done);
         done = juce::jmax (done, at);
-        handle (meta.getMessage());
+        handle (e.channel, e.message);
     }
     render (masterLeft, masterRight, done, numSamples - done);
     splitOut = nullptr;
     splitReverb = nullptr;
+}
+
+void SoundFontSynth::releaseAll()
+{
+    const juce::SpinLock::ScopedLockType sl (lock);
+    for (int ch = 0; ch < kChannels; ++ch)
+    {
+        controller (ch, 64, 0);
+        controller (ch, 123, 0);
+    }
 }
 
 void SoundFontSynth::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
@@ -1142,7 +1162,7 @@ void SoundFontSynth::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiB
         const int at = juce::jlimit (0, numSamples, meta.samplePosition);
         render (left, right, done, at - done);
         done = juce::jmax (done, at);
-        handle (meta.getMessage());
+        handle (meta.getMessage().getChannel() - 1, meta.getMessage());
     }
     render (left, right, done, numSamples - done);
     if (buffer.getNumChannels() == 1)

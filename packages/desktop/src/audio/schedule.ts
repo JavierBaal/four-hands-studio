@@ -21,6 +21,13 @@ export function audibleTracks(song: Song): Set<string> {
   return new Set((solo.length > 0 ? solo : tracks.filter((t) => !t.mute)).map((t) => t.id));
 }
 
+/**
+ * A2 (03/11/2026): the engine strip a track plays on (shared/strips.ts). By default its MIDI
+ * channel, as before.
+ */
+export type StripResolver = (track: Track) => number;
+const byChannel: StripResolver = (t) => t.channel;
+
 export interface TickEvent {
   tick: number;
   ev: SynthEvent;
@@ -30,27 +37,29 @@ export interface TickEvent {
  * Note events that start in [from, to), plus their note-offs (which may fall after `to`).
  * `cutAt`: notes are cut there (the loop end), so nothing keeps ringing across the jump.
  */
-export function noteEvents(song: Song, from: number, to: number, cutAt = Infinity): TickEvent[] {
+export function noteEvents(song: Song, from: number, to: number, cutAt = Infinity, stripOf: StripResolver = byChannel): TickEvent[] {
   const audible = audibleTracks(song);
   const out: TickEvent[] = [];
   for (const n of Object.values(song.notes)) {
     if (n.start < from || n.start >= to || !audible.has(n.trackId)) continue;
     const track = song.tracks[n.trackId]!;
+    const strip = stripOf(track);
     const end = Math.min(n.start + n.duration, cutAt);
-    out.push({ tick: n.start, ev: { kind: "on", ch: track.channel, note: n.pitch, vel: n.velocity } });
-    out.push({ tick: Math.max(n.start + 1, end), ev: { kind: "off", ch: track.channel, note: n.pitch } });
+    out.push({ tick: n.start, ev: { kind: "on", ch: track.channel, note: n.pitch, vel: n.velocity, strip } });
+    out.push({ tick: Math.max(n.start + 1, end), ev: { kind: "off", ch: track.channel, note: n.pitch, strip } });
   }
   for (const id of audible) {
     const track = song.tracks[id]!;
+    const strip = stripOf(track);
     for (const p of track.pedal) {
-      if (p.start >= from && p.start < to) out.push({ tick: p.start, ev: { kind: "cc", ch: track.channel, cc: 64, value: 127 } });
-      if (p.end >= from && p.end < to) out.push({ tick: Math.min(p.end, cutAt), ev: { kind: "cc", ch: track.channel, cc: 64, value: 0 } });
+      if (p.start >= from && p.start < to) out.push({ tick: p.start, ev: { kind: "cc", ch: track.channel, cc: 64, value: 127, strip } });
+      if (p.end >= from && p.end < to) out.push({ tick: Math.min(p.end, cutAt), ev: { kind: "cc", ch: track.channel, cc: 64, value: 0, strip } });
     }
     // Expression (CC11) and modulation (CC1), H4: each point when playback reaches it.
     for (const kind of CURVE_KINDS)
       for (const p of track.curves?.[kind] ?? []) {
         if (p.tick >= to) break;
-        if (p.tick >= from) out.push({ tick: p.tick, ev: { kind: "cc", ch: track.channel, cc: CURVE_CC[kind], value: p.value } });
+        if (p.tick >= from) out.push({ tick: p.tick, ev: { kind: "cc", ch: track.channel, cc: CURVE_CC[kind], value: p.value, strip } });
       }
   }
   return out.sort((a, b) => a.tick - b.tick || (a.ev.kind === "off" ? -1 : 0) - (b.ev.kind === "off" ? -1 : 0));
@@ -60,36 +69,36 @@ export function noteEvents(song: Song, from: number, to: number, cutAt = Infinit
  * Where the curves stand at a tick, for every track that has one: sent when playback starts or
  * jumps (the loop), so a crescendo heard from its middle starts at its middle value.
  */
-export function curveStateEvents(song: Song, tick: number): SynthEvent[] {
+export function curveStateEvents(song: Song, tick: number, stripOf: StripResolver = byChannel): SynthEvent[] {
   const out: SynthEvent[] = [];
   for (const id of song.trackOrder) {
     const t = song.tracks[id];
     if (!t?.curves) continue;
-    for (const kind of CURVE_KINDS) if (t.curves[kind]?.length) out.push({ kind: "cc", ch: t.channel, cc: CURVE_CC[kind], value: curveValueAt(t.curves[kind], kind, tick) });
+    for (const kind of CURVE_KINDS) if (t.curves[kind]?.length) out.push({ kind: "cc", ch: t.channel, cc: CURVE_CC[kind], value: curveValueAt(t.curves[kind], kind, tick), strip: stripOf(t) });
   }
   return out;
 }
 
 /** Back to the defaults after playing, so what the user auditions is not stuck at a quiet value. */
-export function curveResetEvents(song: Song): SynthEvent[] {
+export function curveResetEvents(song: Song, stripOf: StripResolver = byChannel): SynthEvent[] {
   const out: SynthEvent[] = [];
   for (const id of song.trackOrder) {
     const t = song.tracks[id];
     if (!t?.curves) continue;
-    for (const kind of CURVE_KINDS) if (t.curves[kind]?.length) out.push({ kind: "cc", ch: t.channel, cc: CURVE_CC[kind], value: CURVE_DEFAULT[kind] });
+    for (const kind of CURVE_KINDS) if (t.curves[kind]?.length) out.push({ kind: "cc", ch: t.channel, cc: CURVE_CC[kind], value: CURVE_DEFAULT[kind], strip: stripOf(t) });
   }
   return out;
 }
 
 /** Metronome clicks in [from, to): a higher one on the first beat of each bar. */
-export function clickEvents(song: Song, from: number, to: number): TickEvent[] {
+export function clickEvents(song: Song, from: number, to: number, strip = METRONOME_CHANNEL): TickEvent[] {
   const beat = beatTicks(song.meter);
   const bar = barTicks(song.meter);
   const out: TickEvent[] = [];
   for (let t = Math.ceil(from / beat) * beat; t < to; t += beat) {
     const down = t % bar === 0;
-    out.push({ tick: t, ev: { kind: "on", ch: METRONOME_CHANNEL, note: down ? 84 : 77, vel: down ? 110 : 80 } });
-    out.push({ tick: t + PPQ / 8, ev: { kind: "off", ch: METRONOME_CHANNEL, note: down ? 84 : 77 } });
+    out.push({ tick: t, ev: { kind: "on", ch: METRONOME_CHANNEL, note: down ? 84 : 77, vel: down ? 110 : 80, strip } });
+    out.push({ tick: t + PPQ / 8, ev: { kind: "off", ch: METRONOME_CHANNEL, note: down ? 84 : 77, strip } });
   }
   return out;
 }
@@ -98,18 +107,19 @@ export function clickEvents(song: Song, from: number, to: number): TickEvent[] {
 export type SoundResolver = (track: Track) => { bank: number; prog: number } | null;
 
 /** Programs (with their bank), volume, pan and reverb send of every track, to send before playing. */
-export function setupEvents(song: Song, soundFor: SoundResolver = () => null): SynthEvent[] {
-  const out: SynthEvent[] = [{ kind: "prog", ch: METRONOME_CHANNEL, prog: METRONOME_PROGRAM, bank: 0 }];
+export function setupEvents(song: Song, soundFor: SoundResolver = () => null, stripOf: StripResolver = byChannel, metronomeStrip = METRONOME_CHANNEL): SynthEvent[] {
+  const out: SynthEvent[] = [{ kind: "prog", ch: METRONOME_CHANNEL, prog: METRONOME_PROGRAM, bank: 0, strip: metronomeStrip }];
   for (const id of song.trackOrder) {
     const t = song.tracks[id];
     if (!t) continue;
+    const strip = stripOf(t);
     const custom = t.channel !== 9 ? soundFor(t) : null;
-    if (custom) out.push({ kind: "prog", ch: t.channel, prog: custom.prog, bank: custom.bank });
-    else if (t.program !== null && t.channel !== 9) out.push({ kind: "prog", ch: t.channel, prog: t.program, bank: 0 });
-    out.push({ kind: "cc", ch: t.channel, cc: 7, value: Math.round(t.volume * 127) });
-    out.push({ kind: "cc", ch: t.channel, cc: 10, value: Math.round(64 + t.pan * 63) });
+    if (custom) out.push({ kind: "prog", ch: t.channel, prog: custom.prog, bank: custom.bank, strip });
+    else if (t.program !== null && t.channel !== 9) out.push({ kind: "prog", ch: t.channel, prog: t.program, bank: 0, strip });
+    out.push({ kind: "cc", ch: t.channel, cc: 7, value: Math.round(t.volume * 127), strip });
+    out.push({ kind: "cc", ch: t.channel, cc: 10, value: Math.round(64 + t.pan * 63), strip });
     // Always sent, 0 included: a track whose reverb goes back to 0 must sound dry again.
-    out.push({ kind: "cc", ch: t.channel, cc: 91, value: Math.round((t.reverb ?? 0) * 127) });
+    out.push({ kind: "cc", ch: t.channel, cc: 91, value: Math.round((t.reverb ?? 0) * 127), strip });
   }
   return out;
 }
