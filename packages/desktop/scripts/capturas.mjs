@@ -339,16 +339,10 @@ export const SHOTS = [
     });
     await consoleLevels(page);
   } },
-  // Propuesta (Fran, 03/11/2026): one Mezcla / Editor button, at the start or the end of the bar.
-  ...["izquierda", "derecha"].flatMap((side) => {
-    const sw = side === "derecha" ? "&switch=right" : "";
-    return [
-      { name: `boton_${side}_editor`, q: `?song=boceto${sw}&view=${sketchView(1440 - 288 - 72, 12)}` },
-      { name: `boton_${side}_consola`, q: `?song=boceto${sw}&view=${view({ bottom: "mix" })}`, act: consoleLevels },
-      { name: `boton_${side}_editor_880`, w: 880, h: 800, q: `?song=boceto${sw}&view=${sketchView(880 - 48 - 56, 8)}` },
-      { name: `boton_${side}_consola_880`, w: 880, h: 800, q: `?song=boceto${sw}&view=${view({ bottom: "mix" })}`, act: consoleLevels },
-    ];
-  }),
+  // The Mezcla / Editor button (Fran, 03/11/2026: at the start of the bar).
+  { name: "boton_mezcla_editor", q: `?song=boceto&view=${sketchView(1440 - 288 - 72, 12)}` },
+  { name: "boton_mezcla_consola", q: `?song=boceto&view=${view({ bottom: "mix" })}`, act: consoleLevels },
+  { name: "boton_mezcla_editor_880", w: 880, h: 800, q: `?song=boceto&view=${sketchView(880 - 48 - 56, 8)}` },
 ];
 
 /** Steady levels on every track's strip (peak a few dB over the RMS), the master, and the engine's load. */

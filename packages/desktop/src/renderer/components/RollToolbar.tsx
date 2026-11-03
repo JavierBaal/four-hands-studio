@@ -30,12 +30,10 @@ export function aiSeesText(song: ReturnType<typeof useSong>, t: ReturnType<typeo
 }
 
 /**
- * PROPUESTA (Fran, 03/11/2026, por decidir): one button that says where it takes you, «Mezcla» in
- * the editor and «Editor» in the console, in the same place of both bars. `?switch=right` (banco de
- * pruebas) puts it at the end of the bar instead of the start, to compare.
+ * F2.2 parte B (Fran, 03/11/2026): one button that says where it takes you, «Mezcla» in the editor
+ * and «Editor» in the console, first in both bars, so it is always in the same place. Never pressed:
+ * it is an action, not a layer like Autoría or Escala. The keys (F2, F3) are in the tooltip.
  */
-export const SWITCH_PLACE: "left" | "right" = typeof location !== "undefined" && new URLSearchParams(location.search).get("switch") === "right" ? "right" : "left";
-
 export function ModeButton() {
   const { t, view } = useApp();
   const v = useView();
@@ -63,12 +61,8 @@ export function RollToolbar({ onGridMenu }: RollToolbarProps) {
   );
   return (
     <div className="rtools">
-      {SWITCH_PLACE === "left" && (
-        <>
-          <ModeButton />
-          <span className="sep" />
-        </>
-      )}
+      <ModeButton />
+      <span className="sep" />
       <span className="rtitle">{track?.name ?? ""}</span>
       {track && (
         <button
@@ -104,12 +98,6 @@ export function RollToolbar({ onGridMenu }: RollToolbarProps) {
             <span className="dot ai" /> {t("aiName")}
           </span>
         </span>
-      )}
-      {SWITCH_PLACE === "right" && (
-        <>
-          <span className="sep" />
-          <ModeButton />
-        </>
       )}
       <span style={{ flex: 1 }} />
       <span className="sees">{t("aiSees", { what: aiSeesText(song, t) })}</span>

@@ -683,5 +683,5 @@ input.inline.mixval { height: 16px; padding: 0 2px; font-size: 10px; text-align:
 .cdb.ctypeb { display: block; width: 100%; font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; font-size: 11px; color: var(--text); text-align: center; }
 input.inline.ctype { height: 18px; padding: 0 2px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; text-align: center; color: var(--text); box-sizing: border-box; width: 100%; }
 input.inline.cval.ctype { width: 34px; font-size: 10px; }
-/* Un solo botón Mezcla / Editor (propuesta, 03/11/2026): botón de acción, nunca marcado. */
+/* Un solo botón Mezcla / Editor (Fran, 03/11/2026), al principio de la barra: botón de acción, nunca marcado. */
 .modeb { display: inline-flex; align-items: center; gap: 6px; }

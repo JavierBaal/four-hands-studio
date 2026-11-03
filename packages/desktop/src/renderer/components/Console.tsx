@@ -19,7 +19,7 @@ import { useActions, useApp, useSong, useView } from "../context.js";
 import { trackColor } from "../theme.js";
 import { Fader } from "./Fader.js";
 import { InlineEdit } from "./InlineEdit.js";
-import { ModeButton, SWITCH_PLACE } from "./RollToolbar.js";
+import { ModeButton } from "./RollToolbar.js";
 
 /** About 30 readings a second, only while the console is on screen. */
 const METER_MS = 33;
@@ -397,7 +397,7 @@ export function Console({ audio, onSelectTrack, onToggle }: ConsoleProps) {
   return (
     <section className="console" aria-label={t("consoleLabel")}>
       <div className="ctoolbar">
-        {SWITCH_PLACE === "left" && <ModeButton />}
+        <ModeButton />
         <span className="cspacer" />
         {!engineOn && <span className="cnote">{t("consoleNoEngine")}</span>}
         <button className="tgl" disabled title={t("consoleBusesLater")}>
@@ -414,12 +414,6 @@ export function Console({ audio, onSelectTrack, onToggle }: ConsoleProps) {
         <button className={`tgl${v.mixMax ? " on" : ""}`} aria-pressed={v.mixMax} title={t("consoleExpandTitle")} onClick={() => view.set({ mixMax: !v.mixMax })}>
           {v.mixMax ? t("consoleShrink") : t("consoleExpand")}
         </button>
-        {SWITCH_PLACE === "right" && (
-          <>
-            <span className="sep" />
-            <ModeButton />
-          </>
-        )}
       </div>
       <div className="cbody">
         <div className="cstrips">
