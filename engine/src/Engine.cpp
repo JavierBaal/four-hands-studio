@@ -279,6 +279,16 @@ bool Engine::setState (int slot, const juce::MemoryBlock& data)
     return true;
 }
 
+namespace
+{
+/**
+ * A plugin track's reverb at 100% sounds as much as a built-in sound's at its top (CC91 = 127).
+ * Measured on 03/11/2026 with MuseScore strings: (L + R) / 2 into the bus gave 5 dB less reverb
+ * than the built-in send (Fran: «muy sutil, casi apenas perceptible al 100%»); 10^(5.1/20).
+ */
+constexpr double kPluginSendMatch = 1.8;
+} // namespace
+
 // -----------------------------------------------------------------------------
 // Built-in sounds
 
@@ -440,7 +450,7 @@ void Engine::process (float* const* outputs, int numOutputs, int numSamples)
         juce::FloatVectorOperations::add (busData, sends.getReadPointer (ch), numSamples);
         if (p.reverb > 0)
             for (int i = 0; i < numSamples; ++i)
-                busData[i] += (float) ((L[i] + R[i]) * 0.5 * p.reverb);
+                busData[i] += (float) ((L[i] + R[i]) * 0.5 * p.reverb * kPluginSendMatch);
     }
     if (busReverb != nullptr)
         busReverb->process (busData, master.getWritePointer (0), master.getWritePointer (1), 0, numSamples);

@@ -72,15 +72,20 @@ int selfTest (const juce::String& folder)
         std::cout << "FAIL the note did not stop" << std::endl;
         return 5;
     }
-    // F2.2: the plugin's strip. Half the fader halves the sound; a reverb send leaves a tail.
-    engine.setMix (0, 0.5, 0.0, 0.5);
-    engine.schedule (0, 0.0, juce::MidiMessage::noteOn (1, 60, (juce::uint8) 100));
-    engine.schedule (0, 0.5, juce::MidiMessage::noteOff (1, 60));
-    juce::AudioBuffer<float> mixed (2, 48000);
-    mixed.clear();
-    engine.renderOffline (mixed);
-    const auto half = mixed.getRMSLevel (0, 4800, 9600);
-    const auto tail = mixed.getRMSLevel (0, 40000, 4800);
+    // F2.2: the plugin's strip. Half the fader halves the sound (dry); a reverb send leaves a tail.
+    auto play = [&engine] (double gain, double reverb) {
+        engine.setMix (0, gain, 0.0, reverb);
+        engine.schedule (0, 0.0, juce::MidiMessage::noteOn (1, 60, (juce::uint8) 100));
+        engine.schedule (0, 0.5, juce::MidiMessage::noteOff (1, 60));
+        juce::AudioBuffer<float> b (2, 48000);
+        b.clear();
+        engine.renderOffline (b);
+        return b;
+    };
+    const auto dry = play (0.5, 0.0);
+    const auto half = dry.getRMSLevel (0, 4800, 9600);
+    const auto wet = play (1.0, 1.0);
+    const auto tail = wet.getRMSLevel (0, 40000, 4800);
     std::cout << "strip: rms at half fader " << half << " (" << half / during << " of full), reverb tail " << tail << std::endl;
     if (std::abs (half / during - 0.5f) > 0.08f)
     {
@@ -137,6 +142,11 @@ int renderSong (const juce::String& bankPath, const juce::String& midiPath, cons
     all.updateMatchedPairs();
     double end = 0.0;
     const int quantize = juce::SystemStats::getEnvironmentVariable ("FH_RENDER_BLOCK", "0").getIntValue();
+    // FH_RENDER_SEND=1: every strip sends this much to the Reverb bus, as a plugin track does (tests).
+    const auto send = juce::SystemStats::getEnvironmentVariable ("FH_RENDER_SEND", "0").getDoubleValue();
+    if (send > 0)
+        for (int ch = 0; ch < fh::kSlots; ++ch)
+            engine.setMix (ch, 1.0, 0.0, send);
     for (const auto* e : all)
     {
         if (e->message.isMetaEvent())
