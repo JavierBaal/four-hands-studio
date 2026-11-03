@@ -8,6 +8,8 @@ import type { Tool } from "../view.js";
 
 export interface RollToolbarProps {
   onGridMenu(anchor: HTMLElement): void;
+  /** Compact window: the arrangement's corner has no room for Editor / Mezcla, so they go here. */
+  compact?: boolean;
 }
 
 /** "Melodía · c. 25–26": the track and the selection, or the loop, or the cursor's bar. */
@@ -29,7 +31,27 @@ export function aiSeesText(song: ReturnType<typeof useSong>, t: ReturnType<typeo
   return `${name} · ${t("bars", { range })}`;
 }
 
-export function RollToolbar({ onGridMenu }: RollToolbarProps) {
+/**
+ * F2.2 parte B (Fran, 03/11/2026): Editor / Mezcla in sight, so nobody has to know F2 and F3: small
+ * in the arrangement's top-left corner (empty until now, seen in both modes) and in the console's bar.
+ */
+export function EditorMixTabs({ keys = true, small = false }: { keys?: boolean; small?: boolean }) {
+  const { t, view } = useApp();
+  const v = useView();
+  const mix = v.bottom === "mix";
+  return (
+    <div className={small ? "cseg small" : "cseg"} role="tablist" aria-label={t("consoleLabel")}>
+      <button role="tab" className={mix ? "cseg1" : "cseg1 on"} aria-selected={!mix} title={`${t("consoleEditor")} (F2)`} onClick={() => view.set({ bottom: "editor" })}>
+        {t("consoleEditor")} {keys && <span className="kbd">F2</span>}
+      </button>
+      <button role="tab" className={mix ? "cseg1 on" : "cseg1"} aria-selected={mix} title={t("consoleOpenTitle")} onClick={() => view.set({ bottom: "mix" })}>
+        {t("consoleMix")} {keys && <span className="kbd">F3</span>}
+      </button>
+    </div>
+  );
+}
+
+export function RollToolbar({ onGridMenu, compact = false }: RollToolbarProps) {
   const { t, view } = useApp();
   const actions = useActions();
   const song = useSong();
@@ -44,6 +66,12 @@ export function RollToolbar({ onGridMenu }: RollToolbarProps) {
   );
   return (
     <div className="rtools">
+      {compact && (
+        <>
+          <EditorMixTabs keys={false} />
+          <span className="sep" />
+        </>
+      )}
       <span className="rtitle">{track?.name ?? ""}</span>
       {track && (
         <button

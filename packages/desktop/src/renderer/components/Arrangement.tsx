@@ -7,6 +7,7 @@
  * - Headers: double click renames, right click opens the track menu, dragging reorders.
  * - "Añadir pista" under the headers opens the instrument palette.
  */
+import { EditorMixTabs } from "./RollToolbar.js";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { type Song, barStart, barTicks, orderedSections, orderedTracks } from "@fourhands/core";
 import { activeTrack, notesByTrack, trackColors, useActions, useApp, useSize, useSong, useView } from "../context.js";
@@ -249,7 +250,7 @@ export function Arrangement({ compact, visible, onSelectTrack, onPan, onToggle, 
             onReset={() => view.set({ headerWidth: LAYOUT_DEFAULTS.headerWidth })}
           />
         )}
-        <div className="strip" />
+        <div className="strip arrcorner">{!compact && <EditorMixTabs keys={false} small />}</div>
         {tracks.map((tr, i) => {
           const dragging = drag?.moved && drag.id === tr.id;
           const typing = actions.typing?.kind === "trackName" && actions.typing.id === tr.id;

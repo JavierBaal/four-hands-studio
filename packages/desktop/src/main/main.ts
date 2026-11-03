@@ -36,6 +36,12 @@ const lang: Lang = langFrom(process.env.FH_LANG ?? app.getLocale());
 const t = translator(lang);
 
 app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
+// F2.2 (Fran, 03/11/2026): with the sound in the engine the window is not "playing audio" for
+// Chromium, so behind another window (Alt+Tab) its timers slowed to one a second and the player sent
+// the notes late: stutters. A music app keeps its timing in the background.
+app.commandLine.appendSwitch("disable-renderer-backgrounding");
+app.commandLine.appendSwitch("disable-background-timer-throttling");
+app.commandLine.appendSwitch("disable-backgrounding-occluded-windows");
 app.setName("Four Hands Studio");
 
 let win: BrowserWindow | null = null;
@@ -619,6 +625,8 @@ async function createWindow(): Promise<void> {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      // Never slow the player down when the window is behind another one (see the switches above).
+      backgroundThrottling: false,
     },
   });
   // The window handles every key itself (ESPEC_PIANO_ROLL.md, 6): no page zoom on Ctrl + / -.

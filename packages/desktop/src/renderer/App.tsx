@@ -453,6 +453,7 @@ export function App({ audio, onEditor }: AppProps) {
           {!mixing && (
           <section className="roll" aria-label={t("pianoRoll")}>
             <RollToolbar
+              compact={compact}
               onGridMenu={(anchor) => {
                 const r = anchor.getBoundingClientRect();
                 editor.gridMenu(r.left, r.bottom + 4);

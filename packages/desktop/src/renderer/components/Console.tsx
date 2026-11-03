@@ -12,12 +12,14 @@
  */
 import { useEffect, useRef, useState } from "react";
 import type { Track } from "@fourhands/core";
-import { dbToVolume, formatDb, formatPan, volumeToDb } from "../../shared/mix.js";
+import { dbToVolume, formatDb, formatPan, parseDb, volumeToDb } from "../../shared/mix.js";
 import { SILENT_METER, type MeterState, fracToDb, meterFrac, stepMeter } from "../../shared/meters.js";
 import type { AudioLayer } from "../audio-layer.js";
 import { useActions, useApp, useSong, useView } from "../context.js";
 import { trackColor } from "../theme.js";
 import { Fader } from "./Fader.js";
+import { InlineEdit } from "./InlineEdit.js";
+import { EditorMixTabs } from "./RollToolbar.js";
 
 /** About 30 readings a second, only while the console is on screen. */
 const METER_MS = 33;
@@ -185,6 +187,32 @@ function VFader({ value, reset, label, valueText, onInput, onCommit }: { value: 
   );
 }
 
+/**
+ * A value typed in place (Fran, 03/11/2026): one click opens the field; Enter or leaving it writes
+ * it, Esc cancels. `commit` returns false when the text cannot be read (the value stays as it was).
+ */
+function Typed({ text, className, title, commit }: { text: string; className: string; title: string; commit(text: string): boolean }) {
+  const [open, setOpen] = useState(false);
+  return open ? (
+    <InlineEdit
+      className={`${className} ctype`}
+      value={text}
+      inputMode="numeric"
+      maxLength={8}
+      title={title}
+      onCommit={(v) => {
+        commit(v);
+        setOpen(false);
+      }}
+      onCancel={() => setOpen(false)}
+    />
+  ) : (
+    <button className={`${className} ctypeb`} title={title} onPointerDown={(e) => e.stopPropagation()} onClick={() => setOpen(true)}>
+      {text}
+    </button>
+  );
+}
+
 /** "Altavoces (Realtek)" from "Windows Audio · Altavoces (Realtek) · 48000 Hz · 480 muestras". */
 function deviceName(device: string | undefined): string | null {
   if (!device) return null;
@@ -249,7 +277,7 @@ function TrackStrip({ track, narrow, active, silenced, meter, onClearClip, onSel
           onInput={(v) => actions.previewMix(track.id, track.volume, v)}
           onCommit={(v) => actions.setMix(track.id, track.volume, v)}
         />
-        {!narrow && <span className="cval">{formatPan(track.pan)}</span>}
+        {!narrow && <Typed className="cval" text={formatPan(track.pan)} title={t("consolePanType")} commit={(v) => actions.typeMix(track.id, "pan", v)} />}
       </div>
       <div className="cms">
         <button className={`msb${track.mute ? " on" : ""}`} aria-pressed={track.mute} aria-label={t("mute")} title={t("mute")} onClick={() => onToggle(track.id, "mute")}>
@@ -277,7 +305,7 @@ function TrackStrip({ track, narrow, active, silenced, meter, onClearClip, onSel
         />
         <Meter m={meter} onClear={onClearClip} clipTitle={t("consoleClip")} />
       </div>
-      <div className="cdb">{db}</div>
+      <Typed className="cdb" text={db} title={t("consoleVolumeType")} commit={(v) => actions.typeMix(track.id, "volume", v)} />
       <div className="cname">
         <span className="ctitle" title={track.name}>
           {track.name}
@@ -330,7 +358,17 @@ function MasterStrip({ audio, meter, onClearClip }: { audio: AudioLayer; meter: 
         />
         <Meter m={meter} onClear={onClearClip} clipTitle={t("consoleClip")} />
       </div>
-      <div className="cdb">{db}</div>
+      <Typed
+        className="cdb"
+        text={db}
+        title={t("consoleVolumeType")}
+        commit={(v) => {
+          const vol = parseDb(v);
+          if (vol === null) return false;
+          actions.setMasterVolume(vol);
+          return true;
+        }}
+      />
       <div className="cname">
         <span className="ctitle">{t("consoleMaster")}</span>
       </div>
@@ -359,14 +397,7 @@ export function Console({ audio, onSelectTrack, onToggle }: ConsoleProps) {
   return (
     <section className="console" aria-label={t("consoleLabel")}>
       <div className="ctoolbar">
-        <div className="cseg" role="tablist">
-          <button role="tab" className={`cseg1`} aria-selected={false} onClick={() => view.set({ bottom: "editor" })}>
-            {t("consoleEditor")} <span className="kbd">F2</span>
-          </button>
-          <button role="tab" className={`cseg1 on`} aria-selected={true}>
-            {t("consoleMix")} <span className="kbd">F3</span>
-          </button>
-        </div>
+        <EditorMixTabs />
         <span className="cspacer" />
         {!engineOn && <span className="cnote">{t("consoleNoEngine")}</span>}
         <button className="tgl" disabled title={t("consoleBusesLater")}>

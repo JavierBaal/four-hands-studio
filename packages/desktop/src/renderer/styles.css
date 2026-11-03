@@ -677,3 +677,13 @@ input.inline.mixval { height: 16px; padding: 0 2px; font-size: 10px; text-align:
 @media (max-width: 880px) {
   .load .loadtxt { display: none; }
 }
+/* Valores que se escriben con un clic (Fran, 03/11/2026). */
+.ctypeb { background: transparent; border: 0; padding: 0 2px; border-radius: 3px; cursor: text; font: inherit; color: inherit; }
+.ctypeb:hover { background: var(--bg-control); }
+.cdb.ctypeb { display: block; width: 100%; font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; font-size: 11px; color: var(--text); text-align: center; }
+input.inline.ctype { height: 18px; padding: 0 2px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; text-align: center; color: var(--text); box-sizing: border-box; width: 100%; }
+input.inline.cval.ctype { width: 34px; font-size: 10px; }
+/* Editor / Mezcla en la esquina del arreglo (Fran, 03/11/2026): pequeño, a la altura de la franja de secciones. */
+.arrcorner { display: flex; align-items: center; padding-left: 6px; }
+.cseg.small { height: 18px; border-radius: 5px; }
+.cseg.small .cseg1 { padding: 0 7px; font-size: 11px; gap: 4px; }

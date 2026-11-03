@@ -8,7 +8,7 @@ import { type Note, type PedalSpan, type Song, type Track, PPQ, barAt, barStart,
 import type { Lang, Strings, Translate } from "../shared/i18n.js";
 import { Engine } from "../audio/engine.js";
 import { INITIAL_KEYBOARD, type KeyboardState, keyAction } from "../audio/keyboard.js";
-import { Player, type Target } from "../audio/player.js";
+import { HIDDEN_LOOKAHEAD, Player, type Target } from "../audio/player.js";
 import { type EnginePort, type MidiPort, SoundRouter, isOwnLoopback } from "../audio/router.js";
 import { type EngineLevels, type EngineLoad, engineStrips, levelsReport, masterGain } from "../shared/mix.js";
 import { METRONOME_KEY, StripMap } from "../shared/strips.js";
@@ -133,6 +133,12 @@ export class AudioLayer {
   ) {
     this.player = new Player(() => this.heard());
     this.player.stripOf = (t) => this.stripOf(t);
+    // Hidden window: send the notes further ahead, in case its timers slow down anyway.
+    if (typeof document !== "undefined") {
+      const follow = () => (this.player.lookahead = document.hidden ? HIDDEN_LOOKAHEAD : 0.2);
+      document.addEventListener("visibilitychange", follow);
+      follow();
+    }
     this.player.metronomeStrip = () => this.strips.of(METRONOME_KEY, 15);
     this.syncStrips();
     this.player.subscribe(() => this.changed());

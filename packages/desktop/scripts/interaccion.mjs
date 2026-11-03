@@ -1249,9 +1249,38 @@ check("«Carga» shows only while the engine gives its load", cLoadShown === 0 |
 await page.evaluate(() => (window.fhTest.ai.engine.load = { avgLoad: 0.8, maxLoad: 0.9, dropouts: 0 }));
 await page.waitForTimeout(1300);
 check("«Carga» turns amber from 70 %", (await page.locator(".load.hot").count()) === 1 && /80 %/.test(await page.locator(".load").innerText()));
+// Typed values (Fran, 03/11/2026): one click on the dB or the pan opens the field.
+await page.locator(`.cstrip[data-track="${ct0}"] button.cdb`).click();
+await page.keyboard.type("-6");
+await page.keyboard.press("Enter");
+await settle();
+check("a click on the dB lets you type the volume", Math.abs(40 * Math.log10(Math.round((await song()).tracks[ct0].volume * 127) / 127) + 6) < 0.35, String((await song()).tracks[ct0].volume));
+await page.locator(`.cstrip[data-track="${ct0}"] button.cval`).click();
+await page.keyboard.type("L30");
+await page.keyboard.press("Enter");
+await settle();
+check("a click on the pan lets you type it", (await song()).tracks[ct0].pan === -0.3);
+await page.locator(".cstrip.master button.cdb").click();
+await page.keyboard.type("-3");
+await page.keyboard.press("Enter");
+await settle();
+check("the Master's dB can be typed too", Math.abs(40 * Math.log10(Math.round((await song()).masterVolume * 127) / 127) + 3) < 0.35);
+await page.locator(".cstrip.master button.cdb").click();
+await page.keyboard.type("hola");
+await page.keyboard.press("Enter");
+await settle();
+check("text that is not a volume leaves it as it was", Math.abs(40 * Math.log10(Math.round((await song()).masterVolume * 127) / 127) + 3) < 0.35);
 await page.keyboard.press("F2");
 await settle();
 check("F2 goes back to the editor", (await page.locator(".console").count()) === 0 && (await page.locator("section.roll").count()) === 1);
+
+// The Editor / Mezcla tabs in the arrangement's corner open and close the console without F3.
+await page.locator(".arrcorner").getByRole("tab", { name: "Mezcla" }).click();
+await settle();
+check("«Mezcla» in the arrangement's corner opens the console", (await page.locator(".console").count()) === 1);
+await page.locator(".arrcorner").getByRole("tab", { name: "Editor" }).click();
+await settle();
+check("«Editor» there goes back to the piano roll", (await page.locator("section.roll").count()) === 1);
 
 console.log(`${passed} passed, ${failures.length} failed`);
 for (const f of failures) console.log("FAIL", f);
