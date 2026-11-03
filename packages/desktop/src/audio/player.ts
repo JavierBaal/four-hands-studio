@@ -41,6 +41,8 @@ export class Player {
   onLive: ((kind: "on" | "off", note: LiveNote) => void) | null = null;
   onLiveCc: ((cc: number, value: number, tick: number | null) => void) | null = null;
   onStop: (() => void) | null = null;
+  /** Playback started (F2.2: the engine's levels start counting again). */
+  onStart: (() => void) | null = null;
   /** Audio time when the song starts sounding (linear tick 0), after the count-in. */
   private startTime = 0;
   /** Seconds per tick during the count-in: the tempo where playback starts. */
@@ -125,6 +127,7 @@ export class Player {
     this.anchorSong = from;
     this.anchorTime = this.startTime;
     this.playing = true;
+    this.onStart?.();
     this.needCurveState = true;
     this.schedule();
     this.timer = setInterval(() => this.schedule(), TICK_MS);

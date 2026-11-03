@@ -10,6 +10,7 @@ import { Engine } from "../audio/engine.js";
 import { INITIAL_KEYBOARD, type KeyboardState, keyAction } from "../audio/keyboard.js";
 import { Player } from "../audio/player.js";
 import { type EnginePort, type MidiPort, SoundRouter, isOwnLoopback } from "../audio/router.js";
+import { engineStrips, levelsReport } from "../shared/mix.js";
 import { NO_SOUND_PREFS, type SoundItem, type SoundPrefs, buildCatalog, withRecent } from "../shared/sound-catalog.js";
 import { ENGINE_OFF, type EnginePluginList, type EngineScanProgress, type EngineStatus } from "../shared/engine.js";
 import type { Bridge } from "./bridge.js";
@@ -119,9 +120,18 @@ export class AudioLayer {
     this.player.subscribe(() => this.changed());
     this.player.onLive = (kind, n) => this.recordLive(kind, n.pitch, n.velocity, n.tick);
     this.player.onLiveCc = (cc, value, tick) => this.recordCc(cc, value, tick);
+    this.player.onStart = () => void this.bridge.engineLevels(true);
     this.player.onStop = () => {
       this.finishTake();
       if (this.status === "ready") this.bridge.log({ type: "playback_stats", ...this.stats });
+      // F2.2: what each track measured in the engine while it played (tails included).
+      setTimeout(() => {
+        void this.bridge.engineLevels(false).then((levels) => {
+          if (!levels) return;
+          const tracks = this.replica.song.trackOrder.map((id) => this.replica.song.tracks[id]!).filter(Boolean);
+          this.bridge.log({ type: "engine_levels", ...levelsReport(levels, tracks) });
+        });
+      }, 1500);
     };
     // Resend programs, volume, pan and reverb when a track changes.
     this.replica.subscribe(() => {
@@ -142,6 +152,7 @@ export class AudioLayer {
       }).join("|");
       if (sig !== this.trackSignature) {
         this.trackSignature = sig;
+        this.sendMix();
         this.player.setup();
         this.ensureBanks();
       }
@@ -227,6 +238,8 @@ export class AudioLayer {
       this.player.setup();
     }
     if (status.state === "ready") {
+      // A new engine starts with neutral strips: it gets the song's mix again.
+      this.sendMix();
       this.ensurePlugins();
       this.ensureEngineSounds();
     }
@@ -246,6 +259,12 @@ export class AudioLayer {
       if (t?.output === "plugin") out.add(t.channel);
     }
     return out;
+  }
+
+  /** F2.2: the engine's strips for the song's tracks (plugin tracks: fader, balance, reverb send). */
+  private sendMix(): void {
+    if (this.engineStatus.state !== "ready") return;
+    this.bridge.engineMix(engineStrips(this.replica.song.trackOrder.map((id) => this.replica.song.tracks[id]!).filter(Boolean)));
   }
 
   /** F2.1: the engine has the built-in bank of its current run. */

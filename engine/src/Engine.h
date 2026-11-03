@@ -5,6 +5,8 @@
 // Four Hands keeps the song; the engine only makes sound.
 #pragma once
 
+#include "GsEffects.h"
+
 #include <juce_audio_utils/juce_audio_utils.h>
 
 #include <array>
@@ -83,6 +85,22 @@ public:
     juce::String loadSoundBank (int offset, const juce::File& file, int& presets);
 
     // -------------------------------------------------------------------------
+    // Mix (F2.2, 03/11/2026): one strip per track's channel
+
+    /**
+     * A strip's fader (linear gain), balance (-1 to 1) and send to the Reverb bus (0 to 1, after
+     * the fader). The built-in sounds keep their volume, pan and reverb as MIDI (CC7, CC10,
+     * CC91) inside their synth, so they sound as before: their strip stays at 1, 0, 0.
+     */
+    void setMix (int channel, double gain, double pan, double reverb);
+
+    /** Peak and RMS (linear) of a strip, or of the master (index 16), and samples above 1. */
+    struct Level { double peak = 0, rms = 0; juce::int64 clips = 0; };
+    /** Since the last call (for the meters), or since `resetLevels` (for the AI, «last playback»). */
+    std::array<Level, kSlots + 1> takeMeters (bool sinceReset);
+    void resetLevels();
+
+    // -------------------------------------------------------------------------
     // MIDI
 
     /** Plays `message` on `slot` (kSoundsSlot: the built-in sounds, on the message's own channel), `delaySeconds` from now (Four Hands schedules ahead). */
@@ -141,6 +159,20 @@ private:
     int blockSize = 512;
     juce::AudioBuffer<float> scratch;
     std::array<juce::MidiBuffer, kAllSlots> midi;
+
+    struct Strip { double gain = 1, pan = 0, reverb = 0; };
+    struct Meter
+    {
+        float peak = 0, totalPeak = 0;
+        double sum = 0, totalSum = 0;
+        juce::int64 count = 0, totalCount = 0, clips = 0;
+        void add (const float* L, const float* R, int n);
+    };
+    std::array<Strip, kSlots> mix {};
+    std::array<Meter, kSlots + 1> meters {};
+    juce::AudioBuffer<float> strips, sends, master, busIn;
+    std::unique_ptr<gs::Reverb> busReverb;
+    double busRate = 0;
 
     juce::SpinLock statsLock;
     Stats stats;

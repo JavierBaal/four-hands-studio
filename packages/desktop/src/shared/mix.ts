@@ -77,3 +77,50 @@ export function parseReverb(text: string): number | null {
   const v = Math.round(Number(t.replace(",", ".")));
   return Math.max(0, Math.min(100, v)) / 100;
 }
+
+/**
+ * F2.2 (03/11/2026): the engine's strip for a track. A plugin track gets its fader as audio, with
+ * the dB the window shows (the same curve as CC7, so nothing jumps), its balance and its post-fader
+ * send to the Reverb bus; plugins no longer get CC7, CC10 or CC91. The built-in sounds keep those
+ * as MIDI inside their synth (they sound exactly as before), so their strip stays neutral.
+ */
+export interface EngineStrip {
+  ch: number;
+  gain: number;
+  pan: number;
+  reverb: number;
+}
+
+export function stripGain(volume: number): number {
+  const db = volumeToDb(volume);
+  return db === -Infinity ? 0 : Math.pow(10, db / 20);
+}
+
+export function engineStrips(tracks: ReadonlyArray<{ channel: number; output?: string | undefined; volume: number; pan: number; reverb?: number | undefined }>): EngineStrip[] {
+  const out = new Map<number, EngineStrip>();
+  for (let ch = 0; ch < 16; ch++) out.set(ch, { ch, gain: 1, pan: 0, reverb: 0 });
+  for (const t of tracks) if (t.output === "plugin") out.set(t.channel, { ch: t.channel, gain: stripGain(t.volume), pan: t.pan, reverb: t.reverb ?? 0 });
+  return [...out.values()];
+}
+
+/** What the engine measured on each strip (linear), as `levels` gives it. */
+export interface EngineLevels {
+  channels: Array<{ peak: number; rms: number; clips: number }>;
+  master: { peak: number; rms: number; clips: number };
+}
+
+/** dB, one decimal; −∞ for silence. */
+export function levelDb(linear: number): number {
+  return linear > 0 ? Math.round(200 * Math.log10(linear)) / 10 : -Infinity;
+}
+
+/** The levels of the song's tracks and the master, in dB, for the log (and the AI's reading). */
+export function levelsReport(levels: EngineLevels, tracks: ReadonlyArray<{ name: string; channel: number }>) {
+  return {
+    master: { peakDb: levelDb(levels.master.peak), rmsDb: levelDb(levels.master.rms), clips: levels.master.clips },
+    tracks: tracks.map((t) => {
+      const c = levels.channels[t.channel] ?? { peak: 0, rms: 0, clips: 0 };
+      return { track: t.name, ch: t.channel, peakDb: levelDb(c.peak), rmsDb: levelDb(c.rms), clips: c.clips };
+    }),
+  };
+}

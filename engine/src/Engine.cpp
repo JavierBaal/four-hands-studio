@@ -146,6 +146,16 @@ void Engine::prepare (double rate, int block)
         scratch.setSize (channels, block, false, true, true);
         for (auto& m : midi)
             m.ensureSize (2048);
+        strips.setSize (2 * kSlots, block, false, true, true);
+        sends.setSize (kSlots, block, false, true, true);
+        master.setSize (2, block, false, true, true);
+        busIn.setSize (1, block, false, true, true);
+        // The Reverb bus (F2.2): the GS reverb the built-in sounds had inside, now for every track.
+        if (busReverb == nullptr || rate != busRate)
+        {
+            busReverb = std::make_unique<gs::Reverb> (rate);
+            busRate = rate;
+        }
     }
     // Plugins are prepared out of the lock: Kontakt takes its time, and the audio is stopped anyway.
     for (auto* p : plugins)
@@ -378,8 +388,20 @@ void Engine::process (float* const* outputs, int numOutputs, int numSamples)
 
     if (scratch.getNumSamples() < numSamples)
         scratch.setSize (scratch.getNumChannels(), numSamples, false, true, true);
+    // F2.2: one channel strip per track (the track's MIDI channel), its reverb send and the master.
+    if (strips.getNumSamples() < numSamples)
+    {
+        strips.setSize (2 * kSlots, numSamples, false, false, true);
+        sends.setSize (kSlots, numSamples, false, false, true);
+        master.setSize (2, numSamples, false, false, true);
+        busIn.setSize (1, numSamples, false, false, true);
+    }
+    strips.clear (0, numSamples);
+    sends.clear (0, numSamples);
+    master.clear (0, numSamples);
+    busIn.clear (0, numSamples);
 
-    for (int s = 0; s < kAllSlots; ++s)
+    for (int s = 0; s < kSlots; ++s)
     {
         auto* plugin = live[(size_t) s];
         if (plugin == nullptr)
@@ -389,15 +411,105 @@ void Engine::process (float* const* outputs, int numOutputs, int numSamples)
         buffer.clear();
         plugin->processBlock (buffer, midi[(size_t) s]);
         const auto outChannels = juce::jmin (plugin->getTotalNumOutputChannels(), buffer.getNumChannels());
-        for (int c = 0; c < numOutputs; ++c)
+        if (outChannels == 0)
+            continue;
+        // The plugin's first pair goes to its track's strip; a mono plugin feeds both sides.
+        for (int c = 0; c < 2; ++c)
+            strips.addFrom (2 * s + c, 0, buffer, juce::jmin (c, outChannels - 1), 0, numSamples);
+    }
+    if (auto* sounds = static_cast<SoundFontSynth*> (live[(size_t) kSoundsSlot]))
+        sounds->processSplit (midi[(size_t) kSoundsSlot], numSamples, strips.getArrayOfWritePointers(), sends.getArrayOfWritePointers(), master.getWritePointer (0), master.getWritePointer (1));
+
+    // The strips: fader and balance, meters, into the master and the Reverb bus (post-fader).
+    float* busData = busIn.getWritePointer (0);
+    for (int ch = 0; ch < kSlots; ++ch)
+    {
+        const auto& p = mix[(size_t) ch];
+        float* L = strips.getWritePointer (2 * ch);
+        float* R = strips.getWritePointer (2 * ch + 1);
+        const float gL = (float) (p.gain * (p.pan <= 0 ? 1.0 : std::cos (p.pan * juce::MathConstants<double>::halfPi)));
+        const float gR = (float) (p.gain * (p.pan >= 0 ? 1.0 : std::cos (-p.pan * juce::MathConstants<double>::halfPi)));
+        if (gL != 1.0f)
+            juce::FloatVectorOperations::multiply (L, gL, numSamples);
+        if (gR != 1.0f)
+            juce::FloatVectorOperations::multiply (R, gR, numSamples);
+        meters[(size_t) ch].add (L, R, numSamples);
+        master.addFrom (0, 0, L, numSamples);
+        master.addFrom (1, 0, R, numSamples);
+        // The built-in sounds' own send (it already follows their volume) and the plugins' send.
+        juce::FloatVectorOperations::add (busData, sends.getReadPointer (ch), numSamples);
+        if (p.reverb > 0)
+            for (int i = 0; i < numSamples; ++i)
+                busData[i] += (float) ((L[i] + R[i]) * 0.5 * p.reverb);
+    }
+    if (busReverb != nullptr)
+        busReverb->process (busData, master.getWritePointer (0), master.getWritePointer (1), 0, numSamples);
+    meters[(size_t) kSlots].add (master.getReadPointer (0), master.getReadPointer (1), numSamples);
+
+    for (int c = 0; c < numOutputs; ++c)
+        if (outputs[c] != nullptr)
         {
-            if (outputs[c] == nullptr || outChannels == 0)
-                continue;
-            // Mono plugins feed both sides.
-            juce::FloatVectorOperations::add (outputs[c], buffer.getReadPointer (juce::jmin (c, outChannels - 1)), numSamples);
+            if (numOutputs == 1)
+            {
+                juce::FloatVectorOperations::copyWithMultiply (outputs[c], master.getReadPointer (0), 0.5f, numSamples);
+                juce::FloatVectorOperations::addWithMultiply (outputs[c], master.getReadPointer (1), 0.5f, numSamples);
+            }
+            else if (c < 2)
+                juce::FloatVectorOperations::copy (outputs[c], master.getReadPointer (c), numSamples);
+        }
+    position.store (end);
+}
+
+void Engine::Meter::add (const float* L, const float* R, int n)
+{
+    for (int i = 0; i < n; ++i)
+    {
+        const float a = juce::jmax (std::abs (L[i]), std::abs (R[i]));
+        peak = juce::jmax (peak, a);
+        totalPeak = juce::jmax (totalPeak, a);
+        if (a > 1.0f)
+            ++clips;
+        const double sq = 0.5 * ((double) L[i] * L[i] + (double) R[i] * R[i]);
+        sum += sq;
+        totalSum += sq;
+    }
+    count += n;
+    totalCount += n;
+}
+
+void Engine::setMix (int channel, double gain, double pan, double reverb)
+{
+    if (! juce::isPositiveAndBelow (channel, kSlots))
+        return;
+    const juce::SpinLock::ScopedLockType sl (lock);
+    mix[(size_t) channel] = { juce::jlimit (0.0, 4.0, gain), juce::jlimit (-1.0, 1.0, pan), juce::jlimit (0.0, 1.0, reverb) };
+}
+
+std::array<Engine::Level, kSlots + 1> Engine::takeMeters (bool sinceReset)
+{
+    std::array<Level, kSlots + 1> out {};
+    const juce::SpinLock::ScopedLockType sl (lock);
+    for (size_t i = 0; i < out.size(); ++i)
+    {
+        auto& m = meters[i];
+        if (sinceReset)
+            out[i] = { m.totalPeak, m.totalCount > 0 ? std::sqrt (m.totalSum / (double) m.totalCount) : 0.0, m.clips };
+        else
+        {
+            out[i] = { m.peak, m.count > 0 ? std::sqrt (m.sum / (double) m.count) : 0.0, m.clips };
+            m.peak = 0;
+            m.sum = 0;
+            m.count = 0;
         }
     }
-    position.store (end);
+    return out;
+}
+
+void Engine::resetLevels()
+{
+    const juce::SpinLock::ScopedLockType sl (lock);
+    for (auto& m : meters)
+        m = {};
 }
 
 void Engine::prepareOffline (double rate, int block)

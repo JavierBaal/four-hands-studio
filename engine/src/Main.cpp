@@ -72,6 +72,26 @@ int selfTest (const juce::String& folder)
         std::cout << "FAIL the note did not stop" << std::endl;
         return 5;
     }
+    // F2.2: the plugin's strip. Half the fader halves the sound; a reverb send leaves a tail.
+    engine.setMix (0, 0.5, 0.0, 0.5);
+    engine.schedule (0, 0.0, juce::MidiMessage::noteOn (1, 60, (juce::uint8) 100));
+    engine.schedule (0, 0.5, juce::MidiMessage::noteOff (1, 60));
+    juce::AudioBuffer<float> mixed (2, 48000);
+    mixed.clear();
+    engine.renderOffline (mixed);
+    const auto half = mixed.getRMSLevel (0, 4800, 9600);
+    const auto tail = mixed.getRMSLevel (0, 40000, 4800);
+    std::cout << "strip: rms at half fader " << half << " (" << half / during << " of full), reverb tail " << tail << std::endl;
+    if (std::abs (half / during - 0.5f) > 0.08f)
+    {
+        std::cout << "FAIL the fader" << std::endl;
+        return 6;
+    }
+    if (tail < 1e-5f)
+    {
+        std::cout << "FAIL no reverb from the send" << std::endl;
+        return 7;
+    }
     std::cout << "OK" << std::endl;
     return 0;
 }

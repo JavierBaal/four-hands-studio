@@ -723,6 +723,18 @@ function registerIpc(): void {
   ipcMain.on(CH.enginePanic, () => engine?.send({ type: "panic" }));
   // F2.1: the built-in sounds in the engine.
   ipcMain.handle(CH.engineSounds, (_e, id: unknown, offset: unknown) => loadEngineSounds(String(id), Number(offset)));
+  // F2.2: levels of every strip since playback started (reset at its start), for the log and the AI.
+  ipcMain.handle(CH.engineLevels, async (_e, reset: unknown) => {
+    if (!engine || engine.current.state !== "ready") return null;
+    try {
+      return await engine.request({ type: reset ? "resetLevels" : "levels" });
+    } catch {
+      return null;
+    }
+  });
+  ipcMain.on(CH.engineMix, (_e, channels: unknown) => {
+    if (Array.isArray(channels)) engine?.send({ type: "mix", channels });
+  });
   ipcMain.handle(CH.builtinSounds, () => (readSettings().builtinSounds === "app" ? "app" : "engine"));
   // Ajustes: folders, test tools and where the engine looks for plugins.
   ipcMain.handle(CH.folders, () => userFolders());

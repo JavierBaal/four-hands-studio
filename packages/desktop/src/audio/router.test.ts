@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SynthEvent } from "../shared/messages.js";
-import { SoundRouter, isOwnLoopback, midiBytes, soundsBytes } from "./router.js";
+import { SoundRouter, engineBytes, isOwnLoopback, midiBytes, soundsBytes } from "./router.js";
 import type { EngineMidiEvent } from "../shared/engine.js";
 
 function setup(external = new Set([3])) {
@@ -160,5 +160,16 @@ describe("the built-in sounds in the engine (F2.1, Fran 01/11/2026)", () => {
     ready.value = true;
     router.silence(0);
     expect(midi.filter((e) => e.slot === 16).map((e) => e.data)).toEqual([[0xb0, 64, 0], [0xb0, 123, 0], [0xb0, 120, 0]]);
+  });
+});
+
+describe("plugins get their volume, pan and reverb from their strip (F2.2, 03/11/2026)", () => {
+  it("stops sending CC7, CC10 and CC91 to a plugin, and keeps the rest", () => {
+    expect(engineBytes({ kind: "cc", ch: 2, cc: 7, value: 100 })).toBeNull();
+    expect(engineBytes({ kind: "cc", ch: 2, cc: 10, value: 64 })).toBeNull();
+    expect(engineBytes({ kind: "cc", ch: 2, cc: 91, value: 40 })).toBeNull();
+    expect(engineBytes({ kind: "cc", ch: 2, cc: 11, value: 90 })).toEqual([0xb0, 11, 90]);
+    expect(engineBytes({ kind: "cc", ch: 2, cc: 1, value: 30 })).toEqual([0xb0, 1, 30]);
+    expect(engineBytes({ kind: "cc", ch: 2, cc: 64, value: 127 })).toEqual([0xb0, 64, 127]);
   });
 });
