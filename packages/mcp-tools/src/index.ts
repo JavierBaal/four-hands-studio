@@ -15,7 +15,7 @@
 import { z } from "zod";
 
 /** Bumped whenever a tool, its parameters or its meaning changes. The app refuses other bridges. */
-export const TOOLS_VERSION = 17;
+export const TOOLS_VERSION = 18;
 
 /**
  * Track colours by name (H3.2). The app's palette (desktop/src/shared/track-colors.ts) has the same
@@ -161,6 +161,17 @@ export const TOOLS: readonly ToolDefinition[] = [
     inputSchema: {
       bank: z.string().optional().describe("A bank's file name from the list, to see its sounds"),
     },
+    annotations: readOnly,
+  },
+  {
+    name: "get_levels",
+    title: "Get levels",
+    description:
+      "The levels each track reached in the last playback, measured in the audio engine after its fader (F2.2): peak and average (RMS) in dBFS, " +
+      "how many samples went over 0 dBFS (clipping), and the master's. Silent tracks are listed apart. " +
+      "It is a meter, not hearing: it says how loud, not which frequencies, nor whether two parts mask each other. Say so when you use it. " +
+      "Use it before changing volumes with set_mix, and after the user plays, to check what a change did. Read-only.",
+    inputSchema: {},
     annotations: readOnly,
   },
   {

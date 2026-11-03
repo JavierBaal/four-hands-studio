@@ -3,6 +3,7 @@
  * as compact text in English. Pure functions of the song, so they are tested without the app.
  * Notes themselves are formatted by the core (compact.ts).
  */
+import { type EngineLevels, levelsReport } from "../../shared/mix.js";
 import { trackColorId } from "../../shared/track-colors.js";
 import {
   type Song,
@@ -278,3 +279,24 @@ export function spanText(song: Song, start: number, end: number): string {
 }
 
 export { barStart };
+
+/**
+ * F2.2: get_levels. Peak and RMS per track after its fader, and the master, from the last playback.
+ * A meter, not ears: it says how loud, not which frequencies (that comes with F2.3).
+ */
+export function levelsText(levels: EngineLevels | null, tracks: ReadonlyArray<{ name: string; channel: number }>, at: number | null): string {
+  if (!levels) return "No levels yet: they are measured in the audio engine while the song plays. Ask the user to play it (or the part you care about) and stop; then call get_levels again.";
+  const r = levelsReport(levels, tracks);
+  const db = (v: number) => (Number.isFinite(v) ? `${v.toFixed(1)}` : "silent");
+  const clip = (n: number) => (n > 0 ? `, CLIPPING (${n} samples over 0 dBFS)` : "");
+  const when = at ? ` (${new Date(at).toISOString().slice(11, 16)} UTC)` : "";
+  const lines = [`Levels of the last playback${when}, measured after each fader, in dBFS (peak / average RMS):`, `- Master: ${db(r.master.peakDb)} / ${db(r.master.rmsDb)}${clip(r.master.clips)}`];
+  const silent: string[] = [];
+  for (const t of r.tracks) {
+    if (!Number.isFinite(t.peakDb)) silent.push(t.track);
+    else lines.push(`- ${t.track}: ${db(t.peakDb)} / ${db(t.rmsDb)}${clip(t.clips)}`);
+  }
+  if (silent.length) lines.push(`Silent in that playback (muted, not playing there, or no notes): ${silent.join(", ")}.`);
+  lines.push("This is a meter, not hearing: it does not tell frequencies or masking. Say so if you base an opinion on it.");
+  return lines.join("\n");
+}

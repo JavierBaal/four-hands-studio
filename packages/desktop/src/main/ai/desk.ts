@@ -16,6 +16,8 @@
  * H3 applies changes directly. Proposal mode (H4, off by default: Tu IA > Lo que escribe) only
  * changes what closing does: the intervention leaves the song and waits as a proposal.
  */
+import type { EngineLevels } from "../../shared/mix.js";
+import { levelsText } from "./texts.js";
 import { TRACK_PALETTE, trackColorByName, trackColorId } from "../../shared/track-colors.js";
 import {
   type Authorship,
@@ -105,6 +107,8 @@ export interface AiDeskOptions {
   plugins?: () => EnginePlugin[];
   /** Built-in and user skills (ESTUDIO_SKILLS.md, 3). */
   skills?: SkillSource;
+  /** F2.2: what the engine measured in the last playback (the window asks it when playback stops). */
+  levels?: () => { levels: EngineLevels; at: number } | null;
   now?: () => number;
   /** 5 minutes (ESQUEMA_MCP.md, 5.1). */
   autoCloseMs?: number;
@@ -757,6 +761,12 @@ export class AiDesk {
       const wanted = this.str(args, "bank", false);
       if (!wanted) return instrumentsText(banks, this.options.builtInSounds?.() ?? [], this.pluginList());
       return bankText(this.bank(wanted, banks));
+    },
+
+    get_levels: () => {
+      const last = this.options.levels?.() ?? null;
+      const song = this.options.session().snapshot().song;
+      return levelsText(last?.levels ?? null, song.trackOrder.map((id) => song.tracks[id]!).filter(Boolean), last?.at ?? null);
     },
 
     list_skills: () => skillsListText(this.skillList()),
@@ -1528,7 +1538,7 @@ function isPluginSound(text: string): boolean {
   return /^\s*plugins?\s*\//i.test(text);
 }
 
-const READ_TOOLS = new Set(["get_song_overview", "get_user_context", "read_notes", "analyze", "get_changes_since", "get_history", "summarize", "list_instruments", "list_skills", "load_skill", "point_to"]);
+const READ_TOOLS = new Set(["get_song_overview", "get_user_context", "read_notes", "analyze", "get_changes_since", "get_history", "summarize", "list_instruments", "get_levels", "list_skills", "load_skill", "point_to"]);
 const NOT_READING_THE_SONG = new Set(["point_to", "list_skills", "load_skill"]);
 
 function formatPitch(pitch: number): string {
