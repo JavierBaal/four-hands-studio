@@ -1283,6 +1283,29 @@ await page.locator(".ctoolbar .modeb").click();
 await settle();
 check("«Editor» goes back to the piano roll", (await page.locator("section.roll").count()) === 1);
 
+// A shorter arrangement that scrolls (Fran, 03/11/2026): the lanes follow, nothing goes black.
+await page.evaluate(() => window.fhTest.view.set({ arrHeight: 170 }));
+await settle();
+await page.evaluate(() => (document.querySelector(".arr").scrollTop = 140));
+await page.waitForTimeout(200);
+const arrScroll = await page.evaluate(() => {
+  const a = document.querySelector(".arr");
+  const c = document.querySelector(".lanes canvas");
+  return { scroll: a.scrollTop, top: c.getBoundingClientRect().top - a.getBoundingClientRect().top, h: c.getBoundingClientRect().height, view: a.clientHeight };
+});
+check("the lanes' canvas stays in view when the arrangement scrolls", arrScroll.scroll > 0 && Math.abs(arrScroll.top) < 1 && Math.abs(arrScroll.h - arrScroll.view) < 2, JSON.stringify(arrScroll));
+const laneBox = await page.locator(".lanes canvas").first().boundingBox();
+await page.mouse.click(laneBox.x + 30, laneBox.y + laneBox.height - 12);
+await settle();
+const picked = await page.evaluate(() => {
+  const s = window.fhTest.replica.song;
+  const a = document.querySelector(".arr");
+  const lane = Math.floor((a.clientHeight - 12 + a.scrollTop - 22) / (document.querySelector(".thdr").getBoundingClientRect().height + 0 || 54));
+  return { active: s.context.activeTrackId, under: s.trackOrder[Math.min(lane, s.trackOrder.length - 1)] };
+});
+check("a click on a scrolled lane picks the track under the mouse", picked.active === picked.under, JSON.stringify(picked));
+await page.evaluate(() => window.fhTest.view.set({ arrHeight: null }));
+
 console.log(`${passed} passed, ${failures.length} failed`);
 for (const f of failures) console.log("FAIL", f);
 if (errors.length) console.log("page errors", errors);

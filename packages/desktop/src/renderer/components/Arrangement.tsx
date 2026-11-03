@@ -102,11 +102,22 @@ export function Arrangement({ compact, visible, onSelectTrack, onPan, onToggle, 
   const [drag, setDrag] = useState<HeaderDrag | null>(null);
   const pan = useRef<{ grabTick: number } | null>(null);
 
+  /**
+   * Vertical scroll of a shorter arrangement (Fran, 03/11/2026). The lanes' canvas is as tall as
+   * what is in view and follows the scroll, drawing the lanes from there: a canvas as tall as every
+   * track went black below the first screen (and with hundreds of tracks would not fit in memory).
+   */
+  const [scrollTop, setScrollTop] = useState(0);
+  // As tall as the tracks again: nothing scrolls.
+  useEffect(() => {
+    if (height === null) setScrollTop(0);
+  }, [height]);
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const s = prepare(canvas);
     if (!s) return;
+    s.ctx.translate(0, -scrollTop);
     drawArrangement(s, song, tracks, byTrack, {
       stripHeight: SIZE.arrangeStrip,
       laneHeight,
@@ -157,7 +168,7 @@ export function Arrangement({ compact, visible, onSelectTrack, onPan, onToggle, 
     }
     const rect = e.currentTarget.getBoundingClientRect();
     const tick = tickAt(e);
-    const lane = Math.floor((e.clientY - rect.top - SIZE.arrangeStrip) / laneHeight);
+    const lane = Math.floor((e.clientY - rect.top + scrollTop - SIZE.arrangeStrip) / laneHeight);
     const track = tracks[lane];
     if (track && track.id !== active?.id) onSelectTrack(track.id);
     if (!visible) return;
@@ -234,7 +245,12 @@ export function Arrangement({ compact, visible, onSelectTrack, onPan, onToggle, 
   const dragFrom = drag ? tracks.findIndex((tr) => tr.id === drag.id) : -1;
 
   return (
-    <section className="arr" aria-label={t("arrangement")} style={height !== null ? { height, overflowY: "auto" } : undefined}>
+    <section
+      className="arr"
+      aria-label={t("arrangement")}
+      style={height !== null ? { height, overflowY: "auto" } : undefined}
+      onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
+    >
       <div className={soundOver === "new" ? "thdrs dropnew" : "thdrs"} {...soundDrop(null)}>
         {!compact && (
           <Splitter
@@ -367,8 +383,15 @@ export function Arrangement({ compact, visible, onSelectTrack, onPan, onToggle, 
         {zoomBox && Math.abs(zoomBox.x1 - zoomBox.x0) > 2 && (
           <div className="zoombox" style={{ left: Math.min(zoomBox.x0, zoomBox.x1), width: Math.abs(zoomBox.x1 - zoomBox.x0) }} />
         )}
-        <canvas ref={canvasRef} style={tool === "zoom" ? { cursor: zoomBox?.out ? "zoom-out" : "zoom-in" } : undefined} onPointerDown={lanesDown} onPointerMove={lanesMove} onPointerUp={lanesUp} data-width={size.width} />
-        <canvas ref={headRef} className="playhead-layer arrhead" aria-hidden="true" />
+        <canvas
+          ref={canvasRef}
+          style={{ top: scrollTop, ...(tool === "zoom" ? { cursor: zoomBox?.out ? "zoom-out" : "zoom-in" } : {}) }}
+          onPointerDown={lanesDown}
+          onPointerMove={lanesMove}
+          onPointerUp={lanesUp}
+          data-width={size.width}
+        />
+        <canvas ref={headRef} className="playhead-layer arrhead" style={{ top: scrollTop }} aria-hidden="true" />
         <div className="strip">
           {orderedSections(song).map((s) => {
             const left = ((barStart(song.meter, s.startBar) - t0) / total) * 100;
