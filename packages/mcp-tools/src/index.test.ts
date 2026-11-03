@@ -3,7 +3,7 @@ import { PROMPTS, SERVER_INSTRUCTIONS, TOOLS } from "./index.js";
 
 const byName = Object.fromEntries(TOOLS.map((t) => [t.name, t]));
 
-const READ_ONLY = ["get_song_overview", "get_user_context", "read_notes", "analyze", "get_changes_since", "get_history", "summarize", "list_instruments", "list_skills", "load_skill", "point_to"];
+const READ_ONLY = ["get_song_overview", "get_user_context", "read_notes", "analyze", "get_changes_since", "get_history", "summarize", "list_instruments", "get_levels", "list_skills", "load_skill", "point_to"];
 const NEED_INTERVENTION = [
   "end_intervention",
   "write_expression",

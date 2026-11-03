@@ -255,6 +255,32 @@ juce::var Link::handle (const juce::var& m, Connection& from)
         return obj ({ { "type", "soundsLoading" }, { "id", id }, { "offset", offset } });
     }
 
+    if (type == "mix")
+    {
+        // F2.2: the strips of the tracks that changed, { ch, gain, pan, reverb }. No reply.
+        if (auto* list = m["channels"].getArray())
+            for (const auto& c : *list)
+                engine.setMix ((int) c["ch"], (double) c["gain"], (double) c["pan"], (double) c["reverb"]);
+        return {};
+    }
+
+    if (type == "meters" || type == "levels")
+    {
+        // "meters": since the last time (the mixer's meters); "levels": since resetLevels (the AI).
+        const auto levels = engine.takeMeters (type == "levels");
+        juce::Array<juce::var> list;
+        for (int i = 0; i < kSlots; ++i)
+            list.add (obj ({ { "peak", levels[(size_t) i].peak }, { "rms", levels[(size_t) i].rms }, { "clips", (juce::int64) levels[(size_t) i].clips } }));
+        const auto& mst = levels[(size_t) kSlots];
+        return obj ({ { "type", type }, { "channels", list }, { "master", obj ({ { "peak", mst.peak }, { "rms", mst.rms }, { "clips", (juce::int64) mst.clips } }) } });
+    }
+
+    if (type == "resetLevels")
+    {
+        engine.resetLevels();
+        return obj ({ { "type", "levelsReset" } });
+    }
+
     if (type == "stats")
     {
         const auto s = engine.takeStats();

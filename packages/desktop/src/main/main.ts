@@ -21,6 +21,7 @@ import { PluginWatch } from "./plugin-watch.js";
 import type { PluginStates, Song } from "@fourhands/core";
 import { SoundLibrary } from "./sound-library.js";
 import { EngineHost } from "./engine/host.js";
+import type { EngineLevels } from "../shared/mix.js";
 import type { EngineLoadResult, EngineMidiEvent, EnginePlugin, EngineSoundsResult } from "../shared/engine.js";
 import { CATEGORIES, RECENT_MAX, type SoundCategory, type SoundPrefs } from "../shared/sound-catalog.js";
 
@@ -174,6 +175,9 @@ function engineHost(): EngineHost {
   });
   return engine;
 }
+
+/** F2.2: the engine's levels in the last playback, for the AI's get_levels. */
+let lastLevels: { levels: EngineLevels; at: number } | null = null;
 
 /** F2.1: sound banks the engine is loading, by "id@offset", waiting for its "soundsLoaded". */
 const soundsWaiting = new Map<string, (r: EngineSoundsResult) => void>();
@@ -467,6 +471,7 @@ async function startAi(): Promise<void> {
     banks: () => library?.list() ?? [],
     builtInSounds: () => library?.defaultPresets() ?? [],
     plugins: () => knownPlugins,
+    levels: () => lastLevels,
     skills: skills!,
     onState: (state) => win?.webContents.send(CH.aiState, state),
     tone: aiTone,
@@ -723,6 +728,21 @@ function registerIpc(): void {
   ipcMain.on(CH.enginePanic, () => engine?.send({ type: "panic" }));
   // F2.1: the built-in sounds in the engine.
   ipcMain.handle(CH.engineSounds, (_e, id: unknown, offset: unknown) => loadEngineSounds(String(id), Number(offset)));
+  // F2.2: levels of every strip since playback started (reset at its start), for the log and the AI.
+  ipcMain.handle(CH.engineLevels, async (_e, reset: unknown) => {
+    if (!engine || engine.current.state !== "ready") return null;
+    try {
+      const reply = await engine.request({ type: reset ? "resetLevels" : "levels" });
+      // What the AI reads with get_levels: the last playback's levels, as the window asked them.
+      if (!reset) lastLevels = { levels: reply as unknown as EngineLevels, at: Date.now() };
+      return reply;
+    } catch {
+      return null;
+    }
+  });
+  ipcMain.on(CH.engineMix, (_e, channels: unknown) => {
+    if (Array.isArray(channels)) engine?.send({ type: "mix", channels });
+  });
   ipcMain.handle(CH.builtinSounds, () => (readSettings().builtinSounds === "app" ? "app" : "engine"));
   // Ajustes: folders, test tools and where the engine looks for plugins.
   ipcMain.handle(CH.folders, () => userFolders());

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { dbToVolume, formatDb, formatPan, formatReverb, parseDb, parsePan, parseReverb, volumeToDb } from "./mix.js";
+import { engineStrips, levelDb, levelsReport, stripGain } from "./mix.js";
 import { trackColorByName, trackColorId, TRACK_PALETTE } from "./track-colors.js";
 import { TRACK_COLOR_COUNT } from "@fourhands/core";
 
@@ -74,5 +75,34 @@ describe("reverb send (H4)", () => {
     expect(parseReverb("40 %")).toBe(0.4);
     expect(parseReverb("150")).toBe(1);
     expect(parseReverb("mucha")).toBeNull();
+  });
+});
+
+describe("the engine's strips (F2.2, 03/11/2026)", () => {
+  it("gives a plugin track its fader in the dB the window shows, its balance and its reverb send", () => {
+    expect(stripGain(1)).toBe(1);
+    expect(20 * Math.log10(stripGain(0.8))).toBeCloseTo(volumeToDb(0.8), 6);
+    expect(stripGain(0)).toBe(0);
+    const strips = engineStrips([
+      { channel: 2, output: "plugin", volume: 0.8, pan: -0.5, reverb: 0.3 },
+      { channel: 0, volume: 0.5, pan: 0.2, reverb: 0.4 },
+    ]);
+    expect(strips).toHaveLength(16);
+    expect(strips[2]).toEqual({ ch: 2, gain: stripGain(0.8), pan: -0.5, reverb: 0.3 });
+    // The built-in sounds keep volume, pan and reverb as MIDI: their strip stays neutral.
+    expect(strips[0]).toEqual({ ch: 0, gain: 1, pan: 0, reverb: 0 });
+  });
+});
+
+describe("the levels the engine measured (F2.2)", () => {
+  it("reads them per track in dB, with the master", () => {
+    expect(levelDb(1)).toBe(0);
+    expect(levelDb(0.5)).toBe(-6);
+    expect(levelDb(0)).toBe(-Infinity);
+    const channels = Array.from({ length: 16 }, () => ({ peak: 0, rms: 0, clips: 0 }));
+    channels[2] = { peak: 0.5, rms: 0.1, clips: 3 };
+    const r = levelsReport({ channels, master: { peak: 1, rms: 0.2, clips: 0 } }, [{ name: "Cuerdas", channel: 2 }]);
+    expect(r.tracks).toEqual([{ track: "Cuerdas", ch: 2, peakDb: -6, rmsDb: -20, clips: 3 }]);
+    expect(r.master.peakDb).toBe(0);
   });
 });

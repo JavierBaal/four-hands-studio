@@ -866,3 +866,18 @@ describe("the song concept (ESTUDIO_SKILLS_COMPOSICION.md, 6.3)", () => {
     expect(fail("set_song_properties", { intervention_id: begin("x"), concept: 3 })).toMatch(/'concept' must be text/);
   });
 });
+
+describe("get_levels (F2.2, 03/11/2026)", () => {
+  it("reads the last playback's levels per track, says what is silent and that it is a meter", async () => {
+    const { levelsText } = await import("./texts.js");
+    const channels = Array.from({ length: 16 }, () => ({ peak: 0, rms: 0, clips: 0 }));
+    channels[0] = { peak: 0.5, rms: 0.1, clips: 0 };
+    channels[1] = { peak: 1.2, rms: 0.3, clips: 12 };
+    const text = levelsText({ channels, master: { peak: 1.2, rms: 0.35, clips: 12 } }, [{ name: "Piano", channel: 0 }, { name: "Cuerdas", channel: 1 }, { name: "Cello", channel: 2 }], Date.UTC(2026, 10, 3, 13, 5));
+    expect(text).toContain("- Piano: -6.0 / -20.0");
+    expect(text).toContain("- Cuerdas: 1.6 / -10.5, CLIPPING (12 samples over 0 dBFS)");
+    expect(text).toContain("Silent in that playback (muted, not playing there, or no notes): Cello.");
+    expect(text).toMatch(/meter, not hearing/);
+    expect(levelsText(null, [], null)).toMatch(/Ask the user to play/);
+  });
+});

@@ -221,6 +221,8 @@ export const CH = {
   engineMidi: "fh:engine-midi",
   enginePanic: "fh:engine-panic",
   engineSounds: "fh:engine-sounds",
+  engineMix: "fh:engine-mix",
+  engineLevels: "fh:engine-levels",
   builtinSounds: "fh:builtin-sounds",
   folders: "fh:folders",
   openFolder: "fh:open-folder",

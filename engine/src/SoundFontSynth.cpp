@@ -1065,17 +1065,21 @@ void SoundFontSynth::renderVoice (Voice& v, float* outLeft, float* outRight, int
     const double outputGain = kGainFactor;
     const double gl = tables().panLeft[(size_t) index] * outputGain;
     const double gr = tables().panRight[(size_t) index] * outputGain;
+    // Split (F2.2): each track's channel strip gets its own sound and its own reverb send.
+    float* L = splitOut != nullptr ? splitOut[2 * v.channel] : outLeft;
+    float* R = splitOut != nullptr ? splitOut[2 * v.channel + 1] : outRight;
     for (int i = 0; i < count; ++i)
     {
-        outLeft[start + i] += (float) (gl * buffer[i]);
-        outRight[start + i] += (float) (gr * buffer[i]);
+        L[start + i] += (float) (gl * buffer[i]);
+        R[start + i] += (float) (gr * buffer[i]);
     }
     const double reverbSend = mg[reverbEffectsSend] * v.reverbSend;
     if (reverbSend > 0)
     {
         const double g = outputGain * (reverbSend / 1e3);
+        float* rv = splitReverb != nullptr ? splitReverb[v.channel] + start : reverbIn.data();
         for (int i = 0; i < count; ++i)
-            reverbIn[(size_t) i] += (float) (g * buffer[i]);
+            rv[(size_t) i] += (float) (g * buffer[i]);
     }
     const double chorusSend = mg[chorusEffectsSend] * v.chorusSend;
     if (chorusSend > 0)
@@ -1097,11 +1101,31 @@ void SoundFontSynth::render (float* left, float* right, int start, int count)
             if (v.active)
                 renderVoice (v, left, right, start, n);
         chorus->process (chorusIn.data(), left, right, reverbIn.data(), start, n);
-        reverb->process (reverbIn.data(), left, right, start, n);
+        // Split: the engine's Reverb bus plays the sends (the chorus sends nothing to it here).
+        if (splitReverb == nullptr)
+            reverb->process (reverbIn.data(), left, right, start, n);
         currentTime += n / rate;
         start += n;
         count -= n;
     }
+}
+
+void SoundFontSynth::processSplit (juce::MidiBuffer& midi, int numSamples, float* const* channelOut, float* const* reverbSends, float* masterLeft, float* masterRight)
+{
+    const juce::SpinLock::ScopedLockType sl (lock);
+    splitOut = channelOut;
+    splitReverb = reverbSends;
+    int done = 0;
+    for (const auto meta : midi)
+    {
+        const int at = juce::jlimit (0, numSamples, meta.samplePosition);
+        render (masterLeft, masterRight, done, at - done);
+        done = juce::jmax (done, at);
+        handle (meta.getMessage());
+    }
+    render (masterLeft, masterRight, done, numSamples - done);
+    splitOut = nullptr;
+    splitReverb = nullptr;
 }
 
 void SoundFontSynth::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)

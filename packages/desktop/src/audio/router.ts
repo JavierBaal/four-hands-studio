@@ -67,8 +67,12 @@ export interface EnginePort {
   latency(): number;
 }
 
-/** An event for a plugin slot: the same bytes on channel 1. */
+/** Volume, pan and reverb send: the engine's strip does them for a plugin (F2.2, 03/11/2026). */
+const STRIP_CCS = new Set([7, 10, 91]);
+
+/** An event for a plugin slot: the same bytes on channel 1 (volume, pan and reverb stay in its strip). */
 export function engineBytes(ev: SynthEvent): number[] | null {
+  if (ev.kind === "cc" && STRIP_CCS.has(ev.cc)) return null;
   const bytes = midiBytes(ev);
   if (bytes) bytes[0] = bytes[0]! & 0xf0;
   return bytes;

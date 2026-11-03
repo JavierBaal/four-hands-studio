@@ -45,6 +45,13 @@ public:
      */
     juce::String loadBank (int offset, const juce::File& file, int& presets);
 
+    /**
+     * F2.2 (03/11/2026): renders each MIDI channel into its own stereo pair (`channelOut[2 ch]`,
+     * `[2 ch + 1]`) and its reverb send into `reverbSends[ch]`, for the engine's channel strips and
+     * its Reverb bus. What belongs to no track (the chorus) goes to `master`. Buffers are added to.
+     */
+    void processSplit (juce::MidiBuffer& midi, int numSamples, float* const* channelOut, float* const* reverbSends, float* masterLeft, float* masterRight);
+
     /** Banks loaded, for the log. */
     int bankCount() const;
 
@@ -103,6 +110,8 @@ private:
     std::vector<float> voiceBuffer, reverbIn, chorusIn;
     std::unique_ptr<gs::Reverb> reverb;
     std::unique_ptr<gs::Chorus> chorus;
+    float* const* splitOut = nullptr;
+    float* const* splitReverb = nullptr;
 };
 
 } // namespace fh
