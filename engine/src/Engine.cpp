@@ -86,7 +86,12 @@ void Engine::checkDefaultOutput (bool rescan)
     auto setup = device.getAudioDeviceSetup();
     if (setup.outputDeviceName == wanted && device.getCurrentAudioDevice() != nullptr)
         return;
-    // Same rate and buffer as before when the new output allows it; the voices go on sounding.
+    // Same rate and buffer as before when the new output allows it. Our callback goes first (it
+    // waits for the audio thread) and the plugins are released, so they are prepared again cleanly.
+    device.removeAudioCallback (this);
+    for (auto& p : slots)
+        if (p != nullptr)
+            p->releaseResources();
     setup.outputDeviceName = wanted;
     const auto error = device.setAudioDeviceSetup (setup, true);
     lastDeviceError = error.isNotEmpty() ? error : (device.getCurrentAudioDevice() == nullptr ? juce::String ("There is no audio output device") : juce::String());
@@ -122,15 +127,29 @@ void Engine::audioDeviceStopped() {}
 
 void Engine::prepare (double rate, int block)
 {
-    const juce::SpinLock::ScopedLockType sl (lock);
-    sampleRate = rate;
-    blockSize = block;
-    scratch.setSize (2, block, false, true, true);
-    for (auto& m : midi)
-        m.ensureSize (2048);
-    for (auto* p : live)
-        if (p != nullptr)
-            p->prepareToPlay (rate, block);
+    // Called with the audio stopped: on opening the output and again when it changes (Windows
+    // switched to the headphones, 03/11/2026). The buffer keeps room for the plugin with the most
+    // channels: Kontakt has many outputs, and a buffer cut back to 2 channels when the output
+    // changed made it write past the end and bring the engine down.
+    std::vector<juce::AudioPluginInstance*> plugins;
+    {
+        const juce::SpinLock::ScopedLockType sl (lock);
+        sampleRate = rate;
+        blockSize = block;
+        int channels = 2;
+        for (auto* p : live)
+            if (p != nullptr)
+            {
+                channels = juce::jmax (channels, p->getTotalNumInputChannels(), p->getTotalNumOutputChannels());
+                plugins.push_back (p);
+            }
+        scratch.setSize (channels, block, false, true, true);
+        for (auto& m : midi)
+            m.ensureSize (2048);
+    }
+    // Plugins are prepared out of the lock: Kontakt takes its time, and the audio is stopped anyway.
+    for (auto* p : plugins)
+        p->prepareToPlay (rate, block);
 }
 
 // -----------------------------------------------------------------------------

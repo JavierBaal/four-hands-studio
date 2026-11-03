@@ -149,7 +149,16 @@ function engineHost(): EngineHost {
     },
     cacheFile: path.join(dataDir(), "motor", "plugins.xml"),
     log: appendLog,
-    onStatus: (status) => win?.webContents.send(CH.engineStatusChanged, status),
+    onStatus: (status) => {
+      // A bank the engine was loading when it stopped will never arrive: say so now, so the
+      // window asks the new engine (it waited a minute and gave up on the new one too, 03/11/2026).
+      if (status.state !== "ready" && status.state !== "starting")
+        for (const [key, resolve] of [...soundsWaiting]) {
+          soundsWaiting.delete(key);
+          resolve({ ok: false, error: "The engine stopped" });
+        }
+      win?.webContents.send(CH.engineStatusChanged, status);
+    },
     onScanning: (file, progress) => win?.webContents.send(CH.engineScanning, { file, progress }),
     onEvent: (event) => {
       if (event.event === "deviceChanged") {

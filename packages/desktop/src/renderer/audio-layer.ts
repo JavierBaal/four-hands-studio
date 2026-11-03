@@ -280,7 +280,9 @@ export class AudioLayer {
         this.engineBanksLoading.delete(key);
         const now = this.engineStatus.generation;
         if (!r.ok) {
-          this.engineBanksRefused.set(key, now);
+          // Refused for the run that was asked; a new engine (after a crash) is asked again.
+          this.engineBanksRefused.set(key, generation);
+          if (now !== generation) this.ensureEngineSounds();
           if (id === "main") this.bridge.log({ type: "builtin_sounds", where: "app", reason: r.error ?? "failed" });
           this.changed();
           return;
@@ -315,15 +317,20 @@ export class AudioLayer {
       const key = `${slot}:${plugin.id}`;
       if (this.engineLoaded.get(slot) === plugin.id || this.engineLoading.has(key) || this.engineRefused.has(key)) continue;
       this.engineLoading.add(key);
+      const generation = this.engineStatus.generation;
       void this.bridge.engineLoad(slot, plugin.id, id).then((r) => {
         this.engineLoading.delete(key);
         if (r.ok) {
           this.engineLoaded.set(slot, plugin.id);
           if (this.pluginProblem?.name === plugin.name) this.pluginProblem = null;
-        } else {
+        } else if (this.engineStatus.state === "ready" && this.engineStatus.generation === generation && !/link with the engine closed|engine stopped|not running/i.test(r.error)) {
+          // The plugin itself failed: not again on its own (the user can choose it again).
           this.engineRefused.add(key);
           this.pluginProblem = { name: plugin.name, error: r.error };
         }
+        // Otherwise the engine went down meanwhile (03/11/2026): the new one loads it again (the
+        // new engine may already be up, and it skipped this plugin while it was loading here).
+        else setTimeout(() => this.ensurePlugins(), 500);
         this.player.setup();
         this.changed();
       });
