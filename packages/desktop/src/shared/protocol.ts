@@ -220,6 +220,8 @@ export const CH = {
   engineShow: "fh:engine-show",
   engineMidi: "fh:engine-midi",
   enginePanic: "fh:engine-panic",
+  engineSounds: "fh:engine-sounds",
+  builtinSounds: "fh:builtin-sounds",
   folders: "fh:folders",
   openFolder: "fh:open-folder",
   openTool: "fh:open-tool",

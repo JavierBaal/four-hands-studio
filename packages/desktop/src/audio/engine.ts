@@ -38,9 +38,15 @@ export interface ReadyInfo {
   presetCount: number;
 }
 
-/** Banks next to the main one take bank select 20, 30, 40… (room for their own variations). */
-export const BANK_OFFSET_FIRST = 20;
-export const BANK_OFFSET_STEP = 10;
+/**
+ * Banks next to the main one take bank select 60, 66, 72… (room for six variations of their own).
+ * Before 01/11/2026 they took 20, 30, 40…, but MuseScore_General has presets in banks 20 to 51 (its
+ * violins, violas, cellos and basses at programs 44–49 and 81): a user's bank with strings at 48
+ * played MuseScore's instead, because the main bank wins when two presets share a number.
+ * The engine uses the same numbers (SoundFontSynth.h).
+ */
+export const BANK_OFFSET_FIRST = 60;
+export const BANK_OFFSET_STEP = 6;
 export const MAX_EXTRA_BANKS = 10;
 
 export class Engine {

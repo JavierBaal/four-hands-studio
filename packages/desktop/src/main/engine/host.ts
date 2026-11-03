@@ -9,7 +9,7 @@ import net from "node:net";
 import { ENGINE_OFF, type EngineStatus } from "../../shared/engine.js";
 import { FrameReader, frame } from "./framing.js";
 
-type Reply = Record<string, unknown> & { type: string };
+export type Reply = Record<string, unknown> & { type: string };
 
 export interface EngineHostOptions {
   /** The engine's command: the executable, plus any leading arguments (tests). Null: not here. */
@@ -20,6 +20,11 @@ export interface EngineHostOptions {
   onStatus?: (status: EngineStatus) => void;
   /** A plugin file being scanned, and how far the scan is (0 to 1). */
   onScanning?: (file: string, progress: number) => void;
+  /**
+   * Something the engine says on its own, not a reply (F2.1: a sound bank finished loading,
+   * `{ type: "event", event: "soundsLoaded", id, offset, ok, error, presets, ms }`).
+   */
+  onEvent?: (event: Reply) => void;
   /** How long the engine has to say it is ready. */
   startTimeoutMs?: number;
 }
@@ -191,6 +196,10 @@ export class EngineHost {
       this.options.onScanning?.(String(m.file ?? ""), Number(m.progress ?? 0));
       return;
     }
+    if (m.type === "event") {
+      this.options.onEvent?.(m);
+      return;
+    }
     const next = this.waiting.shift();
     if (!next) {
       this.options.log({ type: "engine_unexpected", message: m.type });
@@ -253,6 +262,16 @@ export class EngineHost {
     this.socket = null;
     const child = this.child;
     if (child && child.exitCode === null) child.kill();
+  }
+
+  /**
+   * The engine moved to another output (Windows changed its default, Fran 03/11/2026): the new
+   * device and its delay, so the plugin tracks stay in time with the rest.
+   */
+  deviceChanged(device: string, latency: number, error?: string): void {
+    if (this.status.state !== "ready") return;
+    this.options.log({ type: "engine_device_changed", device, latency, error });
+    this.setStatus({ device, latency, error });
   }
 
   /** Closes the engine (the app is quitting). */

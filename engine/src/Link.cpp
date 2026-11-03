@@ -73,6 +73,7 @@ Link::Link (Engine& e, juce::String token, juce::File cache) : engine (e), expec
 
 Link::~Link()
 {
+    loader.removeAllJobs (true, 30000);
     stop();
     connections.clear();
 }
@@ -119,6 +120,12 @@ juce::var Link::pluginList() const
     return obj ({ { "type", "plugins" }, { "list", list } });
 }
 
+void Link::notify (const juce::var& event)
+{
+    if (current != nullptr)
+        current->send (event);
+}
+
 juce::var Link::handle (const juce::var& m, Connection& from)
 {
     const auto type = m["type"].toString();
@@ -129,7 +136,10 @@ juce::var Link::handle (const juce::var& m, Connection& from)
                       { "device", engine.deviceText() },
                       { "sampleRate", engine.getSampleRate() },
                       { "latency", engine.outputLatencySeconds() },
-                      { "deviceError", engine.deviceError() } });
+                      { "deviceError", engine.deviceError() },
+                      // F2.1 (31/10/2026): it plays the built-in sounds (requests "sounds" and slot 16).
+                      { "sounds", true },
+                      { "soundsSlot", kSoundsSlot } });
 
     if (type == "plugins")
         return pluginList();
@@ -212,6 +222,37 @@ juce::var Link::handle (const juce::var& m, Connection& from)
         juce::MemoryBlock data;
         data.fromBase64Encoding (m["data"].toString());
         return obj ({ { "type", "stateSet" }, { "slot", m["slot"] }, { "ok", engine.setState ((int) m["slot"], data) } });
+    }
+
+    if (type == "sounds")
+    {
+        // A bank for the built-in sounds: the reply comes at once, the load later, as an event
+        // ("soundsLoaded"), so MIDI and the other requests go on meanwhile.
+        const int offset = m["offset"];
+        const juce::File file (m["path"].toString());
+        const auto id = m["id"].toString();
+        engine.sounds();
+        juce::WeakReference<Link> self (this);
+        auto& e = engine;
+        loader.addJob ([self, &e, offset, file, id] {
+            const auto started = juce::Time::getMillisecondCounterHiRes();
+            int presets = 0;
+            const auto problem = e.loadSoundBank (offset, file, presets);
+            const auto ms = (int) (juce::Time::getMillisecondCounterHiRes() - started);
+            juce::MessageManager::callAsync ([self, offset, id, problem, presets, ms] {
+                if (auto* link = self.get())
+                    if (link->current != nullptr)
+                        link->current->send (obj ({ { "type", "event" },
+                                                    { "event", "soundsLoaded" },
+                                                    { "id", id },
+                                                    { "offset", offset },
+                                                    { "ok", problem.isEmpty() },
+                                                    { "error", problem },
+                                                    { "presets", presets },
+                                                    { "ms", ms } }));
+            });
+        });
+        return obj ({ { "type", "soundsLoading" }, { "id", id }, { "offset", offset } });
     }
 
     if (type == "stats")

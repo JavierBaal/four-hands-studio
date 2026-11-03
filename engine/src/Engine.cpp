@@ -1,4 +1,5 @@
 #include "Engine.h"
+#include "SoundFontSynth.h"
 
 namespace fh
 {
@@ -31,6 +32,8 @@ Engine::Engine()
 
 Engine::~Engine()
 {
+    stopTimer();
+    device.removeChangeListener (this);
     device.removeAudioCallback (this);
     device.closeAudioDevice();
     for (auto& w : windows)
@@ -54,6 +57,48 @@ juce::String Engine::openDevice()
     if (lastDeviceError.isEmpty())
         device.addAudioCallback (this);
     return lastDeviceError;
+}
+
+void Engine::followDefaultOutput (std::function<void (const juce::String&, double)> onDeviceChanged)
+{
+    deviceChanged = std::move (onDeviceChanged);
+    // The device manager says when the system's list changes (the default too, with WASAPI); the
+    // timer is a second look in case a change does not come through.
+    device.addChangeListener (this);
+    startTimer (2000);
+}
+
+void Engine::checkDefaultOutput (bool rescan)
+{
+    if (checkingDevice)
+        return;
+    auto* type = device.getCurrentDeviceTypeObject();
+    if (type == nullptr)
+        return;
+    const juce::ScopedValueSetter<bool> busy (checkingDevice, true);
+    if (rescan)
+        type->scanForDevices();
+    const auto names = type->getDeviceNames (false);
+    const auto index = type->getDefaultDeviceIndex (false);
+    if (! juce::isPositiveAndBelow (index, names.size()))
+        return;
+    const auto wanted = names[index];
+    auto setup = device.getAudioDeviceSetup();
+    if (setup.outputDeviceName == wanted && device.getCurrentAudioDevice() != nullptr)
+        return;
+    // Same rate and buffer as before when the new output allows it. Our callback goes first (it
+    // waits for the audio thread) and the plugins are released, so they are prepared again cleanly.
+    device.removeAudioCallback (this);
+    for (auto& p : slots)
+        if (p != nullptr)
+            p->releaseResources();
+    setup.outputDeviceName = wanted;
+    const auto error = device.setAudioDeviceSetup (setup, true);
+    lastDeviceError = error.isNotEmpty() ? error : (device.getCurrentAudioDevice() == nullptr ? juce::String ("There is no audio output device") : juce::String());
+    if (lastDeviceError.isEmpty() && device.getCurrentAudioDevice() != nullptr)
+        device.addAudioCallback (this); // no-op if it is already there
+    if (deviceChanged)
+        deviceChanged (deviceText(), outputLatencySeconds());
 }
 
 juce::String Engine::deviceText() const
@@ -82,15 +127,29 @@ void Engine::audioDeviceStopped() {}
 
 void Engine::prepare (double rate, int block)
 {
-    const juce::SpinLock::ScopedLockType sl (lock);
-    sampleRate = rate;
-    blockSize = block;
-    scratch.setSize (2, block, false, true, true);
-    for (auto& m : midi)
-        m.ensureSize (2048);
-    for (auto* p : live)
-        if (p != nullptr)
-            p->prepareToPlay (rate, block);
+    // Called with the audio stopped: on opening the output and again when it changes (Windows
+    // switched to the headphones, 03/11/2026). The buffer keeps room for the plugin with the most
+    // channels: Kontakt has many outputs, and a buffer cut back to 2 channels when the output
+    // changed made it write past the end and bring the engine down.
+    std::vector<juce::AudioPluginInstance*> plugins;
+    {
+        const juce::SpinLock::ScopedLockType sl (lock);
+        sampleRate = rate;
+        blockSize = block;
+        int channels = 2;
+        for (auto* p : live)
+            if (p != nullptr)
+            {
+                channels = juce::jmax (channels, p->getTotalNumInputChannels(), p->getTotalNumOutputChannels());
+                plugins.push_back (p);
+            }
+        scratch.setSize (channels, block, false, true, true);
+        for (auto& m : midi)
+            m.ensureSize (2048);
+    }
+    // Plugins are prepared out of the lock: Kontakt takes its time, and the audio is stopped anyway.
+    for (auto* p : plugins)
+        p->prepareToPlay (rate, block);
 }
 
 // -----------------------------------------------------------------------------
@@ -211,11 +270,37 @@ bool Engine::setState (int slot, const juce::MemoryBlock& data)
 }
 
 // -----------------------------------------------------------------------------
+// Built-in sounds
+
+SoundFontSynth& Engine::sounds()
+{
+    if (slots[(size_t) kSoundsSlot] == nullptr)
+    {
+        auto synth = std::make_unique<SoundFontSynth>();
+        synth->prepareToPlay (sampleRate, blockSize);
+        {
+            const juce::SpinLock::ScopedLockType sl (lock);
+            live[(size_t) kSoundsSlot] = synth.get();
+        }
+        slots[(size_t) kSoundsSlot] = std::move (synth);
+    }
+    return *static_cast<SoundFontSynth*> (slots[(size_t) kSoundsSlot].get());
+}
+
+juce::String Engine::loadSoundBank (int offset, const juce::File& file, int& presets)
+{
+    auto* synth = static_cast<SoundFontSynth*> (slots[(size_t) kSoundsSlot].get());
+    if (synth == nullptr)
+        return "The built-in sounds are not ready";
+    return synth->loadBank (offset, file, presets);
+}
+
+// -----------------------------------------------------------------------------
 // MIDI
 
 void Engine::schedule (int slot, double delaySeconds, const juce::MidiMessage& message)
 {
-    if (slot < 0 || slot >= kSlots)
+    if (slot < 0 || slot >= kAllSlots)
         return;
     const auto at = position.load() + (juce::int64) std::llround (juce::jmax (0.0, delaySeconds) * sampleRate);
     const juce::SpinLock::ScopedLockType sl (lock);
@@ -227,7 +312,7 @@ void Engine::panic()
     const juce::SpinLock::ScopedLockType sl (lock);
     pending.clear();
     const auto now = position.load();
-    for (int s = 0; s < kSlots; ++s)
+    for (int s = 0; s < kAllSlots; ++s)
         for (int ch = 1; ch <= 16; ++ch)
         {
             pending.push_back ({ now, s, juce::MidiMessage::controllerEvent (ch, 64, 0) });
@@ -294,7 +379,7 @@ void Engine::process (float* const* outputs, int numOutputs, int numSamples)
     if (scratch.getNumSamples() < numSamples)
         scratch.setSize (scratch.getNumChannels(), numSamples, false, true, true);
 
-    for (int s = 0; s < kSlots; ++s)
+    for (int s = 0; s < kAllSlots; ++s)
     {
         auto* plugin = live[(size_t) s];
         if (plugin == nullptr)

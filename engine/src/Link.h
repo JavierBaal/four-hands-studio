@@ -37,6 +37,8 @@ public:
     /** True once Four Hands has connected at least once. */
     bool everConnected() const { return connected; }
     bool hasConnection() const { return current != nullptr; }
+    /** Says something to Four Hands on the engine's own initiative (`{ type: "event", event, … }`). */
+    void notify (const juce::var& event);
 
 private:
     juce::InterprocessConnection* createConnectionObject() override;
@@ -49,6 +51,10 @@ private:
     std::vector<std::unique_ptr<Connection>> connections;
     Connection* current = nullptr;
     bool connected = false;
+    /** Loads sound banks one at a time, off the message thread (an SF3 takes seconds). */
+    juce::ThreadPool loader { 1 };
+
+    JUCE_DECLARE_WEAK_REFERENCEABLE (Link)
 };
 
 } // namespace fh
