@@ -225,6 +225,8 @@ export const CH = {
   engineLevels: "fh:engine-levels",
   engineMeters: "fh:engine-meters",
   engineStats: "fh:engine-stats",
+  engineInserts: "fh:engine-inserts",
+  engineShowInsert: "fh:engine-show-insert",
   builtinSounds: "fh:builtin-sounds",
   folders: "fh:folders",
   openFolder: "fh:open-folder",

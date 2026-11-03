@@ -3,6 +3,7 @@
  * sections, chords and annotations. Every action is one command list (one undo step) with its
  * sentence in the history. Also holds which field is being typed into (one at a time).
  */
+import { type InsertSpec, OWN_EFFECTS, OWN_KINDS, findInsert, insertName } from "@fourhands/core";
 import {
   type CommandData,
   type KeySignature,
@@ -86,6 +87,8 @@ export class SongActions {
   settings: SettingsSection | null = null;
   /** A short message at the bottom of the window, gone after a few seconds. */
   notice: string | null = null;
+  /** F2.2 parte C: the effect slot selected in the console (Supr removes it). */
+  selectedEffect: string | null = null;
   private noticeTimer: ReturnType<typeof setTimeout> | null = null;
 
   say(text: string): void {
@@ -436,6 +439,90 @@ export class SongActions {
     if (track.volume === volume && track.pan === pan && !revChanged) return;
     const onlyReverb = track.volume === volume && track.pan === pan;
     void this.run(this.h(onlyReverb ? "hReverb" : "hMix", { name: track.name }), [{ type: "updateTrack", id, changes: { volume, pan, reverb: rev } }]);
+  }
+
+  // -------------------------------------------------------------------------
+  // Insert effects (F2.2 parte C)
+
+  /** "el Piano" / "el Máster", for the history. */
+  private chainLabel(target: string): string {
+    return target === "master" ? this.t("consoleMaster") : (this.song.tracks[target]?.name ?? target);
+  }
+
+  selectEffect(id: string | null): void {
+    if (this.selectedEffect === id) return;
+    this.selectedEffect = id;
+    this.changed();
+  }
+
+  /** «+» in a slot: Four Hands' own effects, then the plugin effects the engine knows. */
+  effectAddMenu(target: string, x: number, y: number): void {
+    const t = this.t;
+    const close = (fn: () => void) => () => (this.editor.closeMenus(), fn());
+    const plugins = (this.audio?.pluginList?.plugins ?? []).filter((p) => !p.instrument).sort((a, b) => a.name.localeCompare(b.name));
+    const items: MenuItem[] = [
+      { label: t("fxOwn"), header: true },
+      ...OWN_KINDS.map((kind) => ({ label: OWN_EFFECTS[kind].name[this.lang], run: close(() => this.addEffect(target, { kind })) })),
+      { separator: true },
+      { label: t("fxPlugins"), header: true },
+    ];
+    if (plugins.length) {
+      for (const p of plugins) items.push({ label: p.name, shortcut: p.vendor, run: close(() => this.addEffect(target, { kind: "plugin", plugin: { id: p.id, name: p.name } })) });
+    } else if (this.audio?.engineStatus.state === "missing") items.push({ label: t("fxNoEngine"), disabled: true });
+    else items.push({ label: t("fxScan"), run: close(() => void this.audio?.loadPlugins(true)) });
+    this.editor.openMenu(x, y, items);
+  }
+
+  /** Right click on a slot. */
+  effectMenu(id: string, x: number, y: number): void {
+    const found = findInsert(this.song, id);
+    if (!found) return;
+    const t = this.t;
+    const close = (fn: () => void) => () => (this.editor.closeMenus(), fn());
+    const name = insertName(found.insert, this.lang);
+    this.editor.openMenu(x, y, [
+      { label: name, header: true },
+      ...(found.insert.kind === "plugin" ? [{ label: t("fxOpen"), run: close(() => void this.audio?.showInsert(id)) }] : []),
+      { label: found.insert.bypass ? t("fxEnable") : t("fxBypass"), run: close(() => this.setEffectBypass(id, !found.insert.bypass)) },
+      { separator: true },
+      { label: t("fxRemove"), shortcut: "Supr", run: close(() => this.removeEffect(id)) },
+    ]);
+  }
+
+  addEffect(target: string, spec: InsertSpec, index?: number): void {
+    const name = spec.kind === "plugin" ? spec.plugin.name : OWN_EFFECTS[spec.kind].name[this.lang];
+    void this.run(this.h("hEffectAdd", { effect: name, where: this.chainLabel(target) }), [index === undefined ? { type: "addInsert", target, spec } : { type: "addInsert", target, spec, index }]);
+  }
+
+  removeEffect(id: string): void {
+    const found = findInsert(this.song, id);
+    if (!found) return;
+    if (this.selectedEffect === id) this.selectedEffect = null;
+    void this.run(this.h("hEffectRemove", { effect: insertName(found.insert, this.lang), where: this.chainLabel(found.target) }), [{ type: "removeInsert", id }]);
+  }
+
+  /** Supr in the console: the selected effect goes. False if none was selected. */
+  removeSelectedEffect(): boolean {
+    if (!this.selectedEffect || !findInsert(this.song, this.selectedEffect)) return false;
+    this.removeEffect(this.selectedEffect);
+    return true;
+  }
+
+  /** Dragged to `index` of `target`'s chain (its own chain or another strip's). */
+  moveEffect(id: string, index: number, target: string): void {
+    const found = findInsert(this.song, id);
+    if (!found) return;
+    // Dropping before itself or right after itself, in the same chain, is no move.
+    if (found.target === target && (index === found.index || index === found.index + 1)) return;
+    const at = found.target === target && index > found.index ? index - 1 : index;
+    void this.run(this.h("hEffectMove", { effect: insertName(found.insert, this.lang), where: this.chainLabel(target) }), [{ type: "moveInsert", id, index: at, target }]);
+  }
+
+  setEffectBypass(id: string, bypass: boolean): void {
+    const found = findInsert(this.song, id);
+    if (!found) return;
+    const key = bypass ? "hEffectBypass" : "hEffectOn";
+    void this.run(this.h(key, { effect: insertName(found.insert, this.lang), where: this.chainLabel(found.target) }), [{ type: "updateInsert", id, changes: { bypass } }]);
   }
 
   /** F2.2 parte B: the master fader while it moves; the song changes with `setMasterVolume`. */

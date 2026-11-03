@@ -339,11 +339,47 @@ export const SHOTS = [
     });
     await consoleLevels(page);
   } },
+  // F2.2 parte C1 (03/11/2026): effects in the slots, one bypassed, one plugin that failed, the Master's limiter.
+  { name: "efectos_1_consola", q: `?song=boceto&view=${view({ bottom: "mix" })}`, act: async (page) => { await withEffects(page); await consoleLevels(page); } },
+  { name: "efectos_2_estrecha", q: `?song=boceto&view=${view({ bottom: "mix", mixNarrow: true })}`, act: async (page) => { await withEffects(page); await consoleLevels(page); } },
+  { name: "efectos_3_menu_anadir", q: `?song=boceto&view=${view({ bottom: "mix" })}`, act: async (page) => {
+    await withEffects(page);
+    await consoleLevels(page);
+    await page.locator('.cstrip[data-track]').nth(1).locator("button.cslot.add").click();
+    await page.waitForTimeout(200);
+  } },
+  { name: "efectos_4_menu_efecto", q: `?song=boceto&view=${view({ bottom: "mix" })}`, act: async (page) => {
+    await withEffects(page);
+    await consoleLevels(page);
+    await page.locator(".cslot[data-fx]").nth(1).click({ button: "right" });
+    await page.waitForTimeout(200);
+  } },
   // The Mezcla / Editor button (Fran, 03/11/2026: at the start of the bar).
   { name: "boton_mezcla_editor", q: `?song=boceto&view=${sketchView(1440 - 288 - 72, 12)}` },
   { name: "boton_mezcla_consola", q: `?song=boceto&view=${view({ bottom: "mix" })}`, act: consoleLevels },
   { name: "boton_mezcla_editor_880", w: 880, h: 800, q: `?song=boceto&view=${sketchView(880 - 48 - 56, 8)}` },
 ];
+
+/** Effects like a real mix: EQ and compressor on the melody, Pro-Q on the piano, an EQ bypassed, a limiter on the Master. */
+async function withEffects(page) {
+  await page.evaluate(async () => {
+    const { replica, ai } = window.fhTest;
+    const [t0, t1, t2, t3] = replica.song.trackOrder;
+    ai.engine.failPlugin = "VST3-Ozone 11-3";
+    await replica.run("x", [
+      { type: "addInsert", target: t1, spec: { kind: "plugin", plugin: { id: "VST3-Pro-Q 3-9", name: "Pro-Q 3" } } },
+      { type: "addInsert", target: t2, spec: { kind: "eq" } },
+      { type: "addInsert", target: t2, spec: { kind: "compressor" } },
+      { type: "addInsert", target: t2, spec: { kind: "plugin", plugin: { id: "VST3-Ozone 11-3", name: "Ozone 11" } } },
+      { type: "addInsert", target: t3, spec: { kind: "eq" } },
+      { type: "addInsert", target: "master", spec: { kind: "limiter" } },
+    ]);
+    const eq = replica.song.tracks[t3].inserts[0].id;
+    await replica.run("x", [{ type: "updateInsert", id: eq, changes: { bypass: true } }]);
+    void t0;
+  });
+  await page.waitForTimeout(300);
+}
 
 /** Steady levels on every track's strip (peak a few dB over the RMS), the master, and the engine's load. */
 async function consoleLevels(page, load = { avgLoad: 0.23, maxLoad: 0.31, dropouts: 0 }) {

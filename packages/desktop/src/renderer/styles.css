@@ -685,3 +685,14 @@ input.inline.ctype { height: 18px; padding: 0 2px; font-family: 'IBM Plex Mono',
 input.inline.cval.ctype { width: 34px; font-size: 10px; }
 /* Un solo botón Mezcla / Editor (Fran, 03/11/2026), al principio de la barra: botón de acción, nunca marcado. */
 .modeb { display: inline-flex; align-items: center; gap: 6px; }
+/* Efectos de inserción en la consola (F2.2 parte C). */
+.cslot { cursor: grab; }
+.cslot:focus-visible { outline: 2px solid var(--line-on); outline-offset: 1px; }
+.cslot.sel { border-color: var(--line-on); background: var(--bg-control-on); }
+.cslot.byp .cslotname { color: var(--text-2); text-decoration: line-through; text-decoration-color: var(--text-2); }
+.cslot.bad { border-color: var(--clip); color: var(--clip); }
+.cslot.dropbefore { box-shadow: 0 -2px 0 var(--text); }
+button.cslot.add { cursor: pointer; font: inherit; font-size: 11px; width: 100%; }
+button.cslot.add:hover { color: var(--text); border-color: var(--text-2); }
+button.cfxcount { background: transparent; cursor: pointer; font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--text-2); width: 100%; padding: 0; }
+.cfxcount.off { border-style: dashed; opacity: .4; }

@@ -173,3 +173,22 @@ export function engineLoad(stats: { avgLoad?: number; maxLoad?: number; overruns
     dropouts: Math.max(0, stats.overruns ?? 0, stats.xruns ?? 0),
   };
 }
+
+/** F2.2 parte C: one link of a chain as the engine gets it. */
+export interface EngineInsert {
+  id: string;
+  kind: string;
+  /** The plugin's engine id, for a plugin effect. */
+  plugin?: string;
+  bypass: boolean;
+  params: Record<string, number>;
+}
+
+/** A song's chain, as the engine gets it. */
+export function engineChain(inserts: ReadonlyArray<{ id: string; kind: string; bypass?: boolean; params?: Record<string, number>; plugin?: { id: string } }>): EngineInsert[] {
+  return inserts.map((x) => {
+    const link: EngineInsert = { id: x.id, kind: x.kind, bypass: !!x.bypass, params: { ...(x.params ?? {}) } };
+    if (x.plugin) link.plugin = x.plugin.id;
+    return link;
+  });
+}

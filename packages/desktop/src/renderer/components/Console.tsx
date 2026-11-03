@@ -10,8 +10,8 @@
  * sound), live meters from the engine and the master fader. Effects, sends and buses come in parts C
  * and D: their places are there, empty, so the console does not change shape later (Fran, 03/11/2026).
  */
-import { useEffect, useRef, useState } from "react";
-import type { Track } from "@fourhands/core";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { type Insert, type Track, insertName } from "@fourhands/core";
 import { dbToVolume, formatDb, formatPan, parseDb, volumeToDb } from "../../shared/mix.js";
 import { SILENT_METER, type MeterState, fracToDb, meterFrac, stepMeter } from "../../shared/meters.js";
 import type { AudioLayer } from "../audio-layer.js";
@@ -213,6 +213,89 @@ function Typed({ text, className, title, commit }: { text: string; className: st
   );
 }
 
+/** Drag data of an effect slot (to reorder it, or move it to another strip). */
+const FX_DRAG = "application/x-fourhands-effect";
+
+/**
+ * A strip's effect chain (F2.2 parte C): one slot per effect, in order, and «+» at the end. Click
+ * selects (Supr removes), double click opens a plugin's window, right click has the rest; dragging
+ * reorders, also onto another strip. In «Estrecho», only how many.
+ */
+function FxChain({ audio, target, inserts, narrow }: { audio: AudioLayer; target: string; inserts: readonly Insert[]; narrow: boolean }) {
+  const { t, lang } = useApp();
+  const actions = useActions();
+  useSyncExternalStore(actions.subscribe, actions.getVersion);
+  const [over, setOver] = useState<number | null>(null);
+  if (narrow) {
+    const names = inserts.map((x) => insertName(x, lang)).join(", ");
+    return (
+      <button className="cfxcount" title={names || t("fxAdd")} onClick={(e) => actions.effectAddMenu(target, e.clientX, e.clientY)}>
+        {inserts.length ? t("fxCount", { n: inserts.length }) : "—"}
+      </button>
+    );
+  }
+  const drop = (index: number) => (e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes(FX_DRAG)) return;
+    e.preventDefault();
+    setOver(null);
+    actions.moveEffect(e.dataTransfer.getData(FX_DRAG), index, target);
+  };
+  const dragOver = (index: number) => (e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes(FX_DRAG)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setOver(index);
+  };
+  return (
+    <div className="cfx" onDragLeave={() => setOver(null)}>
+      {inserts.map((x, i) => {
+        const problem = audio.insertProblems.get(x.id);
+        const name = insertName(x, lang);
+        const cls = `cslot${x.bypass ? " byp" : ""}${problem ? " bad" : ""}${actions.selectedEffect === x.id ? " sel" : ""}${over === i ? " dropbefore" : ""}`;
+        const title = problem ? t("fxFailed", { name, error: problem }) : x.kind === "plugin" ? t("fxPluginTitle", { name }) : t("fxOwnTitle", { name });
+        return (
+          <div
+            key={x.id}
+            className={cls}
+            role="button"
+            tabIndex={0}
+            draggable
+            data-fx={x.id}
+            title={title}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={() => actions.selectEffect(x.id)}
+            onDoubleClick={() => (x.kind === "plugin" ? void audio.showInsert(x.id) : actions.say(t("fxEditorLater")))}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              actions.selectEffect(x.id);
+              actions.effectMenu(x.id, e.clientX, e.clientY);
+            }}
+            onDragStart={(e) => {
+              e.dataTransfer.setData(FX_DRAG, x.id);
+              e.dataTransfer.effectAllowed = "move";
+            }}
+            onDragOver={dragOver(i)}
+            onDrop={drop(i)}
+          >
+            <span className="cslotname">{name}</span>
+          </div>
+        );
+      })}
+      <button
+        className={`cslot add${over === inserts.length ? " dropbefore" : ""}`}
+        title={t("fxAdd")}
+        aria-label={t("fxAdd")}
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => actions.effectAddMenu(target, e.clientX, e.clientY)}
+        onDragOver={dragOver(inserts.length)}
+        onDrop={drop(inserts.length)}
+      >
+        +
+      </button>
+    </div>
+  );
+}
+
 /** "Altavoces (Realtek)" from "Windows Audio · Altavoces (Realtek) · 48000 Hz · 480 muestras". */
 function deviceName(device: string | undefined): string | null {
   if (!device) return null;
@@ -233,7 +316,7 @@ interface StripProps {
   onToggle(id: string, field: "mute" | "solo"): void;
 }
 
-function TrackStrip({ track, narrow, active, silenced, meter, onClearClip, onSelect, onToggle }: StripProps) {
+function TrackStrip({ audio, track, narrow, active, silenced, meter, onClearClip, onSelect, onToggle }: StripProps) {
   const { t, lang } = useApp();
   const actions = useActions();
   const [live, setLive] = useState<number | null>(null);
@@ -243,16 +326,10 @@ function TrackStrip({ track, narrow, active, silenced, meter, onClearClip, onSel
   return (
     <div className={cls} style={{ ["--strip" as string]: trackColor(track.color ?? 0) }} data-track={track.id} onPointerDown={() => onSelect(track.id)}>
       <div className="cband" />
-      {narrow ? (
-        <div className="cfxcount" title={t("consoleFxLater")}>
-          —
-        </div>
+      {external ? (
+        <div className={narrow ? "cfxcount off" : "cfx"} title={t("fxExternal")} />
       ) : (
-        <div className="cfx">
-          <div className="cslot add off" title={t("consoleFxLater")} aria-disabled="true">
-            +
-          </div>
-        </div>
+        <FxChain audio={audio} target={track.id} inserts={track.inserts ?? []} narrow={narrow} />
       )}
       {!narrow && (
         <div className="csends">
@@ -329,11 +406,7 @@ function MasterStrip({ audio, meter, onClearClip }: { audio: AudioLayer; meter: 
   return (
     <div className="cstrip master" style={{ ["--strip" as string]: "var(--text)" }} data-track="master">
       <div className="cband" />
-      <div className="cfx">
-        <div className="cslot add off" title={t("consoleFxLater")} aria-disabled="true">
-          +
-        </div>
-      </div>
+      <FxChain audio={audio} target="master" inserts={song.masterInserts ?? []} narrow={false} />
       <div className="csends" />
       <div className="cout" title={out}>
         → {out}
@@ -392,6 +465,10 @@ export function Console({ audio, onSelectTrack, onToggle }: ConsoleProps) {
   const meters = useMeters(audio, [...tracks.map((tr) => ({ key: tr.id, strip: tr.output === "external" ? -1 : audio.stripOf(tr) })), { key: "master", strip: null }]);
   const meterOf = (key: string) => meters.states.get(key) ?? SILENT_METER;
   const narrow = v.mixNarrow;
+  // The plugin effects for «+»: the list the engine knows (scanned before, as in Sonidos).
+  useEffect(() => {
+    if (!audio.pluginList && !audio.pluginScan && audio.engineStatus.state !== "missing") void audio.loadPlugins(false);
+  }, [audio]);
   const anySolo = tracks.some((tr) => tr.solo);
   const engineOn = audio.engineStatus.state === "ready";
   return (

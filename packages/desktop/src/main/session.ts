@@ -297,12 +297,16 @@ export class SongSession {
       // The engine did not answer: what the file had is kept.
     }
     const out: PluginStates = {};
-    for (const [trackId, track] of Object.entries(song.tracks)) {
-      if (!track.plugin) continue;
-      const now = fresh[trackId];
-      const before = this.pluginStates[trackId];
-      if (now && now.id === track.plugin.id && now.data) out[trackId] = now;
-      else if (before && before.id === track.plugin.id) out[trackId] = before;
+    // Instruments by track id, plugin effects by their own id (F2.2 parte C): both keep their state
+    // while they play the same plugin.
+    const owners: Array<[string, string]> = [];
+    for (const [trackId, track] of Object.entries(song.tracks)) if (track.plugin) owners.push([trackId, track.plugin.id]);
+    for (const x of [...(song.masterInserts ?? []), ...Object.values(song.tracks).flatMap((t) => t.inserts ?? [])]) if (x.kind === "plugin" && x.plugin) owners.push([x.id, x.plugin.id]);
+    for (const [key, pluginId] of owners) {
+      const now = fresh[key];
+      const before = this.pluginStates[key];
+      if (now && now.id === pluginId && now.data) out[key] = now;
+      else if (before && before.id === pluginId) out[key] = before;
     }
     this.pluginStates = out;
     return out;
