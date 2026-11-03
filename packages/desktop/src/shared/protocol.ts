@@ -223,6 +223,8 @@ export const CH = {
   engineSounds: "fh:engine-sounds",
   engineMix: "fh:engine-mix",
   engineLevels: "fh:engine-levels",
+  engineMeters: "fh:engine-meters",
+  engineStats: "fh:engine-stats",
   builtinSounds: "fh:builtin-sounds",
   folders: "fh:folders",
   openFolder: "fh:open-folder",
@@ -268,4 +270,4 @@ export interface SkillImportResult {
 }
 
 /** Menu commands handled by the window (edit and view actions live there). */
-export type MenuAction = "undo" | "redo" | "cut" | "copy" | "paste" | "duplicate" | "delete" | "selectAll" | "toggleAuthorship" | "togglePanel" | "zoomIn" | "zoomOut" | "zoomRowsIn" | "zoomRowsOut" | "resetLayout" | "skills" | "midiOut" | "settings" | "panelTrack" | "panelSounds" | "panelAi";
+export type MenuAction = "undo" | "redo" | "cut" | "copy" | "paste" | "duplicate" | "delete" | "selectAll" | "toggleAuthorship" | "togglePanel" | "zoomIn" | "zoomOut" | "zoomRowsIn" | "zoomRowsOut" | "resetLayout" | "skills" | "midiOut" | "settings" | "panelTrack" | "panelSounds" | "panelAi" | "showEditor" | "showMix";

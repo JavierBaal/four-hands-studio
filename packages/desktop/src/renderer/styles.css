@@ -585,3 +585,95 @@ input.inline.mixval { height: 16px; padding: 0 2px; font-size: 10px; text-align:
   .ptab .plbl { display: none; }
   .ptab { padding: 7px 12px 8px; }
 }
+
+/* Consola de mezcla (F2.2 parte B), sobre el boceto aprobado el 03/11/2026 (DIRECCION_ARTISTICA, 13).
+   Tokens de medidor: --meter, --meter-peak y --clip (ámbar; el rojo es de grabar). */
+:root { --meter: #7fa196; --meter-peak: #ece6dc; --clip: #d9a35a; }
+.console { flex: 1; display: flex; flex-direction: column; min-height: 0; background: var(--bg-lane); border-top: 1px solid var(--line); }
+.ctoolbar { display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 12px; background: var(--bg-panel); border-bottom: 1px solid var(--line); flex: none; }
+.ctab { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border-radius: 7px; border: 1px solid var(--line-control); color: var(--text-2); }
+.ctab.on { color: var(--text); background: var(--bg-control-on); border-color: var(--line-on); }
+.cspacer { flex: 1; }
+.cseg { display: inline-flex; border: 1px solid var(--line-control); border-radius: 7px; overflow: hidden; height: 32px; }
+.cseg1 { display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; color: var(--text-2); background: transparent; border: 0; font: inherit; cursor: pointer; }
+.cseg1 + .cseg1 { border-left: 1px solid var(--line-control); }
+.cseg1:focus-visible { outline: 2px solid var(--line-on); outline-offset: -2px; }
+.cseg1.on { color: var(--text); background: var(--toggle-on); }
+.cbody { flex: 1; display: flex; min-height: 0; }
+.cstrips { flex: 1; display: flex; min-height: 0; min-width: 0; overflow-x: auto; overflow-y: hidden; padding: 8px; gap: 4px; }
+.cmasterzone { flex: none; display: flex; padding: 8px; border-left: 1px solid var(--line); background: var(--bg-panel); }
+.cdivider { flex: none; width: 18px; display: flex; align-items: flex-start; justify-content: center; border-left: 1px solid var(--line-strong); margin-left: 6px; }
+.cdivider span { writing-mode: vertical-rl; transform: rotate(180deg); font-size: 11px; color: var(--text-2); text-transform: uppercase; letter-spacing: .05em; margin-top: 8px; }
+.cstrip { width: 88px; flex: none; display: flex; flex-direction: column; gap: 6px; padding: 0 6px 8px; border: 1px solid var(--line-soft); border-radius: 10px; background: var(--bg-app); box-sizing: border-box; min-height: 0; overflow: hidden; }
+.cstrip.narrow { width: 46px; padding: 0 3px 8px; gap: 5px; }
+.cband { height: 4px; margin: 0 -6px; background: var(--strip); flex: none; }
+.cstrip.narrow .cband { margin: 0 -3px; }
+.cstrip.active { background: var(--bg-card); border-color: var(--line-control); }
+.cstrip.active .cband { box-shadow: 0 2px 0 var(--strip); }
+.cstrip.muted .cfaderzone, .cstrip.muted .cname { opacity: .5; }
+.cstrip.bus { background: color-mix(in srgb, var(--strip) 6%, var(--bg-panel)); }
+.cstrip.master { width: 104px; background: var(--bg-panel); border-color: var(--line-control); }
+/* Common heights so every fader lines up; more effects or sends scroll inside (the height will be adjustable). */
+.cfx { display: flex; flex-direction: column; gap: 3px; flex: none; height: clamp(44px, 22%, 154px); overflow-y: auto; }
+.cfxcount { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--text-2); text-align: center; height: 19px; line-height: 19px; border: 1px solid var(--line-control); border-radius: 4px; flex: none; }
+.cslot { height: 19px; flex: none; border-radius: 4px; border: 1px solid var(--line-control); background: var(--bg-control); font-size: 11px; line-height: 17px; padding: 0 5px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-sizing: border-box; }
+.cslot.add { border-style: dashed; border-color: var(--line-on); background: transparent; color: var(--text-2); text-align: center; }
+.cslot.fixed { color: var(--text-2); }
+.csends { display: flex; flex-direction: column; gap: 4px; flex: none; height: clamp(44px, 13%, 88px); overflow-y: auto; border-top: 1px solid var(--line-soft); padding-top: 4px; box-sizing: border-box; }
+.csend { display: flex; flex-direction: column; gap: 2px; }
+.csend.add { font-size: 10px; color: var(--text-2); text-align: center; border: 1px dashed var(--line-on); border-radius: 4px; height: 16px; line-height: 14px; }
+.csendname { font-size: 10px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cminibar { height: 4px; border-radius: 2px; background: var(--line-strong); overflow: hidden; }
+.cminibar > div { height: 100%; background: var(--text-2); }
+.cout { font-size: 11px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: none; border-top: 1px solid var(--line-soft); padding-top: 4px; }
+.cpan { display: flex; align-items: center; justify-content: space-between; flex: none; }
+.cstrip.narrow .cpan { justify-content: center; }
+.cstrip.narrow .fader.fpan { width: 32px; margin-left: 0; }
+.cval, .cdb { font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; font-size: 10px; color: var(--text-2); }
+.cdb { text-align: center; flex: none; font-size: 11px; color: var(--text); }
+.cstrip.narrow .cdb { font-size: 10px; }
+.cms { display: flex; gap: 4px; justify-content: center; flex: none; height: 20px; }
+.cstrip.narrow .cms { gap: 2px; }
+.cstrip.narrow .msb { width: 19px; }
+.cfaderzone { flex: 1; min-height: 80px; display: flex; justify-content: center; gap: 6px; position: relative; padding: 10px 0 4px; }
+.cstrip.narrow .cfaderzone { gap: 4px; }
+.cscale { position: relative; width: 18px; }
+.cscale span { position: absolute; right: 0; transform: translateY(50%); font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--text-2); opacity: .8; line-height: 10px; }
+.cvfader { position: relative; width: 14px; }
+.cvrail { position: absolute; left: 6px; top: 0; bottom: 0; width: 2px; border-radius: 1px; background: var(--line-strong); }
+.cvknob { position: absolute; left: 0; width: 14px; height: 22px; margin-bottom: -11px; border-radius: 4px; background: var(--bg-control-on); border: 1px solid var(--line-on); box-sizing: border-box; box-shadow: inset 0 10px 0 -9px var(--text); }
+.cmeter { position: relative; display: flex; gap: 2px; width: 12px; }
+.cbar { position: relative; flex: 1; background: var(--bg-page); border-radius: 1px; overflow: hidden; }
+.crms { position: absolute; left: 0; right: 0; bottom: 0; background: var(--meter); opacity: .85; }
+.cpeak { position: absolute; left: 0; right: 0; height: 2px; background: var(--meter-peak); opacity: .8; }
+.cclip { position: absolute; top: -8px; left: 0; right: 0; height: 4px; border-radius: 1px; background: var(--line-strong); border: 0; padding: 0; cursor: default; }
+.cclip.on { cursor: pointer; }
+.cclip.on { background: var(--clip); }
+.cname { display: flex; align-items: center; gap: 6px; flex: none; min-width: 0; }
+.ctitle { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cstrip.narrow .ctitle { font-size: 10px; }
+.cstrip.active .ctitle { font-weight: 600; }
+.cinst { font-size: 10px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: none; }
+/* Lo que aún no existe (efectos, envíos, buses): su sitio, vacío, sin reaccionar. */
+.cslot.add.off, .csend.add.off { opacity: .55; cursor: default; }
+.tgl:disabled { opacity: .45; cursor: default; }
+.cnote { font-size: 12px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.cstrip { cursor: default; }
+.cvfader { cursor: ns-resize; touch-action: none; }
+.cvfader:focus-visible { outline: 2px solid var(--line-on); outline-offset: 2px; border-radius: 4px; }
+.cvknob.on { border-color: var(--text-2); }
+.cstrip .fader.fpan { width: 46px; margin-left: 0; }
+.cstrip.master .cpan, .cstrip.master .cms { visibility: hidden; }
+.cstrip.master .cname .ctitle { font-weight: 600; }
+
+/* Indicador «Carga» del motor (barra superior, junto a «Guardado…»): discreto; ámbar desde el 70 %;
+   «Audio cortado» si se corta; a 880 px solo la barra. Sin rojo. */
+.load { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.loadbar { width: 40px; height: 4px; border-radius: 2px; background: var(--line-strong); overflow: hidden; display: inline-block; }
+.loadbar > span { display: block; height: 100%; background: var(--meter); }
+.load.hot .loadbar > span { background: var(--clip); }
+.load.hot .loadtxt, .load.cut .loadtxt { color: var(--clip); }
+.load.cut .loadbar > span { background: var(--clip); }
+@media (max-width: 880px) {
+  .load .loadtxt { display: none; }
+}

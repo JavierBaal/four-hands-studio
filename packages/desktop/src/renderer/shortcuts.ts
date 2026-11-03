@@ -33,6 +33,8 @@ export type Action =
   | "panelTrack"
   | "panelSounds"
   | "panelAi"
+  | "showEditor"
+  | "showMix"
   | "zoomRowsIn"
   | "toolZoom"
   | "toolArrow"
@@ -58,6 +60,9 @@ export const DEFAULT_SHORTCUTS: Record<Action, Combo[]> = {
   panelTrack: [{ code: "F4" }],
   panelSounds: [{ code: "F5" }],
   panelAi: [{ code: "F6" }],
+  // F2.2 parte B: as in Studio One, F2 the editor and F3 the console where the piano roll is.
+  showEditor: [{ code: "F2" }],
+  showMix: [{ code: "F3" }],
   undo: [{ key: "z", mod: true }],
   redo: [{ key: "y", mod: true }, { key: "z", mod: true, shift: true }],
   cut: [{ key: "x", mod: true }],

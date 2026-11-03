@@ -2,7 +2,7 @@
  * The window's door to the main process (exposed by the preload as `window.fh`), plus an in-page
  * stand-in that runs the core directly, for the browser harness and the interface tests.
  */
-import type { EngineLevels, EngineStrip } from "../shared/mix.js";
+import type { EngineLevels, EngineLoad, EngineStrip } from "../shared/mix.js";
 import { ENGINE_OFF, type EngineLoadResult, type EngineMidiEvent, type EnginePlugin, type EnginePluginList, type EngineScanProgress, type EngineSoundsResult, type EngineStatus, type PluginFolders } from "../shared/engine.js";
 import { NO_SOUND_PREFS, type SoundPrefs } from "../shared/sound-catalog.js";
 import { SongDocument, USER, runCommands, type Song } from "@fourhands/core";
@@ -84,8 +84,15 @@ export interface Bridge {
    * the built-in bank, at 0) and says when it is ready. It starts the engine if needed.
    */
   engineSounds(id: string, offset: number): Promise<EngineSoundsResult>;
-  /** F2.2: the engine's channel strips (fader, balance and reverb send of the plugin tracks). */
-  engineMix(channels: EngineStrip[]): void;
+  /**
+   * F2.2: the engine's channel strips (fader, balance and reverb send of the plugin tracks; on or off
+   * for mute and solo) and, when given, the master fader's gain (parte B).
+   */
+  engineMix(channels: EngineStrip[], master?: number): void;
+  /** F2.2 parte B: the strips' levels since the last call, for the console's meters (null without engine). */
+  engineMeters(): Promise<EngineLevels | null>;
+  /** F2.2 parte B: the engine's load since the last call (null without engine). */
+  engineStats(): Promise<EngineLoad | null>;
   /** F2.2: `reset` starts counting again; otherwise the strips' levels since then (null without engine). */
   engineLevels(reset: boolean): Promise<EngineLevels | null>;
   /** F2.1: where the built-in sounds play (ajustes.json, `builtinSounds`). */
@@ -123,7 +130,7 @@ export function memoryBridge(
     /** Plugins of a pretend engine (interface tests); absent: the engine is "missing". */
     enginePlugins?: EnginePlugin[];
   } = {},
-): Bridge & { doc: SongDocument; setAi(state: AiState): void; closed: string[]; engine: { loaded: Map<number, string>; midi: EngineMidiEvent[]; shown: number[]; mix: EngineStrip[] } } {
+): Bridge & { doc: SongDocument; setAi(state: AiState): void; closed: string[]; engine: { loaded: Map<number, string>; midi: EngineMidiEvent[]; shown: number[]; mix: EngineStrip[]; master?: number; meters?: EngineLevels; load?: EngineLoad } } {
   const now = options.now ?? Date.now;
   const doc = new SongDocument(song, { now });
   const patchListeners = new Set<(m: PatchMessage) => void>();
@@ -147,7 +154,7 @@ export function memoryBridge(
   let outPort: string | null = null;
   const fakePlugins = options.enginePlugins;
   const engineState: EngineStatus = fakePlugins ? { state: "ready", device: "Prueba · 48000 Hz", latency: 0.02, generation: 1 } : { ...ENGINE_OFF, state: "missing" };
-  const engine = { loaded: new Map<number, string>(), midi: [] as EngineMidiEvent[], shown: [] as number[], mix: [] as EngineStrip[] };
+  const engine: { loaded: Map<number, string>; midi: EngineMidiEvent[]; shown: number[]; mix: EngineStrip[]; master?: number; meters?: EngineLevels; load?: EngineLoad } = { loaded: new Map<number, string>(), midi: [], shown: [], mix: [] };
   let pluginDirs: string[] = [];
   let soundPrefs: SoundPrefs = structuredClone(NO_SOUND_PREFS);
   const pluginState = (): PluginFolders => ({ system: ["C:\\Program Files\\Common Files\\VST3"], user: [...pluginDirs] });
@@ -260,8 +267,14 @@ export function memoryBridge(
     // The pretend engine has no sounds: the interface tests keep the window's synth.
     engineSounds: async () => ({ ok: false, error: "The engine is not built on this computer" }),
     builtinSounds: async () => "app",
-    engineMix: (channels) => void (engine.mix = structuredClone(channels)),
+    engineMix: (channels, master) => {
+      engine.mix = structuredClone(channels);
+      if (master !== undefined) engine.master = master;
+    },
     engineLevels: async () => null,
+    // The harness's meters and load: what the test page sets (scripts/interaccion.mjs).
+    engineMeters: async () => (engine.meters ? structuredClone(engine.meters) : null),
+    engineStats: async () => (engine.load ? { ...engine.load } : null),
     folders: async () => ({ songs: "C:\\Users\\fran\\Documents\\Four Hands", backups: "C:\\Users\\fran\\AppData\\Roaming\\Four Hands Studio\\copias", sounds: "C:\\Users\\fran\\Documents\\Four Hands\\Sonidos", skills: "C:\\Users\\fran\\Documents\\Four Hands\\Skills" }),
     openFolder: (kind) => console.log("[fh] open folder", kind),
     openTool: (kind) => console.log("[fh] open tool", kind),

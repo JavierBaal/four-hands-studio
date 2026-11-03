@@ -64,7 +64,11 @@ const server = net.createServer((socket) => {
           send({ type: "event", event: "deviceChanged", device: "Fake · Auriculares · 48000 Hz", latency: 0.015, deviceError: "" });
           break;
         case "stats":
-          send({ type: "stats", blocks: midi, maxLoad: 0, late: 0 });
+          send({ type: "stats", blocks: midi, maxLoad: 0.3, avgLoad: 0.2, late: 0, overruns: 0, xruns: -1 });
+          break;
+        case "meters":
+        case "levels":
+          send({ type: m.type, channels: [{ peak: 0.5, rms: 0.1, clips: 0 }], master: { peak: 0.5, rms: 0.1, clips: 0 } });
           break;
         case "quit":
           process.exit(0);

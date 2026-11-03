@@ -3,7 +3,7 @@
  * as compact text in English. Pure functions of the song, so they are tested without the app.
  * Notes themselves are formatted by the core (compact.ts).
  */
-import { type EngineLevels, levelsReport } from "../../shared/mix.js";
+import { type EngineLevels, type EngineLoad, levelsReport } from "../../shared/mix.js";
 import { trackColorId } from "../../shared/track-colors.js";
 import {
   type Song,
@@ -123,6 +123,8 @@ export function overviewText(song: Song, extras: OverviewExtras = { open: [] }):
     lines.push(parts.join(" · "));
   }
 
+  // F2.2 parte B: the master fader, 0-100 like the tracks' volume (100 = 0 dB).
+  lines.push(`Master: vol ${Math.round((song.masterVolume ?? 1) * 100)}${(song.masterVolume ?? 1) === 1 ? " (0 dB)" : ""}`);
   if (Object.keys(song.harmony).length === 0) lines.push("Harmony: no chords written yet");
   else {
     lines.push("Harmony (chord of each bar; 'F, 3 G' = F, then G on beat 3):");
@@ -284,19 +286,34 @@ export { barStart };
  * F2.2: get_levels. Peak and RMS per track after its fader, and the master, from the last playback.
  * A meter, not ears: it says how loud, not which frequencies (that comes with F2.3).
  */
-export function levelsText(levels: EngineLevels | null, tracks: ReadonlyArray<{ name: string; channel: number; strip?: number | undefined }>, at: number | null): string {
-  if (!levels) return "No levels yet: they are measured in the audio engine while the song plays. Ask the user to play it (or the part you care about) and stop; then call get_levels again.";
+/** The engine's load as get_levels gives it (F2.2 parte B). */
+export function loadText(load: EngineLoad | null | undefined): string | null {
+  if (!load) return null;
+  const cut = load.dropouts > 0 ? `; the audio was CUT ${load.dropouts} time(s) in the last second it measured (too many plugins, or too small a buffer)` : "; no audio cut";
+  return `Engine load: ${Math.round(load.avgLoad * 100)} % average, ${Math.round(load.maxLoad * 100)} % peak of each audio block's time${cut}.`;
+}
+
+export function levelsText(
+  levels: EngineLevels | null,
+  tracks: ReadonlyArray<{ name: string; channel: number; strip?: number | undefined }>,
+  at: number | null,
+  extras: { masterVolume?: number | undefined; load?: EngineLoad | null } = {},
+): string {
+  const load = loadText(extras.load);
+  if (!levels) return ["No levels yet: they are measured in the audio engine while the song plays. Ask the user to play it (or the part you care about) and stop; then call get_levels again.", ...(load ? [load] : [])].join("\n");
   const r = levelsReport(levels, tracks);
   const db = (v: number) => (Number.isFinite(v) ? `${v.toFixed(1)}` : "silent");
   const clip = (n: number) => (n > 0 ? `, CLIPPING (${n} samples over 0 dBFS)` : "");
   const when = at ? ` (${new Date(at).toISOString().slice(11, 16)} UTC)` : "";
-  const lines = [`Levels of the last playback${when}, measured after each fader, in dBFS (peak / average RMS):`, `- Master: ${db(r.master.peakDb)} / ${db(r.master.rmsDb)}${clip(r.master.clips)}`];
+  const fader = extras.masterVolume !== undefined && extras.masterVolume !== 1 ? ` (after its fader, vol ${Math.round(extras.masterVolume * 100)})` : "";
+  const lines = [`Levels of the last playback${when}, measured after each fader, in dBFS (peak / average RMS):`, `- Master${fader}: ${db(r.master.peakDb)} / ${db(r.master.rmsDb)}${clip(r.master.clips)}`];
   const silent: string[] = [];
   for (const t of r.tracks) {
     if (!Number.isFinite(t.peakDb)) silent.push(t.track);
     else lines.push(`- ${t.track}: ${db(t.peakDb)} / ${db(t.rmsDb)}${clip(t.clips)}`);
   }
   if (silent.length) lines.push(`Silent in that playback (muted, not playing there, or no notes): ${silent.join(", ")}.`);
+  if (load) lines.push(load);
   lines.push("This is a meter, not hearing: it does not tell frequencies or masking. Say so if you base an opinion on it.");
   return lines.join("\n");
 }

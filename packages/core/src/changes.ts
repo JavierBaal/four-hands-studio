@@ -153,6 +153,8 @@ export function changesText(before: Song, after: Song, options: ChangesOptions):
   const keysBefore = keyChangesText(before);
   const keysAfter = keyChangesText(after);
   if (keysBefore !== keysAfter) songLines.push(`  key changes: ${keysBefore ? keysBefore.split("\n").join(" · ") : "none"} → ${keysAfter ? keysAfter.split("\n").join(" · ") : "none"}`);
+  if ((before.masterVolume ?? 1) !== (after.masterVolume ?? 1))
+    songLines.push(`  master vol ${Math.round((before.masterVolume ?? 1) * 100)} → ${Math.round((after.masterVolume ?? 1) * 100)}`);
   if ((before.concept?.text ?? "") !== (after.concept?.text ?? ""))
     songLines.push(after.concept ? `  concept (${who(after.concept.author, aiName)}): ${after.concept.text}` : "  concept removed");
   if (songLines.length) lines.push("", "Song:", ...songLines);

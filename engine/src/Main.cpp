@@ -97,6 +97,45 @@ int selfTest (const juce::String& folder)
         std::cout << "FAIL no reverb from the send" << std::endl;
         return 7;
     }
+    // F2.2 parte B: a strip that goes off is silent at once, in the middle of a note (its plugin's
+    // own tail stops; what it already sent to the Reverb bus rings out there, as in the DAWs).
+    {
+        engine.setMix (0, 1.0, 0.0, 0.0, true);
+        engine.schedule (0, 0.0, juce::MidiMessage::noteOn (1, 60, (juce::uint8) 100));
+        engine.schedule (0, 1.0, juce::MidiMessage::noteOff (1, 60));
+        juce::AudioBuffer<float> a (2, 14400), b (2, 14400);
+        a.clear();
+        b.clear();
+        engine.renderOffline (a);
+        engine.setMix (0, 1.0, 0.0, 0.0, false);
+        engine.takeMeters (false); // count from here on
+        engine.renderOffline (b);
+        const auto offStrip = engine.takeMeters (false)[0].peak;
+        engine.setMix (0, 1.0, 0.0, 0.0, true);
+        juce::AudioBuffer<float> rest (2, 48000);
+        engine.renderOffline (rest);
+        const auto on = a.getRMSLevel (0, 4800, 4800);
+        // The strip itself: the master may still carry the Reverb bus's tail of the tests before.
+        std::cout << "strip off: rms on " << on << ", strip peak while off " << offStrip << std::endl;
+        if (on < 0.001f || offStrip > 1e-9)
+        {
+            std::cout << "FAIL a strip that goes off keeps sounding" << std::endl;
+            return 10;
+        }
+    }
+    // The master fader: half the gain, half the sound.
+    {
+        engine.setMasterGain (0.5);
+        const auto m = play (1.0, 0.0);
+        engine.setMasterGain (1.0);
+        const auto ratio = m.getRMSLevel (0, 4800, 9600) / during;
+        std::cout << "master at half: " << ratio << " of full" << std::endl;
+        if (std::abs (ratio - 0.5f) > 0.08f)
+        {
+            std::cout << "FAIL the master fader" << std::endl;
+            return 11;
+        }
+    }
     // A2: a strip far past the 16 MIDI channels plays the same as the first one.
     engine.unload (0);
     if (const auto again = engine.load (300, chosen); again.isNotEmpty())

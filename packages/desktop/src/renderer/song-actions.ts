@@ -36,7 +36,7 @@ import { PALETTE, type PaletteItem, instrumentName, paletteName } from "../share
 import { barRange, keyName } from "./music.js";
 import type { Replica } from "./replica.js";
 import { SIZE, TRACK_PALETTE, trackColor, trackColorIndex } from "./theme.js";
-import { parseDb, parsePan } from "../shared/mix.js";
+import { formatDb, parseDb, parsePan } from "../shared/mix.js";
 
 /** The sections of Ajustes, in their order. */
 export const SETTINGS_SECTIONS = ["ai", "sound", "plugins", "midi", "folders", "advanced"] as const;
@@ -436,6 +436,18 @@ export class SongActions {
     if (track.volume === volume && track.pan === pan && !revChanged) return;
     const onlyReverb = track.volume === volume && track.pan === pan;
     void this.run(this.h(onlyReverb ? "hReverb" : "hMix", { name: track.name }), [{ type: "updateTrack", id, changes: { volume, pan, reverb: rev } }]);
+  }
+
+  /** F2.2 parte B: the master fader while it moves; the song changes with `setMasterVolume`. */
+  previewMaster(volume: number): void {
+    this.audio?.previewMaster(volume);
+  }
+
+  /** The master fader (0–1, the tracks' curve), one undo step. */
+  setMasterVolume(volume: number): void {
+    const v = Math.max(0, Math.min(1, volume));
+    if (v === (this.song.masterVolume ?? 1)) return;
+    void this.run(this.t("hMaster", { db: formatDb(v, this.lang) }), [{ type: "setSongProperties", props: { masterVolume: v } }]);
   }
 
   /** What sounds on a track, for its header, its card and the toolbar: the plugin, the bank preset or the instrument. */

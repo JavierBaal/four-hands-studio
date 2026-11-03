@@ -95,6 +95,7 @@ const song = z.object({
   meter: z.object({ numerator: int.min(1), denominator: z.union([z.literal(1), z.literal(2), z.literal(4), z.literal(8), z.literal(16), z.literal(32)]) }),
   key: z.object({ fifths: int.min(-7).max(7), mode: z.enum(["major", "minor"]) }),
   keyChanges: z.array(z.object({ tick: int.min(1), key: z.object({ fifths: int.min(-7).max(7), mode: z.enum(["major", "minor"]) }) })).optional(),
+  masterVolume: z.number().min(0).max(1).optional(),
   revision: int.min(0),
   counters: z.object({ n: int.min(1), t: int.min(1), s: int.min(1), a: int.min(1), p: int.min(1), i: int.min(1) }),
   trackOrder: z.array(z.string()),

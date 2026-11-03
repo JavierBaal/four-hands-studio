@@ -324,7 +324,40 @@ export const SHOTS = [
     if (b) await page.mouse.click(b.x + b.width * 0.45, b.y + 6);
     await page.waitForTimeout(300);
   } },
+  // F2.2 parte B (03/11/2026): the console, with the sketch's levels (the pretend engine gives the
+  // same reading every time) and the engine's load, as mezcla_1 to mezcla_4 of the approved sketch.
+  { name: "mezcla_1_consola", q: `?song=boceto&view=${view({ bottom: "mix" })}`, act: consoleLevels },
+  { name: "mezcla_2_ampliada", q: `?song=boceto&view=${view({ bottom: "mix", mixMax: true })}`, act: consoleLevels },
+  { name: "mezcla_3_compacta_880", w: 880, h: 800, q: `?song=boceto&view=${view({ bottom: "mix" })}`, act: consoleLevels },
+  { name: "mezcla_4_estrecha", q: `?song=boceto&view=${view({ bottom: "mix", mixNarrow: true })}`, act: consoleLevels },
+  { name: "mezcla_5_carga_alta", q: `?song=boceto&view=${view({ bottom: "mix" })}`, act: (page) => consoleLevels(page, { avgLoad: 0.78, maxLoad: 0.93, dropouts: 0 }) },
+  { name: "mezcla_6_audio_cortado", q: `?song=boceto&view=${view({ bottom: "mix" })}`, act: (page) => consoleLevels(page, { avgLoad: 0.96, maxLoad: 1.4, dropouts: 2 }) },
+  { name: "mezcla_7_solo_y_master", q: `?song=boceto&view=${view({ bottom: "mix" })}`, act: async (page) => {
+    await page.evaluate(() => {
+      const r = window.fhTest.replica;
+      r.run("x", [{ type: "updateTrack", id: r.song.trackOrder[2], changes: { solo: true } }, { type: "updateTrack", id: r.song.trackOrder[4], changes: { mute: true } }, { type: "setSongProperties", props: { masterVolume: 0.9 } }]);
+    });
+    await consoleLevels(page);
+  } },
 ];
+
+/** Steady levels on every track's strip (peak a few dB over the RMS), the master, and the engine's load. */
+async function consoleLevels(page, load = { avgLoad: 0.23, maxLoad: 0.31, dropouts: 0 }) {
+  await page.evaluate((load) => {
+    const { replica, audio, ai } = window.fhTest;
+    const dbs = [[-23.1, -40], [-16.8, -34], [-11.2, -27.4], [-19.2, -35.1], [-21.7, -37.5], [-15.4, -41.4], [-20.3, -42.6], [-24, -44]];
+    const lin = (db) => Math.pow(10, db / 20);
+    const channels = Array.from({ length: 64 }, () => ({ peak: 0, rms: 0, clips: 0 }));
+    replica.song.trackOrder.forEach((id, i) => {
+      const [peak, rms] = dbs[i % dbs.length];
+      channels[audio.stripOf(replica.song.tracks[id])] = { peak: lin(peak), rms: lin(rms), clips: i === 2 ? 1 : 0 };
+    });
+    ai.engine.meters = { channels, master: { peak: lin(-9.6), rms: lin(-27.9), clips: 0 } };
+    ai.engine.load = load;
+  }, load);
+  // The meters settle and the load is read (every second).
+  await page.waitForTimeout(1600);
+}
 
 const types = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".mid": "audio/midi", ".woff2": "font/woff2", ".woff": "font/woff" };
 const server = http

@@ -22,6 +22,43 @@ function savedText(t: ReturnType<typeof useApp>["t"], file: FileState, now: numb
   return now - file.savedAt < 2500 ? t("savedJust") : t("savedAll");
 }
 
+/** How long «Audio cortado» stays after a cut. */
+const CUT_SHOWN_MS = 4000;
+
+/**
+ * F2.2 parte B: the engine's load (DIRECCION_ARTISTICA.md, 13, 03/11/2026). Discreet, by «Guardado…»;
+ * amber from 70 %; «Audio cortado» for a few seconds when the audio was cut; only the bar at 880 px.
+ * Only while the engine runs (its load is read every second).
+ */
+function LoadIndicator({ audio }: { audio: AudioLayer }) {
+  const { t } = useApp();
+  useSyncExternalStore(audio.subscribe, audio.getVersion);
+  const [now, setNow] = useState(() => Date.now());
+  const load = audio.engineLoad;
+  const cutAt = audio.lastDropoutAt;
+  useEffect(() => {
+    if (!cutAt) return;
+    const left = cutAt + CUT_SHOWN_MS - Date.now();
+    if (left <= 0) return;
+    const id = setTimeout(() => setNow(Date.now()), left + 50);
+    return () => clearTimeout(id);
+  }, [cutAt]);
+  if (!load) return null;
+  const avg = Math.min(100, Math.round(load.avgLoad * 100));
+  const cut = cutAt > 0 && Math.max(now, Date.now()) - cutAt < CUT_SHOWN_MS;
+  const hot = avg >= 70;
+  const title = cut ? t("loadCutTitle") : t("loadTitle", { avg, max: Math.min(999, Math.round(load.maxLoad * 100)) });
+  return (
+    <span className={`load${hot ? " hot" : ""}${cut ? " cut" : ""}`} title={title} role="status">
+      <span className="loadtxt">{cut ? t("loadCut") : t("loadLabel")}</span>
+      <span className="loadbar" aria-hidden="true">
+        <span style={{ width: `${Math.max(2, avg)}%` }} />
+      </span>
+      {!cut && <span className="loadtxt">{avg} %</span>}
+    </span>
+  );
+}
+
 /** Where the user is: the playhead while playing (~15 times a second), else the cursor. */
 function usePlace(audio: AudioLayer): number {
   const song = useSong();
@@ -210,6 +247,7 @@ export function TopBar({ audio }: { audio: AudioLayer }) {
           {song.title}
         </div>
       )}
+      <LoadIndicator audio={audio} />
       <span className={file.error || audio.status === "error" ? "saved err" : "saved"} title={file.error ?? (file.savedAt !== null ? t("savedTitle", { time: new Date(file.savedAt).toLocaleTimeString(lang === "es" ? "es-ES" : "en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" }), path: file.path }) : file.path)}>
         {saved}
       </span>

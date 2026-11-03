@@ -21,7 +21,7 @@ import { PluginWatch } from "./plugin-watch.js";
 import type { PluginStates, Song } from "@fourhands/core";
 import { SoundLibrary } from "./sound-library.js";
 import { EngineHost } from "./engine/host.js";
-import type { EngineLevels } from "../shared/mix.js";
+import { type EngineLevels, type EngineLoad, engineLoad } from "../shared/mix.js";
 import type { EngineLoadResult, EngineMidiEvent, EnginePlugin, EngineSoundsResult } from "../shared/engine.js";
 import { CATEGORIES, RECENT_MAX, type SoundCategory, type SoundPrefs } from "../shared/sound-catalog.js";
 
@@ -178,6 +178,8 @@ function engineHost(): EngineHost {
 
 /** F2.2: the engine's levels in the last playback, for the AI's get_levels. */
 let lastLevels: { levels: EngineLevels; at: number; strips: Record<string, number> } | null = null;
+/** F2.2 parte B: the engine's last load reading (the window asks every second), for get_levels. */
+let lastLoad: EngineLoad | null = null;
 /**
  * A2 (03/11/2026): each track's strip in the engine, as the window last sent it with the mix (the
  * window numbers them: shared/strips.ts). Plugins' state and the levels are read by strip.
@@ -439,6 +441,9 @@ function buildMenu(): void {
       submenu: [
         { label: t("menuAuthorship"), click: () => sendMenu("toggleAuthorship") },
         { label: t("menuPanel"), click: () => sendMenu("togglePanel") },
+        shown(t("menuEditor"), "F2", "showEditor"),
+        shown(t("menuMix"), "F3", "showMix"),
+        { type: "separator" },
         shown(t("menuPanelTrack"), "F4", "panelTrack"),
         shown(t("menuPanelSounds"), "F5", "panelSounds"),
         shown(t("menuPanelAi"), "F6", "panelAi"),
@@ -479,6 +484,7 @@ async function startAi(): Promise<void> {
     builtInSounds: () => library?.defaultPresets() ?? [],
     plugins: () => knownPlugins,
     levels: () => lastLevels,
+    load: () => (engine && engine.current.state === "ready" ? lastLoad : null),
     skills: skills!,
     onState: (state) => win?.webContents.send(CH.aiState, state),
     tone: aiTone,
@@ -747,10 +753,32 @@ function registerIpc(): void {
       return null;
     }
   });
-  ipcMain.on(CH.engineMix, (_e, channels: unknown) => {
+  ipcMain.on(CH.engineMix, (_e, channels: unknown, master: unknown) => {
     if (!Array.isArray(channels)) return;
     for (const c of channels as Array<{ ch?: unknown; track?: unknown }>) if (typeof c?.track === "string") trackStrips[c.track] = Number(c.ch);
-    engine?.send({ type: "mix", channels });
+    engine?.send(typeof master === "number" && Number.isFinite(master) ? { type: "mix", channels, master } : { type: "mix", channels });
+  });
+  // F2.2 parte B: the console's meters (~30 times a second, only with the console open) and the
+  // engine's load for «Carga». Never start the engine for them.
+  ipcMain.handle(CH.engineMeters, async () => {
+    if (!engine || engine.current.state !== "ready") return null;
+    try {
+      return await engine.request({ type: "meters" });
+    } catch {
+      return null;
+    }
+  });
+  ipcMain.handle(CH.engineStats, async () => {
+    if (!engine || engine.current.state !== "ready") return null;
+    try {
+      const reply = (await engine.request({ type: "stats" })) as Record<string, number>;
+      const load = engineLoad(reply);
+      lastLoad = load;
+      if (load.dropouts > 0) appendLog({ type: "engine_dropouts", count: load.dropouts, maxLoad: Math.round(load.maxLoad * 100) / 100 });
+      return load;
+    } catch {
+      return null;
+    }
   });
   ipcMain.handle(CH.builtinSounds, () => (readSettings().builtinSounds === "app" ? "app" : "engine"));
   // Ajustes: folders, test tools and where the engine looks for plugins.

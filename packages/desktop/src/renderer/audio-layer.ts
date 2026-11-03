@@ -10,7 +10,7 @@ import { Engine } from "../audio/engine.js";
 import { INITIAL_KEYBOARD, type KeyboardState, keyAction } from "../audio/keyboard.js";
 import { Player, type Target } from "../audio/player.js";
 import { type EnginePort, type MidiPort, SoundRouter, isOwnLoopback } from "../audio/router.js";
-import { engineStrips, levelsReport } from "../shared/mix.js";
+import { type EngineLevels, type EngineLoad, engineStrips, levelsReport, masterGain } from "../shared/mix.js";
 import { METRONOME_KEY, StripMap } from "../shared/strips.js";
 import { NO_SOUND_PREFS, type SoundItem, type SoundPrefs, buildCatalog, withRecent } from "../shared/sound-catalog.js";
 import { ENGINE_OFF, type EnginePluginList, type EngineScanProgress, type EngineStatus } from "../shared/engine.js";
@@ -60,6 +60,14 @@ export class AudioLayer {
   private held = new Map<string, number>();
   private draftTimer: ReturnType<typeof setInterval> | null = null;
   private trackSignature = "";
+  private mixSignature = "";
+  /**
+   * F2.2 parte B: the engine's load for «Carga» (read every second while the engine runs), and when
+   * the audio was last cut (the indicator says so for a while).
+   */
+  engineLoad: EngineLoad | null = null;
+  lastDropoutAt = 0;
+  private loadTimer: ReturnType<typeof setInterval> | null = null;
   private engine: Engine | null = null;
   /** Sound banks the user installed (refreshed when the sounds folder changes). */
   banks: SoundBankInfo[] = [];
@@ -161,6 +169,16 @@ export class AudioLayer {
         const tr = this.replica.song.tracks[id];
         return tr ? `${this.stripOf(tr)}:${tr.output ?? ""}:${tr.channel}:${tr.program}:${tr.volume}:${tr.pan}:${tr.reverb ?? 0}:${tr.sound ? `${tr.sound.bank}/${tr.sound.bankMSB}/${tr.sound.program}` : ""}` : "";
       }).join("|");
+      // F2.2 parte B: mute, solo and the master fader go to the engine (they do not re-set the player).
+      const mixSig = `${this.replica.song.masterVolume ?? 1}|${this.replica.song.trackOrder.map((id) => {
+        const tr = this.replica.song.tracks[id];
+        return tr ? `${tr.mute ? "m" : ""}${tr.solo ? "s" : ""}` : "";
+      }).join(",")}`;
+      if (mixSig !== this.mixSignature && sig === this.trackSignature) {
+        this.mixSignature = mixSig;
+        this.sendMix();
+      }
+      this.mixSignature = mixSig;
       if (sig !== this.trackSignature) {
         this.trackSignature = sig;
         this.sendMix();
@@ -247,6 +265,7 @@ export class AudioLayer {
     const hadSounds = this.soundsInEngine();
     const was = this.engineStatus.state;
     this.engineStatus = status;
+    this.watchLoad();
     // Its sounds went with it: the window plays them again, with the song's programs.
     if (hadSounds && !this.soundsInEngine()) {
       this.bridge.log({ type: "builtin_sounds", where: "app", reason: status.state });
@@ -309,7 +328,37 @@ export class AudioLayer {
     const tracks = this.replica.song.trackOrder.map((id) => this.replica.song.tracks[id]!).filter(Boolean);
     const reset = [...this.stripReset, this.strips.of(METRONOME_KEY, 15)];
     this.stripReset = [];
-    this.bridge.engineMix(engineStrips(tracks.map((t) => ({ ...t, strip: this.stripOf(t) })), reset));
+    this.bridge.engineMix(engineStrips(tracks.map((t) => ({ ...t, strip: this.stripOf(t) })), reset), masterGain(this.replica.song.masterVolume));
+  }
+
+  /** F2.2 parte B: the strips' levels since the last reading, for the console (null without engine). */
+  async meters(): Promise<EngineLevels | null> {
+    if (this.engineStatus.state !== "ready") return null;
+    return this.bridge.engineMeters();
+  }
+
+  /** Reads the engine's load every second while it runs; the window redraws only when it changes. */
+  private watchLoad(): void {
+    if (this.engineStatus.state !== "ready") {
+      if (this.loadTimer) clearInterval(this.loadTimer);
+      this.loadTimer = null;
+      if (this.engineLoad) {
+        this.engineLoad = null;
+        this.changed();
+      }
+      return;
+    }
+    if (this.loadTimer) return;
+    this.loadTimer = setInterval(() => {
+      void this.bridge.engineStats().then((load) => {
+        if (!load) return;
+        const shown = (l: EngineLoad | null) => (l ? Math.round(l.avgLoad * 100) : -1);
+        const before = shown(this.engineLoad);
+        this.engineLoad = load;
+        if (load.dropouts > 0) this.lastDropoutAt = Date.now();
+        if (shown(load) !== before || load.dropouts > 0) this.changed();
+      });
+    }, 1000);
   }
 
   /** F2.1: the engine has the built-in bank of its current run. */
@@ -887,7 +936,19 @@ export class AudioLayer {
   /** A fader moving: hear it now; the song gets the value on release. */
   previewMix(trackId: string, volume: number, pan: number, reverb?: number): void {
     const track = this.replica.song.tracks[trackId];
-    if (track) this.player.previewMix({ ch: track.channel, strip: this.stripOf(track) }, volume, pan, reverb);
+    if (!track) return;
+    this.player.previewMix({ ch: track.channel, strip: this.stripOf(track) }, volume, pan, reverb);
+    // A plugin's strip is audio in the engine (it gets no CC7): move it there while dragging.
+    if (track.output === "plugin" && this.engineStatus.state === "ready") {
+      const tracks = this.heardTracks().map((t) => (t.id === trackId ? { ...t, volume, pan, reverb: reverb ?? t.reverb } : t));
+      const mine = engineStrips(tracks.map((t) => ({ ...t, strip: this.stripOf(t) }))).filter((st) => st.track === trackId);
+      this.bridge.engineMix(mine);
+    }
+  }
+
+  /** F2.2 parte B: the master fader while it moves (the song changes on release). */
+  previewMaster(volume: number): void {
+    if (this.engineStatus.state === "ready") this.bridge.engineMix([], masterGain(volume));
   }
 
   audition(pitch: number, velocity: number): void {

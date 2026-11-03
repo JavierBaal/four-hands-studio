@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { dbToVolume, formatDb, formatPan, formatReverb, parseDb, parsePan, parseReverb, volumeToDb } from "./mix.js";
-import { engineStrips, levelDb, levelsReport, stripGain } from "./mix.js";
+import { engineLoad, engineStrips, levelDb, levelsReport, masterGain, stripGain } from "./mix.js";
 import { trackColorByName, trackColorId, TRACK_PALETTE } from "./track-colors.js";
 import { TRACK_COLOR_COUNT } from "@fourhands/core";
 
@@ -100,6 +100,35 @@ describe("the engine's strips (F2.2, 03/11/2026)", () => {
       { ch: 12, gain: 1, pan: 0, reverb: 0 },
       { ch: 37, gain: 1, pan: 0.5, reverb: 0, track: "t9" },
     ]);
+  });
+});
+
+describe("mute, solo and the master in the engine (F2.2 parte B)", () => {
+  it("turns off muted strips, and with a solo every strip but the soloed ones; built-in sounds too", () => {
+    const tracks = [
+      { channel: 0, output: "plugin", volume: 1, pan: 0, mute: true },
+      { channel: 1, volume: 1, pan: 0 },
+    ];
+    expect(engineStrips(tracks).map((s) => s.on)).toEqual([false, undefined]);
+    // Solo wins over mute, as in the player.
+    const soloed = [
+      { channel: 0, output: "plugin", volume: 1, pan: 0, mute: true, solo: true },
+      { channel: 1, volume: 1, pan: 0 },
+      { channel: 2, volume: 1, pan: 0, solo: true },
+    ];
+    expect(engineStrips(soloed).map((s) => s.on)).toEqual([undefined, false, undefined]);
+  });
+
+  it("gives the master the same curve as a track, 0 dB when the song has none", () => {
+    expect(masterGain(undefined)).toBe(1);
+    expect(masterGain(0.8)).toBe(stripGain(0.8));
+    expect(masterGain(0)).toBe(0);
+  });
+
+  it("reads the engine's load and counts a cut once when the driver also saw it", () => {
+    expect(engineLoad({ avgLoad: 0.23, maxLoad: 0.4, overruns: 1, xruns: 1 })).toEqual({ avgLoad: 0.23, maxLoad: 0.4, dropouts: 1 });
+    expect(engineLoad({ avgLoad: 0.1, maxLoad: 0.2, overruns: 0, xruns: -1 }).dropouts).toBe(0);
+    expect(engineLoad({}).avgLoad).toBe(0);
   });
 });
 

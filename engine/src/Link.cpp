@@ -261,10 +261,13 @@ juce::var Link::handle (const juce::var& m, Connection& from)
 
     if (type == "mix")
     {
-        // F2.2: the strips of the tracks that changed, { ch (the strip), gain, pan, reverb }. No reply.
+        // F2.2: the strips of the tracks that changed, { ch (the strip), gain, pan, reverb, on }, and
+        // the master fader (`master`, linear), when it comes. No reply.
         if (auto* list = m["channels"].getArray())
             for (const auto& c : *list)
-                engine.setMix ((int) c["ch"], (double) c["gain"], (double) c["pan"], (double) c["reverb"]);
+                engine.setMix ((int) c["ch"], (double) c["gain"], (double) c["pan"], (double) c["reverb"], c.hasProperty ("on") ? (bool) c["on"] : true);
+        if (m.hasProperty ("master"))
+            engine.setMasterGain ((double) m["master"]);
         return {};
     }
 
@@ -289,7 +292,9 @@ juce::var Link::handle (const juce::var& m, Connection& from)
     if (type == "stats")
     {
         const auto s = engine.takeStats();
-        return obj ({ { "type", "stats" }, { "blocks", (juce::int64) s.blocks }, { "maxLoad", s.maxLoad }, { "late", s.late } });
+        return obj ({ { "type", "stats" }, { "blocks", (juce::int64) s.blocks }, { "maxLoad", s.maxLoad },
+                      { "avgLoad", s.blocks > 0 ? s.sumLoad / (double) s.blocks : 0.0 }, { "late", s.late },
+                      { "overruns", s.overruns }, { "xruns", s.xruns } });
     }
 
     if (type == "quit")

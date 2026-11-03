@@ -75,6 +75,8 @@ export interface SongProperties {
   tempo?: number;
   meter?: Meter;
   key?: KeySignature;
+  /** The master fader, 0–1 (1 = 0 dB, which removes the field). */
+  masterVolume?: number;
 }
 
 /** A few sentences: the intention and the limits, not a score. */
@@ -103,6 +105,11 @@ export function setSongProperties(tx: Transaction, props: SongProperties): void 
     check(isInt(props.key.fifths) && Math.abs(props.key.fifths) <= 7, `Invalid key: ${props.key.fifths}`);
     check(props.key.mode === "major" || props.key.mode === "minor", `Invalid mode: ${props.key.mode}`);
     tx.set(["key"], { fifths: props.key.fifths, mode: props.key.mode });
+  }
+  if (props.masterVolume !== undefined && props.masterVolume !== (tx.song.masterVolume ?? 1)) {
+    check(Number.isFinite(props.masterVolume) && props.masterVolume >= 0 && props.masterVolume <= 1, "Master volume must be between 0 and 1");
+    if (props.masterVolume === 1) tx.remove(["masterVolume"]);
+    else tx.set(["masterVolume"], props.masterVolume);
   }
 }
 

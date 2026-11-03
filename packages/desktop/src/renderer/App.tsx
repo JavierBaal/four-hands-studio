@@ -14,6 +14,7 @@ import { RollToolbar } from "./components/RollToolbar.js";
 import { TopBar } from "./components/TopBar.js";
 import { ActionsCtx, activeTrack, notesByTrack, useApp, useSize, useSong, useView } from "./context.js";
 import { Mixer } from "./components/Mixer.js";
+import { Console } from "./components/Console.js";
 import { KeyGuide } from "./components/KeyGuide.js";
 import { Notice } from "./components/SoundsHelp.js";
 import { Settings } from "./components/Settings.js";
@@ -26,6 +27,8 @@ import { Splitter } from "./components/Splitter.js";
 
 /** The piano roll keeps at least this much height when the arrangement grows. */
 const ROLL_MIN = 220;
+/** F2.2 parte B: what the console keeps at least, below the arrangement (a fader that can be used). */
+const CONSOLE_MIN = 420;
 import { type Action, DEFAULT_SHORTCUTS, PIANO_MODE_ALLOWED, actionFor } from "./shortcuts.js";
 import { SIZE } from "./theme.js";
 import type { MenuAction } from "../shared/protocol.js";
@@ -223,6 +226,13 @@ export function App({ audio, onEditor }: AppProps) {
         case "save":
           bridge.save();
           return true;
+        case "showEditor":
+          view.set({ bottom: "editor" });
+          return true;
+        case "showMix":
+          // F3 again goes back to the editor, as in Studio One.
+          view.set({ bottom: view.state.bottom === "mix" ? "editor" : "mix" });
+          return true;
         case "panelTrack":
           togglePanel("track");
           return true;
@@ -260,7 +270,7 @@ export function App({ audio, onEditor }: AppProps) {
       const target = e.target as HTMLElement | null;
       // While typing, keys are the field's; F4 to F6 (the side column) still work.
       const typingField = target && (target.tagName === "INPUT" || target.tagName === "SELECT" || target.tagName === "TEXTAREA");
-      if (typingField && !/^F[456]$/.test(e.code)) return;
+      if (typingField && !/^F[23456]$/.test(e.code)) return;
       if (e.key === (MAC ? "Meta" : "Control")) view.set({ pencilHeld: true });
       // The computer keyboard as a piano takes its keys first (ESPEC_PIANO_ROLL.md, 8.2).
       if (audio.keyDown(e)) {
@@ -299,6 +309,8 @@ export function App({ audio, onEditor }: AppProps) {
         else if (a === "panelTrack") togglePanel("track");
         else if (a === "panelSounds") togglePanel("sounds");
         else if (a === "panelAi") togglePanel("ai");
+        else if (a === "showEditor") perform("showEditor");
+        else if (a === "showMix") perform("showMix");
         else if (a === "resetLayout") view.set({ ...LAYOUT_DEFAULTS, arrZoom: null, panelPeek: false });
         else if (a === "skills") actions.openSkills(true);
         else if (a === "midiOut") actions.openMidiOut(true);
@@ -347,11 +359,29 @@ export function App({ audio, onEditor }: AppProps) {
     // Saved once the view settles (a vertical zoom glides through in-between heights).
     // A column opened only for a moment (panelPeek) is remembered folded.
     const id = setTimeout(
-      () => saveLayout({ headerWidth: v.headerWidth, panelWidth: v.panelWidth, arrHeight: v.arrHeight, rowHeight: v.rowHeight, panelOpen: v.panelOpen && !v.panelPeek, panelTab: v.panelTab }),
+      () =>
+        saveLayout({
+          headerWidth: v.headerWidth,
+          panelWidth: v.panelWidth,
+          arrHeight: v.arrHeight,
+          rowHeight: v.rowHeight,
+          panelOpen: v.panelOpen && !v.panelPeek,
+          panelTab: v.panelTab,
+          bottom: v.bottom,
+          mixArrHeight: v.mixArrHeight,
+          mixMax: v.mixMax,
+          mixNarrow: v.mixNarrow,
+        }),
       400,
     );
     return () => clearTimeout(id);
-  }, [v.headerWidth, v.panelWidth, v.arrHeight, v.rowHeight, v.panelOpen, v.panelPeek, v.panelTab]);
+  }, [v.headerWidth, v.panelWidth, v.arrHeight, v.rowHeight, v.panelOpen, v.panelPeek, v.panelTab, v.bottom, v.mixArrHeight, v.mixMax, v.mixNarrow]);
+  // F2.2 parte B: with the console, the arrangement has its own height; by default it leaves the
+  // console CONSOLE_MIN pixels, and never more than the tracks need.
+  const mixing = v.bottom === "mix";
+  const mixArrMax = Math.max(arrMin, (workSize.height || 800) - CONSOLE_MIN);
+  const mixArrDefault = Math.min(arrNatural, mixArrMax);
+  const arrShown = mixing ? Math.min(v.mixArrHeight ?? mixArrDefault, mixArrMax) : Math.min(v.arrHeight ?? arrNatural, arrMax);
 
   useSyncExternalStore(editor.subscribe, editor.getVersion);
   const overlayMenus = editor.overlay;
@@ -391,18 +421,36 @@ export function App({ audio, onEditor }: AppProps) {
       <TopBar audio={audio} />
       <div className="main">
         <div className="work" ref={workRef}>
-          <Arrangement compact={compact} visible={visible} onSelectTrack={selectTrack} onPan={pan} onToggle={toggleTrack} audio={audio} height={v.arrHeight !== null ? Math.min(v.arrHeight, arrMax) : null} />
-          <Splitter
-            dir="row"
-            className="arrsplit"
-            value={Math.min(v.arrHeight ?? arrNatural, arrMax)}
-            min={arrMin}
-            max={arrMax}
-            sign={1}
-            label={t("splitArrangement")}
-            onChange={(h) => view.set({ arrHeight: h >= arrNatural - 2 && h <= arrNatural + 2 ? null : h })}
-            onReset={() => view.set({ arrHeight: null })}
-          />
+          {!(mixing && v.mixMax) && (
+            <>
+              <Arrangement
+                compact={compact}
+                visible={visible}
+                onSelectTrack={selectTrack}
+                onPan={pan}
+                onToggle={toggleTrack}
+                audio={audio}
+                height={mixing ? arrShown : v.arrHeight !== null ? Math.min(v.arrHeight, arrMax) : null}
+              />
+              <Splitter
+                dir="row"
+                className="arrsplit"
+                value={arrShown}
+                min={arrMin}
+                max={mixing ? mixArrMax : arrMax}
+                sign={1}
+                label={t("splitArrangement")}
+                onChange={(h) =>
+                  mixing
+                    ? view.set({ mixArrHeight: h >= mixArrDefault - 2 && h <= mixArrDefault + 2 ? null : h })
+                    : view.set({ arrHeight: h >= arrNatural - 2 && h <= arrNatural + 2 ? null : h })
+                }
+                onReset={() => view.set(mixing ? { mixArrHeight: null } : { arrHeight: null })}
+              />
+            </>
+          )}
+          {mixing && <Console audio={audio} onSelectTrack={selectTrack} onToggle={toggleTrack} />}
+          {!mixing && (
           <section className="roll" aria-label={t("pianoRoll")}>
             <RollToolbar
               onGridMenu={(anchor) => {
@@ -413,6 +461,7 @@ export function App({ audio, onEditor }: AppProps) {
             <RollArea v={rollView} editor={editor} audio={audio} playhead={playhead} onResize={setRollSize} onWheel={onWheel} onKeyPress={(p) => audio.audition(p, 90)} />
             <KeyGuide audio={audio} />
           </section>
+          )}
         </div>
         {v.panelOpen && !compact && (
           <Splitter

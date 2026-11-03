@@ -47,12 +47,22 @@ export interface ViewState {
   headerWidth: number;
   panelWidth: number;
   arrHeight: number | null;
+  /**
+   * F2.2 parte B (Fran, 03/11/2026): what fills the piano roll's place, as in Studio One: the editor
+   * (F2) or the console (F3). With the console, the arrangement keeps its own height (`mixArrHeight`,
+   * null: a default that leaves the console room) and «Ampliar» hides it (`mixMax`). «Estrecho»
+   * makes every strip narrow.
+   */
+  bottom: "editor" | "mix";
+  mixArrHeight: number | null;
+  mixMax: boolean;
+  mixNarrow: boolean;
   /** Arrangement zoom (lupa or Ctrl + wheel over it): the ticks shown, or null for the whole song. */
   arrZoom: { start: number; span: number } | null;
 }
 
-export const LAYOUT_DEFAULTS = { headerWidth: 196, panelWidth: 288, arrHeight: null, rowHeight: 15, panelOpen: true, panelTab: "ai" } as const;
-export type Layout = Pick<ViewState, "headerWidth" | "panelWidth" | "arrHeight" | "rowHeight" | "panelOpen" | "panelTab">;
+export const LAYOUT_DEFAULTS = { headerWidth: 196, panelWidth: 288, arrHeight: null, rowHeight: 15, panelOpen: true, panelTab: "ai", bottom: "editor", mixArrHeight: null, mixMax: false, mixNarrow: false } as const;
+export type Layout = Pick<ViewState, "headerWidth" | "panelWidth" | "arrHeight" | "rowHeight" | "panelOpen" | "panelTab" | "bottom" | "mixArrHeight" | "mixMax" | "mixNarrow">;
 const LAYOUT_KEY = "fh.layout";
 
 /** The layout this person left last time (a per-window convenience: localStorage is enough). */
@@ -70,6 +80,11 @@ export function savedLayout(): Layout {
       // Folded or open, and on which tab, as the person left it.
       panelOpen: typeof raw.panelOpen === "boolean" ? raw.panelOpen : LAYOUT_DEFAULTS.panelOpen,
       panelTab: raw.panelTab === "track" || raw.panelTab === "sounds" || raw.panelTab === "ai" ? raw.panelTab : LAYOUT_DEFAULTS.panelTab,
+      // The console as it was left: open or not, its height, enlarged, narrow.
+      bottom: raw.bottom === "mix" ? "mix" : "editor",
+      mixArrHeight: typeof raw.mixArrHeight === "number" && Number.isFinite(raw.mixArrHeight) ? raw.mixArrHeight : null,
+      mixMax: raw.mixMax === true,
+      mixNarrow: raw.mixNarrow === true,
     };
   } catch {
     return { ...LAYOUT_DEFAULTS };
