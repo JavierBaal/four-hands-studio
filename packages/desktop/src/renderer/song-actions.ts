@@ -21,6 +21,7 @@ import {
   parseTempoChanges,
   tempoMarks,
   tempoChangesText,
+  nextChannel,
 } from "@fourhands/core";
 import type { AudioLayer } from "./audio-layer.js";
 import type { SoundItem } from "../shared/sound-catalog.js";
@@ -57,8 +58,11 @@ export type Typing =
 /** What the palette gives: an instrument of the default bank, or a preset of an installed bank. */
 export type SoundChoice = { kind: "default"; item: PaletteItem } | { kind: "bank"; bank: SoundBankInfo; preset: BankPreset };
 
-/** At most 15 tracks: channel 16 is the metronome's. */
-export const MAX_TRACKS = 15;
+/**
+ * A2 (03/11/2026): no longer 15 (one per MIDI channel). Each track has a strip of its own in the
+ * engine (512, with the metronome); past 15, tracks share MIDI channels for a DAW and a .mid file.
+ */
+export const MAX_TRACKS = 500;
 
 const METERS: [number, number][] = [
   [2, 4],
@@ -247,7 +251,7 @@ export class SongActions {
   choosePlugin(id: string, plugin: { id: string; name: string }): void {
     const track = this.song.tracks[id];
     if (!track) return;
-    this.audio?.retryPlugin(track.channel, plugin.id);
+    this.audio?.retryPlugin(track.id, plugin.id);
     if (track.output === "plugin" && track.plugin?.id === plugin.id) return;
     void this.run(this.h("hOutputPlugin", { name: track.name, plugin: plugin.name }), [
       { type: "updateTrack", id, changes: { output: "plugin", plugin: { id: plugin.id, name: plugin.name } } },
@@ -325,28 +329,26 @@ export class SongActions {
   // -------------------------------------------------------------------------
   // Tracks
 
-  /** A free melodic channel (never 10, the drums, nor 16, the metronome). */
-  private freeChannel(except?: string): number | null {
-    const used = new Set(orderedTracks(this.song).filter((t) => t.id !== except).map((t) => t.channel));
-    for (let ch = 0; ch < 15; ch++) if (ch !== 9 && !used.has(ch)) return ch;
-    return null;
+  /** A melodic channel for a track: a free one, or the least used (core's nextChannel). */
+  private freeChannel(except?: string): number {
+    return nextChannel(orderedTracks(this.song).filter((t) => t.id !== except));
   }
 
   canAddTrack(): boolean {
-    return this.song.trackOrder.length < MAX_TRACKS && this.freeChannel() !== null;
+    return this.song.trackOrder.length < MAX_TRACKS;
   }
 
   async addTrack(choice: SoundChoice): Promise<string | null> {
     const item = choice.kind === "default" ? choice.item : null;
-    if (!this.canAddTrack() && item?.program !== null) return null;
+    if (!this.canAddTrack()) return null;
     let spec: { name: string; percussion?: boolean; program?: number; channel?: number; sound?: TrackSound };
     let name: string;
     if (choice.kind === "bank") {
       name = this.uniqueName(choice.preset.name);
-      spec = { name, program: 0, channel: this.freeChannel()!, sound: soundOf(choice) };
+      spec = { name, program: 0, channel: this.freeChannel(), sound: soundOf(choice) };
     } else {
       name = this.uniqueName(paletteName(choice.item, this.lang));
-      spec = choice.item.program === null ? { name, percussion: true } : { name, program: choice.item.program, channel: this.freeChannel()! };
+      spec = choice.item.program === null ? { name, percussion: true } : { name, program: choice.item.program, channel: this.freeChannel() };
     }
     const reply = await this.run(this.h("hTrackAdd", { name }), [{ type: "addTrack", spec }]);
     if (!reply.ok) return null;
@@ -396,9 +398,7 @@ export class SongActions {
       inst = choice.preset.name;
       changes.sound = soundOf(choice);
       if (track.channel === 9) {
-        const ch = this.freeChannel(id);
-        if (ch === null) return;
-        changes.channel = ch;
+        changes.channel = this.freeChannel(id);
         changes.program = 0;
       }
     } else {
@@ -406,11 +406,7 @@ export class SongActions {
       inst = paletteName(item, this.lang);
       changes.program = item.program;
       if (item.program === null) changes.channel = 9;
-      else if (track.channel === 9) {
-        const ch = this.freeChannel(id);
-        if (ch === null) return;
-        changes.channel = ch;
-      }
+      else if (track.channel === 9) changes.channel = this.freeChannel(id);
     }
     void this.run(this.h("hInstrument", { name: track.name, inst }), [{ type: "updateTrack", id, changes }]);
   }
@@ -550,14 +546,14 @@ export class SongActions {
     if (track.output !== "plugin" || !track.plugin) return [];
     const plugin = track.plugin;
     const problem = this.audio?.pluginProblem;
-    if (problem && problem.name === plugin.name && !this.audio?.pluginReady(track.channel, plugin.id)) {
+    if (problem && problem.name === plugin.name && !this.audio?.pluginReady(track.id, plugin.id)) {
       return [{ label: `${this.t("pluginLoadFailed", { plugin: plugin.name })}: ${problem.error}`, disabled: true }];
     }
     return [
       {
         label: this.t("trackMenuPluginWindow", { plugin: plugin.name }),
-        disabled: !this.audio?.pluginReady(track.channel, plugin.id),
-        run: () => (this.editor.closeMenus(), void this.audio?.showPlugin(track.channel)),
+        disabled: !this.audio?.pluginReady(track.id, plugin.id),
+        run: () => (this.editor.closeMenus(), void this.audio?.showPlugin(track.id)),
       },
     ];
   }

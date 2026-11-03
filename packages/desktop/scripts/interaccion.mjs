@@ -829,7 +829,7 @@ await settle();
 const secondId = (await song()).trackOrder[1];
 check("a track goes out to the DAW from its menu, and its header says so", (await song()).tracks[secondId].output === "external" && /Tu DAW \(canal \d+\)/.test(await page.locator(".thdr").nth(1).locator(".tsnd").innerText()));
 check("its history label names the channel", /suena en tu DAW \(canal \d+\)/.test(await lastLabel()), await lastLabel());
-check("the external channel goes to the router, not the synth", await page.evaluate((id) => window.fhTest.audio.externalChannels().has(window.fhTest.replica.song.tracks[id].channel), secondId));
+check("the external channel goes to the router, not the synth", await page.evaluate((id) => window.fhTest.audio.externalStrips().has(window.fhTest.audio.stripOf(window.fhTest.replica.song.tracks[id])), secondId));
 await page.locator(".thdr").nth(1).click({ button: "right", position: { x: 120, y: 12 } });
 await page.getByRole("menuitem", { name: /^Suena en/ }).click();
 await page.getByRole("menuitem", { name: /Configurar la salida MIDI/ }).click();
@@ -859,14 +859,14 @@ check("its header shows the plugin", /Kontakt 8/.test(await page.locator(".thdr"
 check(
   "the plugin is loaded in the track's slot and its channel leaves the built-in sound",
   await page.evaluate((id) => {
-    const ch = window.fhTest.replica.song.tracks[id].channel;
-    return window.fhTest.ai.engine.loaded.get(ch) === "VST3-Kontakt 8-1" && window.fhTest.audio.pluginChannels().has(ch);
+    const ch = window.fhTest.audio.stripOf(window.fhTest.replica.song.tracks[id]);
+    return window.fhTest.ai.engine.loaded.get(ch) === "VST3-Kontakt 8-1" && window.fhTest.audio.pluginStrips().has(ch);
   }, pluginId),
 );
 await page.locator(".thdr").nth(1).click({ button: "right", position: { x: 120, y: 12 } });
 await page.getByRole("menuitem", { name: "Abrir ventana de Kontakt 8" }).click();
 await settle();
-check("the track menu opens the plugin's window", await page.evaluate((id) => window.fhTest.ai.engine.shown.includes(window.fhTest.replica.song.tracks[id].channel), pluginId));
+check("the track menu opens the plugin's window", await page.evaluate((id) => window.fhTest.ai.engine.shown.includes(window.fhTest.audio.stripOf(window.fhTest.replica.song.tracks[id])), pluginId));
 
 // Interfaz 2, parte 2: the Pista tab, the card of the active track.
 await page.locator(".thdr").nth(1).click({ position: { x: 60, y: 10 } });
@@ -875,11 +875,11 @@ await settle();
 check("the Pista tab shows the active track and its plugin", (await page.locator(".tcard .tcname").innerText()) === (await song()).tracks[pluginId].name && /Kontakt 8/.test(await page.locator(".tcard .tcsoundname").innerText()));
 await page.locator(".tcard").getByRole("button", { name: "Abrir ventana" }).click();
 await settle();
-check("the card opens the plugin's window too", await page.evaluate((id) => window.fhTest.ai.engine.shown.filter((s) => s === window.fhTest.replica.song.tracks[id].channel).length === 2, pluginId));
+check("the card opens the plugin's window too", await page.evaluate((id) => window.fhTest.ai.engine.shown.filter((s) => s === window.fhTest.audio.stripOf(window.fhTest.replica.song.tracks[id])).length === 2, pluginId));
 check("only the plugin track has the window button in its header", (await page.locator(".thdr .plugb").count()) === 1);
 await page.locator(".thdr .plugb").click();
 await settle();
-check("the header's button opens the plugin's window in one click", await page.evaluate((id) => window.fhTest.ai.engine.shown.filter((s) => s === window.fhTest.replica.song.tracks[id].channel).length === 3, pluginId) && (await page.locator(".thdr .plugb").getAttribute("title")) === "Abrir Kontakt 8");
+check("the header's button opens the plugin's window in one click", await page.evaluate((id) => window.fhTest.ai.engine.shown.filter((s) => s === window.fhTest.audio.stripOf(window.fhTest.replica.song.tracks[id])).length === 3, pluginId) && (await page.locator(".thdr .plugb").getAttribute("title")) === "Abrir Kontakt 8");
 const colorBefore = (await song()).tracks[pluginId].color;
 await page.locator(".tcswatches .sw").nth((colorBefore + 3) % 10).click();
 await settle();
@@ -1176,6 +1176,17 @@ await settle();
 check("while the AI writes, going back waits", (await page.locator(".hi .hgo:disabled").count()) > 0 && (await page.locator(".hi .hgo:not(:disabled)").count()) === 0);
 await page.evaluate(() => window.fhTest.ai.setAi({ clients: [], reading: null, writing: [], mark: null }));
 await settle();
+
+// A2 (03/11/2026): no 15-track limit. Past 15 the button still adds, and every track has its own strip.
+await page.keyboard.press("Escape");
+while ((await song()).trackOrder.length < 18) {
+  await page.locator(".addtrack button").click();
+  await menuItem("Chelos").click();
+  await settle();
+}
+check("«Añadir pista» still adds past 15 tracks", (await song()).trackOrder.length === 18 && (await page.locator(".addtrack button").isEnabled()));
+const strips = await page.evaluate(() => window.fhTest.replica.song.trackOrder.map((id) => window.fhTest.audio.stripOf(window.fhTest.replica.song.tracks[id])));
+check("each of the 18 tracks plays on a strip of its own", new Set(strips).size === 18, JSON.stringify(strips));
 
 console.log(`${passed} passed, ${failures.length} failed`);
 for (const f of failures) console.log("FAIL", f);

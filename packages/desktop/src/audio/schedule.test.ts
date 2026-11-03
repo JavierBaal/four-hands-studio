@@ -38,12 +38,12 @@ describe("schedule", () => {
     const cc = noteEvents(doc.song, 900, 1920).filter((e) => e.ev.kind === "cc" && e.ev.cc !== 64).map((e) => [e.tick, (e.ev as { cc: number }).cc, (e.ev as { value: number }).value]);
     expect(cc).toEqual([[960, 11, 80], [960, 1, 30]]);
     expect(curveStateEvents(doc.song, 1500)).toEqual([
-      { kind: "cc", ch: 1, cc: 11, value: 80 },
-      { kind: "cc", ch: 1, cc: 1, value: 30 },
+      { kind: "cc", ch: 1, cc: 11, value: 80, strip: 1 },
+      { kind: "cc", ch: 1, cc: 1, value: 30, strip: 1 },
     ]);
     expect(curveResetEvents(doc.song)).toEqual([
-      { kind: "cc", ch: 1, cc: 11, value: 127 },
-      { kind: "cc", ch: 1, cc: 1, value: 0 },
+      { kind: "cc", ch: 1, cc: 11, value: 127, strip: 1 },
+      { kind: "cc", ch: 1, cc: 1, value: 0, strip: 1 },
     ]);
   });
 
@@ -67,17 +67,28 @@ describe("schedule", () => {
   });
 
   it("prepares programs, volume, pan and reverb", () => {
-    expect(setupEvents(song().song)).toContainEqual({ kind: "prog", ch: 1, prog: 42, bank: 0 });
+    expect(setupEvents(song().song)).toContainEqual({ kind: "prog", ch: 1, prog: 42, bank: 0, strip: 1 });
     // Reverb send (CC91): 0 when the track has none, so it goes back to dry.
-    expect(setupEvents(song().song)).toContainEqual({ kind: "cc", ch: 1, cc: 91, value: 0 });
+    expect(setupEvents(song().song)).toContainEqual({ kind: "cc", ch: 1, cc: 91, value: 0, strip: 1 });
     const doc = song();
     doc.transact({ actor: USER, label: "r" }, (tx) => updateTrack(tx, "t1", { reverb: 0.5 }));
     const ch = doc.song.tracks.t1!.channel;
-    expect(setupEvents(doc.song)).toContainEqual({ kind: "cc", ch, cc: 91, value: 64 });
+    expect(setupEvents(doc.song)).toContainEqual({ kind: "cc", ch, cc: 91, value: 64, strip: ch });
     // A track that plays a preset of an installed bank sends that bank's select and preset instead.
     const custom = setupEvents(song().song, (t) => (t.channel === 1 ? { bank: 20, prog: 2 } : null));
-    expect(custom).toContainEqual({ kind: "prog", ch: 1, prog: 2, bank: 20 });
-    expect(custom).not.toContainEqual({ kind: "prog", ch: 1, prog: 42, bank: 0 });
+    expect(custom).toContainEqual({ kind: "prog", ch: 1, prog: 2, bank: 20, strip: 1 });
+    expect(custom).not.toContainEqual({ kind: "prog", ch: 1, prog: 42, bank: 0, strip: 1 });
+  });
+
+  it("puts every event of a track on its strip, and the metronome on its own (A2, 03/11/2026)", () => {
+    const doc = song();
+    const stripOf = (t: { id: string }) => (t.id === "t2" ? 300 : 7);
+    const setup = setupEvents(doc.song, () => null, stripOf, 99);
+    expect(setup[0]).toMatchObject({ kind: "prog", ch: 15, strip: 99 });
+    expect(setup.filter((e) => e.kind !== "panic" && e.ch === 1).every((e) => e.kind !== "panic" && e.strip === 300)).toBe(true);
+    const notes = noteEvents(doc.song, 0, 3840, Infinity, stripOf);
+    expect(notes.filter((e) => e.ev.kind !== "panic" && e.ev.ch === 1).every((e) => e.ev.kind !== "panic" && e.ev.strip === 300)).toBe(true);
+    expect(clickEvents(doc.song, 0, 960, 99).every((e) => e.ev.kind !== "panic" && e.ev.strip === 99)).toBe(true);
   });
 
   it("wraps the window around the loop", () => {

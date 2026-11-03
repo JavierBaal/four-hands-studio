@@ -2,7 +2,7 @@
  * MIDI out (H4, Fran 20/10/2026): tracks set to sound in another program (Studio One, through a
  * virtual port such as loopMIDI) send their events out on their own channel instead of playing
  * the built-in sound. The player keeps scheduling as always; this sits between it and the synth
- * and splits by channel. Program changes never go out (they would change the preset loaded in the
+ * and splits by track (A2: by the track's strip, `ev.strip`, or its channel without one). Program changes never go out (they would change the preset loaded in the
  * other program); notes, pedal, expression, modulation, volume, pan and reverb send do.
  */
 import { type EngineMidiEvent, SOUNDS_SLOT } from "../shared/engine.js";
@@ -57,7 +57,7 @@ export function silenceBytes(ch: number): number[][] {
 
 /**
  * The native engine (fase 2, prueba S2): a track that sounds through a plugin plays in the slot of
- * its channel. The plugin always hears MIDI channel 1 (a Kontakt instrument listens there, or on
+ * its strip (A2; before, of its channel). The plugin always hears MIDI channel 1 (a Kontakt instrument listens there, or on
  * all of them).
  */
 export interface EnginePort {
@@ -89,11 +89,16 @@ export function soundsBytes(ev: SynthEvent): number[][] {
   return bytes ? [bytes] : [];
 }
 
+/** The strip an event belongs to (A2): its own, or its channel's (the metronome, tests). */
+const stripOf = (ev: Exclude<SynthEvent, { kind: "panic" }>): number => ev.strip ?? ev.ch;
+
 export interface RouterOptions {
   /** The built-in synth. */
   inner: SoundOut;
-  /** Channels of the tracks that sound outside, read at every call (the song can change). */
+  /** Strips of the tracks that sound outside, read at every call (the song can change). */
   external: () => ReadonlySet<number>;
+  /** Their MIDI channels, for the panic (by default, `external`). */
+  externalChannels?: () => Iterable<number>;
   /** The chosen port, or null (then external tracks are silent: nothing doubles). */
   port: () => MidiPort | null;
   /** Milliseconds, the clock MIDI timestamps use (performance.now in the window). */
@@ -103,7 +108,7 @@ export interface RouterOptions {
    * other program plays at the same moment.
    */
   delayMs?: () => number;
-  /** Channels of the tracks that sound through a plugin of the engine. */
+  /** Strips of the tracks that sound through a plugin of the engine. */
   plugin?: () => ReadonlySet<number>;
   engine?: () => EnginePort | null;
   /**
@@ -124,8 +129,9 @@ export class SoundRouter implements SoundOut {
 
   private side(ev: SynthEvent): Side {
     if (ev.kind === "panic") return "inner";
-    if (this.options.plugin?.().has(ev.ch)) return "engine";
-    if (this.options.external().has(ev.ch)) return "port";
+    const strip = stripOf(ev);
+    if (this.options.plugin?.().has(strip)) return "engine";
+    if (this.options.external().has(strip)) return "port";
     return this.options.builtin?.() ? "builtin" : "inner";
   }
 
@@ -137,11 +143,12 @@ export class SoundRouter implements SoundOut {
     }
     if (side === "engine") {
       const data = engineBytes(ev);
-      if (data) this.options.engine?.()?.midi([{ slot: ev.kind === "panic" ? 0 : ev.ch, delay: 0, data }]);
+      if (data && ev.kind !== "panic") this.options.engine?.()?.midi([{ slot: stripOf(ev), delay: 0, data }]);
       return;
     }
-    if (side === "builtin") {
-      const events = soundsBytes(ev).map((data) => ({ slot: SOUNDS_SLOT, delay: 0, data }));
+    if (side === "builtin" && ev.kind !== "panic") {
+      const ch = stripOf(ev);
+      const events = soundsBytes(ev).map((data) => ({ slot: SOUNDS_SLOT, delay: 0, data, ch }));
       if (events.length) this.options.builtin?.()?.midi(events);
       return;
     }
@@ -167,12 +174,13 @@ export class SoundRouter implements SoundOut {
       }
       if (side === "engine") {
         const data = engineBytes(e.ev);
-        if (data && engine && e.ev.kind !== "panic") toEngine.push({ slot: e.ev.ch, delay: Math.max(0, e.time - nowSec + engineShift), data });
+        if (data && engine && e.ev.kind !== "panic") toEngine.push({ slot: stripOf(e.ev), delay: Math.max(0, e.time - nowSec + engineShift), data });
         continue;
       }
-      if (side === "builtin") {
+      if (side === "builtin" && e.ev.kind !== "panic") {
         // Same moment as the plugin tracks: both leave the engine with its own delay.
-        for (const data of soundsBytes(e.ev)) toEngine.push({ slot: SOUNDS_SLOT, delay: Math.max(0, e.time - nowSec + engineShift), data });
+        const ch = stripOf(e.ev);
+        for (const data of soundsBytes(e.ev)) toEngine.push({ slot: SOUNDS_SLOT, delay: Math.max(0, e.time - nowSec + engineShift), data, ch });
         continue;
       }
       const bytes = midiBytes(e.ev);
@@ -187,7 +195,7 @@ export class SoundRouter implements SoundOut {
     this.options.engine?.()?.panic();
     const port = this.options.port();
     if (!port) return;
-    for (const ch of this.options.external()) for (const bytes of silenceBytes(ch)) port.send(bytes);
+    for (const ch of (this.options.externalChannels ?? this.options.external)()) for (const bytes of silenceBytes(ch)) port.send(bytes);
   }
 
   /** F2.1: the window's synth only, when the engine takes over the built-in sounds. */
@@ -195,11 +203,11 @@ export class SoundRouter implements SoundOut {
     this.options.inner.panic();
   }
 
-  /** A channel changed sides while something sounded: stop it everywhere. */
-  silence(ch: number): void {
+  /** A track changed sides while something sounded: stop it everywhere (`strip`: its strip, A2). */
+  silence(ch: number, strip = ch): void {
     for (const bytes of silenceBytes(ch)) this.options.port()?.send(bytes);
-    this.options.engine?.()?.midi(silenceBytes(0).map((data) => ({ slot: ch, delay: 0, data })));
-    this.options.builtin?.()?.midi(silenceBytes(ch).map((data) => ({ slot: SOUNDS_SLOT, delay: 0, data })));
+    this.options.engine?.()?.midi(silenceBytes(0).map((data) => ({ slot: strip, delay: 0, data })));
+    this.options.builtin?.()?.midi(silenceBytes(ch).map((data) => ({ slot: SOUNDS_SLOT, delay: 0, data, ch: strip })));
     this.options.inner.now({ kind: "cc", ch, cc: 64, value: 0 });
     this.options.inner.now({ kind: "cc", ch, cc: 123, value: 0 });
   }

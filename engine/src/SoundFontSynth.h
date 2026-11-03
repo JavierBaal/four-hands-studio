@@ -24,10 +24,22 @@
 
 namespace fh
 {
+/** A MIDI message for one of the synth's channels, at a sample of the block (A2). */
+struct SynthEvent
+{
+    int offset = 0;
+    int channel = 0;
+    juce::MidiMessage message;
+};
+
 class SoundFontSynth final : public juce::AudioPluginInstance
 {
 public:
-    static constexpr int kChannels = 16;
+    /**
+     * A2 (03/11/2026): one channel per track strip, numbered by Four Hands (Engine.h, kStrips), so
+     * two tracks never share one. A message from MIDI channel 10 makes its channel a drum kit.
+     */
+    static constexpr int kChannels = 512;
     /** The default bank plus the user's banks loaded at once (MAX_EXTRA_BANKS in the app). */
     static constexpr int kBanks = 11;
     /** The bank selects of the user's banks: 60, 66, 72… (BANK_OFFSET_FIRST and _STEP in the app). */
@@ -46,11 +58,15 @@ public:
     juce::String loadBank (int offset, const juce::File& file, int& presets);
 
     /**
-     * F2.2 (03/11/2026): renders each MIDI channel into its own stereo pair (`channelOut[2 ch]`,
-     * `[2 ch + 1]`) and its reverb send into `reverbSends[ch]`, for the engine's channel strips and
-     * its Reverb bus. What belongs to no track (the chorus) goes to `master`. Buffers are added to.
+     * F2.2 (03/11/2026): renders each channel into its own stereo pair (`channelOut[2 ch]`,
+     * `[2 ch + 1]`) and its reverb send into `reverbSends[ch]`, for the engine's strips and its
+     * Reverb bus. What belongs to no track (the chorus) goes to `master`. Buffers are added to.
+     * `events` are in order of `offset`.
      */
-    void processSplit (juce::MidiBuffer& midi, int numSamples, float* const* channelOut, float* const* reverbSends, float* masterLeft, float* masterRight);
+    void processSplit (const std::vector<SynthEvent>& events, int numSamples, float* const* channelOut, float* const* reverbSends, float* masterLeft, float* masterRight);
+
+    /** Pedal up and every note released, on every channel (the engine's panic). */
+    void releaseAll();
 
     /** Banks loaded, for the log. */
     int bankCount() const;
@@ -88,7 +104,7 @@ public:
     struct Channel;
 
 private:
-    void handle (const juce::MidiMessage& m);
+    void handle (int ch, const juce::MidiMessage& m);
     void noteOn (int ch, int note, int velocity);
     void noteOff (int ch, int note);
     void controller (int ch, int cc, int value);

@@ -6,6 +6,7 @@
 #pragma once
 
 #include "GsEffects.h"
+#include "SoundFontSynth.h"
 
 #include <juce_audio_utils/juce_audio_utils.h>
 
@@ -17,13 +18,17 @@
 
 namespace fh
 {
-/** One per track that sounds through a plugin; 16 like MIDI channels. */
-constexpr int kSlots = 16;
-/** After them, the built-in sounds (SoundFontSynth): all 16 MIDI channels, as the app sends them. */
+/**
+ * A2 (F2.2, Fran 03/11/2026): one strip per track, numbered by Four Hands, not by MIDI channel, so
+ * a song is not held to 16 tracks. A track that sounds through a plugin has it in the slot of its
+ * strip. (Before, 16 slots: the track's MIDI channel.)
+ */
+constexpr int kStrips = 512;
+constexpr int kSlots = kStrips;
+/** After them, the built-in sounds (SoundFontSynth): one channel of its own per strip. */
 constexpr int kSoundsSlot = kSlots;
 constexpr int kAllSlots = kSlots + 1;
 
-class SoundFontSynth;
 
 class Engine : public juce::AudioIODeviceCallback, private juce::ChangeListener, private juce::Timer
 {
@@ -85,26 +90,32 @@ public:
     juce::String loadSoundBank (int offset, const juce::File& file, int& presets);
 
     // -------------------------------------------------------------------------
-    // Mix (F2.2, 03/11/2026): one strip per track's channel
+    // Mix (F2.2, 03/11/2026): one strip per track
 
     /**
      * A strip's fader (linear gain), balance (-1 to 1) and send to the Reverb bus (0 to 1, after
      * the fader). The built-in sounds keep their volume, pan and reverb as MIDI (CC7, CC10,
      * CC91) inside their synth, so they sound as before: their strip stays at 1, 0, 0.
      */
-    void setMix (int channel, double gain, double pan, double reverb);
+    void setMix (int strip, double gain, double pan, double reverb);
 
-    /** Peak and RMS (linear) of a strip, or of the master (index 16), and samples above 1. */
+    /** Peak and RMS (linear) of a strip, or of the master (index kStrips), and samples above 1. */
     struct Level { double peak = 0, rms = 0; juce::int64 clips = 0; };
     /** Since the last call (for the meters), or since `resetLevels` (for the AI, «last playback»). */
-    std::array<Level, kSlots + 1> takeMeters (bool sinceReset);
+    std::vector<Level> takeMeters (bool sinceReset);
+    /** Strips in use: one past the highest that has sounded, had a plugin or a mix. */
+    int stripsInUse() const { return used.load(); }
     void resetLevels();
 
     // -------------------------------------------------------------------------
     // MIDI
 
-    /** Plays `message` on `slot` (kSoundsSlot: the built-in sounds, on the message's own channel), `delaySeconds` from now (Four Hands schedules ahead). */
-    void schedule (int slot, double delaySeconds, const juce::MidiMessage& message);
+    /**
+     * Plays `message` on `slot`, `delaySeconds` from now (Four Hands schedules ahead). For the
+     * built-in sounds (kSoundsSlot), `strip` is the synth channel it plays on; -1: the message's own
+     * MIDI channel (as before A2). Channel 10 in the message still means drums.
+     */
+    void schedule (int slot, double delaySeconds, const juce::MidiMessage& message, int strip = -1);
     /** All notes off and pedal up in every slot, now. */
     void panic();
 
@@ -136,7 +147,10 @@ private:
         juce::int64 at;
         int slot;
         juce::MidiMessage message;
+        int strip = -1;
     };
+    /** Grows `used` to cover `strip`. */
+    void touch (int strip);
 
     void process (float* const* outputs, int numOutputs, int numSamples);
     void prepare (double rate, int block);
@@ -159,6 +173,9 @@ private:
     int blockSize = 512;
     juce::AudioBuffer<float> scratch;
     std::array<juce::MidiBuffer, kAllSlots> midi;
+    /** The built-in sounds' events of the block, with their strip. */
+    std::vector<SynthEvent> soundsEvents;
+    std::atomic<int> used { 0 };
 
     struct Strip { double gain = 1, pan = 0, reverb = 0; };
     struct Meter
@@ -168,8 +185,8 @@ private:
         juce::int64 count = 0, totalCount = 0, clips = 0;
         void add (const float* L, const float* R, int n);
     };
-    std::array<Strip, kSlots> mix {};
-    std::array<Meter, kSlots + 1> meters {};
+    std::vector<Strip> mix = std::vector<Strip> ((size_t) kStrips);
+    std::vector<Meter> meters = std::vector<Meter> ((size_t) kStrips + 1);
     juce::AudioBuffer<float> strips, sends, master, busIn;
     std::unique_ptr<gs::Reverb> busReverb;
     double busRate = 0;

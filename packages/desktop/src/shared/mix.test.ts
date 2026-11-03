@@ -87,10 +87,19 @@ describe("the engine's strips (F2.2, 03/11/2026)", () => {
       { channel: 2, output: "plugin", volume: 0.8, pan: -0.5, reverb: 0.3 },
       { channel: 0, volume: 0.5, pan: 0.2, reverb: 0.4 },
     ]);
-    expect(strips).toHaveLength(16);
-    expect(strips[2]).toEqual({ ch: 2, gain: stripGain(0.8), pan: -0.5, reverb: 0.3 });
-    // The built-in sounds keep volume, pan and reverb as MIDI: their strip stays neutral.
-    expect(strips[0]).toEqual({ ch: 0, gain: 1, pan: 0, reverb: 0 });
+    expect(strips).toEqual([
+      { ch: 2, gain: stripGain(0.8), pan: -0.5, reverb: 0.3 },
+      // The built-in sounds keep volume, pan and reverb as MIDI: their strip stays neutral.
+      { ch: 0, gain: 1, pan: 0, reverb: 0 },
+    ]);
+  });
+
+  it("goes by the track's strip, says whose it is, and puts freed strips back to neutral (A2)", () => {
+    const strips = engineStrips([{ id: "t9", channel: 0, strip: 37, output: "plugin", volume: 1, pan: 0.5 }], [12, 37]);
+    expect(strips).toEqual([
+      { ch: 12, gain: 1, pan: 0, reverb: 0 },
+      { ch: 37, gain: 1, pan: 0.5, reverb: 0, track: "t9" },
+    ]);
   });
 });
 
@@ -102,7 +111,9 @@ describe("the levels the engine measured (F2.2)", () => {
     const channels = Array.from({ length: 16 }, () => ({ peak: 0, rms: 0, clips: 0 }));
     channels[2] = { peak: 0.5, rms: 0.1, clips: 3 };
     const r = levelsReport({ channels, master: { peak: 1, rms: 0.2, clips: 0 } }, [{ name: "Cuerdas", channel: 2 }]);
-    expect(r.tracks).toEqual([{ track: "Cuerdas", ch: 2, peakDb: -6, rmsDb: -20, clips: 3 }]);
+    expect(r.tracks).toEqual([{ track: "Cuerdas", strip: 2, peakDb: -6, rmsDb: -20, clips: 3 }]);
+    // A2: by strip when the track has one.
+    expect(levelsReport({ channels, master: { peak: 1, rms: 0.2, clips: 0 } }, [{ name: "Viola", channel: 0, strip: 2 }]).tracks[0]!.peakDb).toBe(-6);
     expect(r.master.peakDb).toBe(0);
   });
 });

@@ -37,7 +37,7 @@ const server = net.createServer((socket) => {
       }
       switch (m.type) {
         case "hello":
-          send({ type: "hello", version: 1, device: "Fake · 48000 Hz", sampleRate: 48000, latency: 0.02 });
+          send({ type: "hello", version: 1, device: "Fake · 48000 Hz", sampleRate: 48000, latency: 0.02, sounds: true, soundsSlot: 512, strips: 512 });
           break;
         case "scan":
           send({ type: "scanning", file: "/vst3/Fake.vst3", progress: 0.5 });
