@@ -146,7 +146,7 @@ public:
     struct ParamInfo { int index; juce::String name, text, label; float value; };
     std::vector<ParamInfo> parameters (const juce::String& id, int slot = -1);
     /** Sets a parameter by normalised value, or by text ("-6 dB") when `text` is not empty. Returns its text after. */
-    juce::String setParameter (const juce::String& id, int slot, int index, float value, const juce::String& text, bool& ok);
+    juce::String setParameter (const juce::String& id, int slot, int index, float value, const juce::String& text, bool& ok, float* valueAfter = nullptr);
 
     // -------------------------------------------------------------------------
     // MIDI

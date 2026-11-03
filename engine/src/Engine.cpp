@@ -907,7 +907,7 @@ std::vector<Engine::ParamInfo> Engine::parameters (const juce::String& id, int s
     return out;
 }
 
-juce::String Engine::setParameter (const juce::String& id, int slot, int index, float value, const juce::String& text, bool& ok)
+juce::String Engine::setParameter (const juce::String& id, int slot, int index, float value, const juce::String& text, bool& ok, float* valueAfter)
 {
     ok = false;
     juce::AudioProcessor* p = nullptr;
@@ -929,6 +929,8 @@ juce::String Engine::setParameter (const juce::String& id, int slot, int index, 
     q->setValueNotifyingHost (v);
     q->endChangeGesture();
     ok = true;
+    if (valueAfter != nullptr)
+        *valueAfter = q->getValue();
     return q->getCurrentValueAsText();
 }
 

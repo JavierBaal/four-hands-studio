@@ -167,6 +167,13 @@ export interface Insert {
   params?: Record<string, number>;
   /** A plugin effect: which plugin (its state is kept by the app, like an instrument's). */
   plugin?: TrackPlugin;
+  /**
+   * A plugin effect's parameters the AI set (by the plugin's parameter index, normalised 0–1), and
+   * what each one was before the AI first touched it: undoing that puts the plugin back. What the
+   * user turns in the plugin's own window is not here (Fran, 03/11/2026: it is only saved).
+   */
+  pluginParams?: Record<string, number>;
+  pluginBase?: Record<string, number>;
 }
 
 /** A plugin hosted by the engine (VST3). */

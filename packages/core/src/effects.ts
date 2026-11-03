@@ -202,6 +202,11 @@ export interface InsertChanges {
   bypass?: boolean;
   /** Own effects only: the parameters that change (clamped to their range). */
   params?: Record<string, number>;
+  /**
+   * Plugin effects only: parameters the AI set, by index, normalised, with the value each had
+   * before (kept only the first time, so undoing it all goes back to the plugin as it was).
+   */
+  pluginParams?: Record<string, { value: number; base: number }>;
 }
 
 export function updateInsert(tx: Transaction, id: string, changes: InsertChanges): void {
@@ -215,6 +220,19 @@ export function updateInsert(tx: Transaction, id: string, changes: InsertChanges
   if (changes.params && Object.keys(changes.params).length) {
     check(next.kind !== "plugin", "A plugin's parameters are read and set through the engine, not stored in the song");
     next.params = { ...(next.params ?? defaultParams(next.kind)), ...cleanParams(next.kind, changes.params) };
+  }
+  if (changes.pluginParams && Object.keys(changes.pluginParams).length) {
+    check(next.kind === "plugin", "Only a plugin effect has plugin parameters");
+    const values = { ...(next.pluginParams ?? {}) };
+    const base = { ...(next.pluginBase ?? {}) };
+    for (const [key, { value, base: was }] of Object.entries(changes.pluginParams)) {
+      check(/^\d+$/.test(key), `Invalid parameter index: ${key}`);
+      check(Number.isFinite(value) && Number.isFinite(was), `Invalid value for parameter ${key}`);
+      values[key] = Math.max(0, Math.min(1, value));
+      if (!(key in base)) base[key] = Math.max(0, Math.min(1, was));
+    }
+    next.pluginParams = values;
+    next.pluginBase = base;
   }
   if (JSON.stringify(next) === JSON.stringify(found.insert)) return;
   const chain = [...chainOf(tx.song, found.target)];

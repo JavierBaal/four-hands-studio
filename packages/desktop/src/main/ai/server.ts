@@ -104,9 +104,13 @@ export class AiServer {
       }
       if (msg.type === "call") {
         const transit = typeof msg.at === "number" ? Date.now() - msg.at : undefined;
-        const reply = !hello || outdated ? { ok: false as const, error: OUTDATED } : this.options.desk.call(id, msg.tool, msg.args);
-        const out: AppMessage = reply.ok ? { type: "result", id: msg.id, ok: true, text: reply.text } : { type: "result", id: msg.id, ok: false, error: reply.error };
-        ws.send(JSON.stringify(out));
+        // Most tools answer at once; a plugin effect's parameters wait for the engine (F2.2 parte C).
+        const answer = (reply: { ok: true; text: string } | { ok: false; error: string }) => {
+          const out: AppMessage = reply.ok ? { type: "result", id: msg.id, ok: true, text: reply.text } : { type: "result", id: msg.id, ok: false, error: reply.error };
+          ws.send(JSON.stringify(out));
+        };
+        if (!hello || outdated) answer({ ok: false, error: OUTDATED });
+        else void this.options.desk.callAsync(id, msg.tool, msg.args).then(answer);
         if (transit !== undefined && transit > 200) this.options.log?.({ type: "bridge_slow", tool: msg.tool, transitMs: transit });
       }
     });

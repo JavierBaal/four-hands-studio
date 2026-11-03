@@ -97,6 +97,8 @@ export interface Bridge {
   engineInserts(strip: number, chain: EngineInsert[]): Promise<{ ok: boolean; errors: Array<{ id: string; error: string }>; latency?: number; compensation?: number }>;
   /** A plugin effect's own window. */
   engineShowInsert(id: string): Promise<boolean>;
+  /** A plugin effect's parameter (by index, normalised): the AI's values, and undoing them. */
+  engineSetParam(id: string, index: number, value: number): void;
   /** F2.2: `reset` starts counting again; otherwise the strips' levels since then (null without engine). */
   engineLevels(reset: boolean): Promise<EngineLevels | null>;
   /** F2.1: where the built-in sounds play (ajustes.json, `builtinSounds`). */
@@ -134,7 +136,7 @@ export function memoryBridge(
     /** Plugins of a pretend engine (interface tests); absent: the engine is "missing". */
     enginePlugins?: EnginePlugin[];
   } = {},
-): Bridge & { doc: SongDocument; setAi(state: AiState): void; closed: string[]; engine: { loaded: Map<number, string>; midi: EngineMidiEvent[]; shown: number[]; mix: EngineStrip[]; master?: number; meters?: EngineLevels; load?: EngineLoad; inserts: Map<number, EngineInsert[]>; shownInserts: string[]; failPlugin?: string } } {
+): Bridge & { doc: SongDocument; setAi(state: AiState): void; closed: string[]; engine: { loaded: Map<number, string>; midi: EngineMidiEvent[]; shown: number[]; mix: EngineStrip[]; master?: number; meters?: EngineLevels; load?: EngineLoad; inserts: Map<number, EngineInsert[]>; shownInserts: string[]; failPlugin?: string; params: Array<[string, number, number]> } } {
   const now = options.now ?? Date.now;
   const doc = new SongDocument(song, { now });
   const patchListeners = new Set<(m: PatchMessage) => void>();
@@ -158,7 +160,7 @@ export function memoryBridge(
   let outPort: string | null = null;
   const fakePlugins = options.enginePlugins;
   const engineState: EngineStatus = fakePlugins ? { state: "ready", device: "Prueba · 48000 Hz", latency: 0.02, generation: 1 } : { ...ENGINE_OFF, state: "missing" };
-  const engine: { loaded: Map<number, string>; midi: EngineMidiEvent[]; shown: number[]; mix: EngineStrip[]; master?: number; meters?: EngineLevels; load?: EngineLoad; inserts: Map<number, EngineInsert[]>; shownInserts: string[]; failPlugin?: string } = { loaded: new Map<number, string>(), midi: [], shown: [], mix: [], inserts: new Map(), shownInserts: [] };
+  const engine: { loaded: Map<number, string>; midi: EngineMidiEvent[]; shown: number[]; mix: EngineStrip[]; master?: number; meters?: EngineLevels; load?: EngineLoad; inserts: Map<number, EngineInsert[]>; shownInserts: string[]; failPlugin?: string; params: Array<[string, number, number]> } = { loaded: new Map<number, string>(), midi: [], shown: [], mix: [], inserts: new Map(), shownInserts: [], params: [] };
   let pluginDirs: string[] = [];
   let soundPrefs: SoundPrefs = structuredClone(NO_SOUND_PREFS);
   const pluginState = (): PluginFolders => ({ system: ["C:\\Program Files\\Common Files\\VST3"], user: [...pluginDirs] });
@@ -285,6 +287,7 @@ export function memoryBridge(
       const errors = chain.filter((x) => x.plugin && engine.failPlugin === x.plugin).map((x) => ({ id: x.id, error: "The plugin could not be created" }));
       return { ok: true, errors };
     },
+    engineSetParam: (id, index, value) => void engine.params.push([id, index, value]),
     engineShowInsert: async (id) => {
       engine.shownInserts.push(id);
       return true;

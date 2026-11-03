@@ -367,8 +367,9 @@ juce::var Link::handle (const juce::var& m, Connection& from)
     if (type == "setParam")
     {
         bool ok = false;
-        const auto text = engine.setParameter (m["id"].toString(), m.hasProperty ("slot") ? (int) m["slot"] : -1, (int) m["index"], (float) (double) m["value"], m["text"].toString(), ok);
-        return obj ({ { "type", "paramSet" }, { "ok", ok }, { "text", text } });
+        float after = 0;
+        const auto text = engine.setParameter (m["id"].toString(), m.hasProperty ("slot") ? (int) m["slot"] : -1, (int) m["index"], (float) (double) m["value"], m["text"].toString(), ok, &after);
+        return obj ({ { "type", "paramSet" }, { "ok", ok }, { "text", text }, { "value", after } });
     }
 
     if (type == "quit")

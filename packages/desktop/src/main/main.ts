@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 import { BRIDGE_CONFIG_FILE, TOOLS_VERSION, bridgeConfigDir } from "@fourhands/mcp-tools";
 import { type Lang, langFrom, translator } from "../shared/i18n.js";
 import { type AiApply, type AiTone, CH, DEFAULT_AI_APPLY, DEFAULT_AI_TONE, type FolderKind, NO_AI, type MenuAction, type ToolKind, type Request, type SkillImportResult, type ViewInfo } from "../shared/protocol.js";
-import { AiDesk } from "./ai/desk.js";
+import { AiDesk, type EffectParam } from "./ai/desk.js";
 import { SkillImportError, SkillLibrary, importSkillZip } from "./ai/skills.js";
 import { AiServer } from "./ai/server.js";
 import { connectClaude, findMcpb } from "./ai/connect.js";
@@ -526,6 +526,25 @@ async function startAi(): Promise<void> {
     plugins: () => knownPlugins,
     levels: () => lastLevels,
     load: () => (engine && engine.current.state === "ready" ? lastLoad : null),
+    // F2.2 parte C: a plugin effect's parameters, from the engine.
+    effectParams: async (id) => {
+      if (!engine || engine.current.state !== "ready") return null;
+      try {
+        const reply = await engine.request({ type: "params", id });
+        return Array.isArray(reply.params) && reply.params.length ? (reply.params as EffectParam[]) : null;
+      } catch {
+        return null;
+      }
+    },
+    setEffectParam: async (id, index, text) => {
+      if (!engine || engine.current.state !== "ready") return null;
+      try {
+        const reply = await engine.request({ type: "setParam", id, index, text });
+        return { ok: !!reply.ok, text: String(reply.text ?? ""), value: Number(reply.value ?? 0) };
+      } catch {
+        return null;
+      }
+    },
     skills: skills!,
     onState: (state) => win?.webContents.send(CH.aiState, state),
     tone: aiTone,
@@ -807,6 +826,11 @@ function registerIpc(): void {
     } catch (error) {
       return { ok: false, errors: [{ id: "", error: (error as Error).message }] };
     }
+  });
+  // The AI's plugin parameters (and undoing them): the window says which value each must have.
+  ipcMain.on(CH.engineSetParam, (_e, id: unknown, index: unknown, value: unknown) => {
+    if (!engine || engine.current.state !== "ready") return;
+    void engine.request({ type: "setParam", id: String(id), index: Number(index), value: Number(value) }).catch(() => {});
   });
   ipcMain.handle(CH.engineShowInsert, async (_e, id: unknown) => {
     try {

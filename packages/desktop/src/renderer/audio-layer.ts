@@ -74,6 +74,8 @@ export class AudioLayer {
    */
   private chainsSent = new Map<number, string>();
   private insertsGeneration = -1;
+  /** The AI's plugin parameters last applied, with the value each had before (to undo them). */
+  private pluginParamsSent = new Map<string, { params: Record<string, number>; base: Record<string, number> }>();
   insertProblems = new Map<string, string>();
   private engine: Engine | null = null;
   /** Sound banks the user installed (refreshed when the sounds folder changes). */
@@ -379,6 +381,22 @@ export class AudioLayer {
         this.changed();
       });
     }
+    // After the chains (the engine loads a new plugin effect before it gets its parameters).
+    // The AI's plugin parameters: only the ones that changed, and back to what was there when undone.
+    const seen = new Set<string>();
+    for (const x of [...(song.masterInserts ?? []), ...song.trackOrder.flatMap((t) => song.tracks[t]?.inserts ?? [])]) {
+      if (x.kind !== "plugin") continue;
+      seen.add(x.id);
+      const now = x.pluginParams ?? {};
+      const before = force ? { params: {}, base: {} } : (this.pluginParamsSent.get(x.id) ?? { params: {}, base: {} });
+      for (const [k, v] of Object.entries(now)) if (before.params[k] !== v) this.bridge.engineSetParam(x.id, Number(k), v);
+      for (const k of Object.keys(before.params)) if (!(k in now)) {
+        const was = before.base[k];
+        if (was !== undefined) this.bridge.engineSetParam(x.id, Number(k), was);
+      }
+      this.pluginParamsSent.set(x.id, { params: { ...now }, base: { ...before.base, ...(x.pluginBase ?? {}) } });
+    }
+    for (const id of [...this.pluginParamsSent.keys()]) if (!seen.has(id)) this.pluginParamsSent.delete(id);
   }
 
   /** A plugin effect's own window, from the engine. */

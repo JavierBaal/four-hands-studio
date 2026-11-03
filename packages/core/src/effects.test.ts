@@ -85,6 +85,22 @@ describe("insert effects (F2.2 parte C)", () => {
     expect(() => d.transact({ actor: USER, label: "x" }, (tx) => updateInsert(tx, "x1", { params: { gain: 1 } }))).toThrow(/through the engine/);
   });
 
+  it("keeps the plugin parameters the AI set and what they were, so undo can put them back", () => {
+    const d = doc();
+    d.transact({ actor: USER, label: "pro-l" }, (tx) => addInsert(tx, "t1", { kind: "plugin", plugin: { id: "VST3-Pro-L 2-1", name: "Pro-L 2" } }));
+    d.transact({ actor: CLAUDE, label: "techo" }, (tx) => updateInsert(tx, "x1", { pluginParams: { "4": { value: 0.8, base: 0.5 } } }));
+    d.transact({ actor: CLAUDE, label: "techo otra vez" }, (tx) => updateInsert(tx, "x1", { pluginParams: { "4": { value: 0.9, base: 0.8 } } }));
+    const x = chainOf(d.song, "t1")[0]!;
+    expect(x.pluginParams).toEqual({ "4": 0.9 });
+    expect(x.pluginBase).toEqual({ "4": 0.5 });
+    d.undo(CLAUDE);
+    expect(chainOf(d.song, "t1")[0]!.pluginParams).toEqual({ "4": 0.8 });
+    d.undo(CLAUDE);
+    expect(chainOf(d.song, "t1")[0]!.pluginParams).toBeUndefined();
+    const round = parseSongFile(serializeSong({ song: d.song, history: [], proposals: [] }));
+    expect(round.song.tracks.t1!.inserts![0]!.kind).toBe("plugin");
+  });
+
   it("travels in the .fourhands file; old songs without effects still open", () => {
     const d = doc();
     d.transact({ actor: USER, label: "fx" }, (tx) => {

@@ -15,7 +15,7 @@
 import { z } from "zod";
 
 /** Bumped whenever a tool, its parameters or its meaning changes. The app refuses other bridges. */
-export const TOOLS_VERSION = 19;
+export const TOOLS_VERSION = 20;
 
 /**
  * Track colours by name (H3.2). The app's palette (desktop/src/shared/track-colors.ts) has the same
@@ -593,6 +593,75 @@ export const TOOLS: readonly ToolDefinition[] = [
     inputSchema: {
       intervention_id: INTERVENTION,
       mix: z.string().describe("One track per line, e.g. 't1 vol 65 pan -40'"),
+    },
+    annotations: write,
+  },
+  // F2.2 parte C (03/11/2026): insert effects. Four Hands' own (EQ, compressor, limiter) keep their
+  // parameters in the song; a plugin effect's parameters are the plugin's, read through the engine.
+  {
+    name: "add_effect",
+    title: "Add an insert effect",
+    description:
+      "Put an effect on a track's chain (after its sound, before its fader) or on the Master ('master'). " +
+      "Four Hands' own: 'eq' (low and high cut, low and high shelf, two bells), 'compressor', 'limiter' (5 ms look-ahead; the engine keeps the other tracks in time). " +
+      "Or a plugin effect by its name, as list_instruments lists the user's plugins (e.g. 'Pro-Q 3', 'Valhalla VintageVerb'). " +
+      "It starts neutral (an EQ flat, a compressor at -18 dB 3:1): shape it with set_effect. Prefer fixing the arrangement when that is the cause; " +
+      "use effects for what only they can do. You cannot hear the result: measure with get_levels and let the user listen (B compares with and without).",
+    inputSchema: {
+      intervention_id: INTERVENTION,
+      track: z.string().describe("Track id or name, or 'master'"),
+      effect: z.string().describe("'eq', 'compressor', 'limiter', or a plugin effect's name"),
+      position: z.number().int().min(1).optional().describe("Place in the chain, 1 = first; the end if left out"),
+      settings: z.string().optional().describe("Optional, as in set_effect: one per line, 'name: value'"),
+    },
+    annotations: write,
+  },
+  {
+    name: "set_effect",
+    title: "Adjust an effect",
+    description:
+      "Change an effect's parameters, one per line, 'name: value', in one undo step. " +
+      "Own effects: names as list_effect_parameters gives them, values with or without units ('Threshold: -24 dB', 'Ratio: 4', 'Attack: 5 ms', 'Low cut: on', 'Low cut freq: 90 Hz', 'High-mid gain: -3 dB', 'High-mid Q: 2'). " +
+      "Plugin effects: the plugin's own parameter names and its value texts ('Output Gain: -3 dB'); read them first with list_effect_parameters. " +
+      "'Bypass: on' or 'off' for any effect. Say what you changed and why; the user hears it and can undo it.",
+    inputSchema: {
+      intervention_id: INTERVENTION,
+      effect: z.string().describe("The effect's id, e.g. 'x3'"),
+      settings: z.string().describe("One per line, 'name: value'"),
+    },
+    annotations: write,
+  },
+  {
+    name: "list_effect_parameters",
+    title: "Read an effect's parameters",
+    description:
+      "An effect's parameters with their current values (and ranges, for Four Hands' own). For a plugin effect, its own list from the engine; " +
+      "some plugins have hundreds: use search. Read-only.",
+    inputSchema: {
+      effect: z.string().describe("The effect's id, e.g. 'x3'"),
+      search: z.string().optional().describe("Only parameters whose name contains this"),
+    },
+    annotations: readOnly,
+  },
+  {
+    name: "remove_effect",
+    title: "Remove an effect",
+    description: "Take an effect out of its chain. Only when the user asks or agrees, or to undo your own. The user can undo it.",
+    inputSchema: {
+      intervention_id: INTERVENTION,
+      effect: z.string().describe("The effect's id, e.g. 'x3'"),
+    },
+    annotations: destructive,
+  },
+  {
+    name: "move_effect",
+    title: "Move an effect",
+    description: "Move an effect to another place in its chain (position 1 = first), or to another track's chain or the Master's.",
+    inputSchema: {
+      intervention_id: INTERVENTION,
+      effect: z.string().describe("The effect's id, e.g. 'x3'"),
+      position: z.number().int().min(1).describe("New place, 1 = first"),
+      track: z.string().optional().describe("Another track (id or name) or 'master'; its own chain if left out"),
     },
     annotations: write,
   },

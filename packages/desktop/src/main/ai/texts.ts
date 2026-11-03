@@ -3,6 +3,7 @@
  * as compact text in English. Pure functions of the song, so they are tested without the app.
  * Notes themselves are formatted by the core (compact.ts).
  */
+import { type Insert, insertName, paramDefs, paramText } from "@fourhands/core";
 import { type EngineLevels, type EngineLoad, levelsReport } from "../../shared/mix.js";
 import { trackColorId } from "../../shared/track-colors.js";
 import {
@@ -114,6 +115,7 @@ export function overviewText(song: Song, extras: OverviewExtras = { open: [] }):
       parts.push(ai === 0 ? "all by the user" : ai === notes.length ? "all by an AI" : `user ${percent(notes.length - ai, notes.length)}% · AI ${percent(ai, notes.length)}%`);
     }
     parts.push(mixText(track), `color ${trackColorId(track.color)}`);
+    if (track.inserts?.length) parts.push(`effects: ${chainText(track.inserts)}`);
     if (track.solo) parts.push("solo (the user is listening to it alone)");
     if (track.pedal.length) parts.push(`${track.pedal.length} pedal spans`);
     if (track.output === "external") parts.push("sounds outside Four Hands (MIDI out to the user's DAW, e.g. Studio One with Kontakt): the built-in sound and its profile do not apply, ask what instrument plays it");
@@ -124,7 +126,7 @@ export function overviewText(song: Song, extras: OverviewExtras = { open: [] }):
   }
 
   // F2.2 parte B: the master fader, 0-100 like the tracks' volume (100 = 0 dB).
-  lines.push(`Master: vol ${Math.round((song.masterVolume ?? 1) * 100)}${(song.masterVolume ?? 1) === 1 ? " (0 dB)" : ""}`);
+  lines.push(`Master: vol ${Math.round((song.masterVolume ?? 1) * 100)}${(song.masterVolume ?? 1) === 1 ? " (0 dB)" : ""}${song.masterInserts?.length ? ` · effects: ${chainText(song.masterInserts)}` : ""}`);
   if (Object.keys(song.harmony).length === 0) lines.push("Harmony: no chords written yet");
   else {
     lines.push("Harmony (chord of each bar; 'F, 3 G' = F, then G on beat 3):");
@@ -235,7 +237,7 @@ export function profileText(p: SoundProfile, keys = true): string {
   return parts.join(", ");
 }
 
-export function instrumentsText(banks: SoundBankInfo[], builtIn: readonly BankPreset[] = [], plugins: readonly EnginePlugin[] = []): string {
+export function instrumentsText(banks: SoundBankInfo[], builtIn: readonly BankPreset[] = [], plugins: readonly EnginePlugin[] = [], effects: readonly EnginePlugin[] = []): string {
   const lines = [
     "Four Hands · instruments (built-in sound; ranges are the real sounding range).",
     "Behaviour comes from each sound's own data (attack, whether it holds a long note, how long it rings): trust it over the name.",
@@ -263,6 +265,11 @@ export function instrumentsText(banks: SoundBankInfo[], builtIn: readonly BankPr
     );
     for (const p of plugins) lines.push(`  ${p.name}${p.vendor ? ` · ${p.vendor}` : ""}${p.category ? ` · ${p.category}` : ""}`);
   }
+  // F2.2 parte C: the plugin effects, for add_effect (Four Hands' own EQ, compressor and limiter are always there).
+  if (effects.length) {
+    lines.push("Effect plugins on this computer (for add_effect; Four Hands' own 'eq', 'compressor' and 'limiter' are always there):");
+    for (const p of effects) lines.push(`  ${p.name}${p.vendor ? ` · ${p.vendor}` : ""}${p.category ? ` · ${p.category}` : ""}`);
+  } else lines.push("Effect plugins on this computer: none found yet (Four Hands' own 'eq', 'compressor' and 'limiter' are always there for add_effect)");
   return lines.join("\n");
 }
 
@@ -317,3 +324,19 @@ export function levelsText(
   lines.push("This is a meter, not hearing: it does not tell frequencies or masking. Say so if you base an opinion on it.");
   return lines.join("\n");
 }
+
+/** "EQ (low cut 80 Hz, high-mid gain −3,0 dB)": an effect with what is not at its default. */
+export function effectText(x: Insert): string {
+  const changed = paramDefs(x.kind)
+    .filter((d) => (x.params?.[d.id] ?? d.default) !== d.default)
+    .map((d) => `${d.name.toLowerCase()} ${paramText(d, x.params?.[d.id] ?? d.default)}`);
+  const ai = x.kind === "plugin" && x.pluginParams ? Object.keys(x.pluginParams).length : 0;
+  const extras = [...changed, ...(ai ? [`${ai} parameter(s) set by an AI`] : []), ...(x.bypass ? ["bypassed"] : [])];
+  return `${insertName(x)}${extras.length ? ` (${extras.join(", ")})` : x.kind === "plugin" ? "" : " (neutral)"}`;
+}
+
+/** "x1 EQ (neutral) → x2 Compressor (threshold −24,0 dB)". */
+export function chainText(chain: readonly Insert[]): string {
+  return chain.map((x) => `${x.id} ${effectText(x)}`).join(" → ");
+}
+

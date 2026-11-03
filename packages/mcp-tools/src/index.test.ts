@@ -3,8 +3,12 @@ import { PROMPTS, SERVER_INSTRUCTIONS, TOOLS } from "./index.js";
 
 const byName = Object.fromEntries(TOOLS.map((t) => [t.name, t]));
 
-const READ_ONLY = ["get_song_overview", "get_user_context", "read_notes", "analyze", "get_changes_since", "get_history", "summarize", "list_instruments", "get_levels", "list_skills", "load_skill", "point_to"];
+const READ_ONLY = ["list_effect_parameters", "get_song_overview", "get_user_context", "read_notes", "analyze", "get_changes_since", "get_history", "summarize", "list_instruments", "get_levels", "list_skills", "load_skill", "point_to"];
 const NEED_INTERVENTION = [
+  "add_effect",
+  "set_effect",
+  "remove_effect",
+  "move_effect",
   "end_intervention",
   "write_expression",
   "add_notes",
@@ -46,9 +50,9 @@ describe("tool definitions", () => {
   });
 
   // The annotations decide the permission group the user sees (PRUEBA_S1.md, conclusion 2).
-  it("reading tools are read-only, the rest are writes, and only deleting notes or tracks is destructive", () => {
+  it("reading tools are read-only, the rest are writes, and only deleting notes, tracks, annotations or effects is destructive", () => {
     expect(TOOLS.filter((t) => t.annotations.readOnlyHint).map((t) => t.name).sort()).toEqual([...READ_ONLY].sort());
-    expect(TOOLS.filter((t) => t.annotations.destructiveHint).map((t) => t.name)).toEqual(["delete_notes", "remove_track", "remove_annotations"]);
+    expect(TOOLS.filter((t) => t.annotations.destructiveHint).map((t) => t.name)).toEqual(["delete_notes", "remove_effect", "remove_track", "remove_annotations"]);
   });
 
   it("every write tool needs an intervention", () => {

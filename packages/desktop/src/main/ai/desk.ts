@@ -18,6 +18,7 @@
  */
 import type { EngineLevels, EngineLoad } from "../../shared/mix.js";
 import { levelsText } from "./texts.js";
+import { type ChainTarget, type Insert, type InsertKind, type InsertSpec, OWN_EFFECTS, addInsert, chainOf, findInsert, insertName, moveInsert, paramDefs, paramText, removeInsert, updateInsert } from "@fourhands/core";
 import { TRACK_PALETTE, trackColorByName, trackColorId } from "../../shared/track-colors.js";
 import {
   type Authorship,
@@ -94,9 +95,19 @@ import type { SongSession } from "../session.js";
 import type { EnginePlugin } from "../../shared/engine.js";
 import type { BankPreset } from "../../shared/soundbank-info.js";
 import { SkillError, type SkillSource, skillText, skillsFooter, skillsListText } from "./skills.js";
-import { DEFAULT_WINDOW, type WindowInfo, bankText, instrumentsText, mixText, overviewText, paletteItem, spanText, userContextText } from "./texts.js";
+import { DEFAULT_WINDOW, type WindowInfo, bankText, chainText, effectText, instrumentsText, mixText, overviewText, paletteItem, spanText, userContextText } from "./texts.js";
 
 export type ToolReply = { ok: true; text: string } | { ok: false; error: string };
+
+/** A plugin's parameter as the engine reads it (F2.2 parte C). */
+export interface EffectParam {
+  index: number;
+  name: string;
+  text: string;
+  label: string;
+  /** Normalised, 0–1. */
+  value: number;
+}
 
 export interface AiDeskOptions {
   /** The open song (it changes when the user opens another one). */
@@ -113,6 +124,12 @@ export interface AiDeskOptions {
   levels?: () => { levels: EngineLevels; at: number; strips?: Record<string, number> } | null;
   /** F2.2 parte B: the engine's last load reading (for get_levels), null without engine. */
   load?: () => EngineLoad | null;
+  /**
+   * F2.2 parte C: a plugin effect's parameters (null: the engine is not running or does not have it),
+   * and setting one by its value text (what it reads after, and its normalised value).
+   */
+  effectParams?: (insertId: string) => Promise<EffectParam[] | null>;
+  setEffectParam?: (insertId: string, index: number, text: string) => Promise<{ ok: boolean; text: string; value: number } | null>;
   now?: () => number;
   /** 5 minutes (ESQUEMA_MCP.md, 5.1). */
   autoCloseMs?: number;
@@ -303,10 +320,30 @@ export class AiDesk {
   // -------------------------------------------------------------------------
   // Calls
 
-  call(connectionId: string, tool: string, rawArgs: unknown): ToolReply {
+  /**
+   * F2.2 parte C: tools that wait for the engine (a plugin effect's parameters). The others answer at
+   * once through `call`.
+   */
+  async callAsync(connectionId: string, tool: string, rawArgs: unknown): Promise<ToolReply> {
+    const asyncHandler = this.asyncHandlers[tool];
+    if (!asyncHandler) return this.call(connectionId, tool, rawArgs);
+    const args = (rawArgs && typeof rawArgs === "object" ? rawArgs : {}) as Record<string, unknown>;
+    let text: string;
+    try {
+      text = await asyncHandler(this.connections.get(connectionId) ?? { id: connectionId, client: "unknown", name: "IA" }, args);
+    } catch (error) {
+      return this.call(connectionId, tool, rawArgs, error);
+    }
+    return this.call(connectionId, tool, rawArgs, undefined, text);
+  }
+
+  call(connectionId: string, tool: string, rawArgs: unknown, failed?: unknown, answered?: string): ToolReply {
     const conn = this.connections.get(connectionId) ?? { id: connectionId, client: "unknown", name: "IA" };
     const args = (rawArgs && typeof rawArgs === "object" ? rawArgs : {}) as Record<string, unknown>;
-    const handler = this.handlers[tool];
+    const handler = answered !== undefined || failed !== undefined ? () => {
+      if (failed !== undefined) throw failed;
+      return answered!;
+    } : this.handlers[tool];
     const started = this.now();
     let reply: ToolReply;
     if (!handler) reply = { ok: false, error: `Four Hands does not know the tool '${tool}'. Update the connection with Claude from Four Hands.` };
@@ -763,7 +800,7 @@ export class AiDesk {
     list_instruments: (_conn, args) => {
       const banks = this.options.banks?.() ?? [];
       const wanted = this.str(args, "bank", false);
-      if (!wanted) return instrumentsText(banks, this.options.builtInSounds?.() ?? [], this.pluginList());
+      if (!wanted) return instrumentsText(banks, this.options.builtInSounds?.() ?? [], this.pluginList(), (this.options.plugins?.() ?? []).filter((p) => !p.instrument));
       return bankText(this.bank(wanted, banks));
     },
 
@@ -1361,6 +1398,48 @@ export class AiDesk {
       return `Mix set:\n${after.join("\n")}\n${this.rev()}`;
     },
 
+    // F2.2 parte C: insert effects.
+    add_effect: (conn, args) => {
+      const iv = this.intervention(conn, args);
+      const target = this.chainTarget(this.str(args, "track")!);
+      const spec = this.effectSpec(this.str(args, "effect")!);
+      const position = this.num(args, "position");
+      const settings = this.str(args, "settings", false);
+      if (spec.kind === "plugin" && settings) throw new MusicError("A plugin effect's settings go with set_effect once it is added (read them with list_effect_parameters)");
+      const own = spec.kind !== "plugin" && settings ? this.ownSettings(spec.kind, settings) : null;
+      let id = "";
+      this.write(iv, (tx) => {
+        id = addInsert(tx, target, own ? { kind: spec.kind as Exclude<InsertKind, "plugin">, params: own.params } : spec, position === undefined ? undefined : position - 1);
+        if (own?.bypass !== undefined) updateInsert(tx, id, { bypass: own.bypass });
+      });
+      if (target !== "master") iv.trackIds.add(target);
+      iv.other.push(`effects of ${this.chainName(target)}`);
+      this.emit();
+      return `Added ${id} ${effectText(findInsert(this.song, id)!.insert)} to ${this.chainName(target)}.\nChain: ${chainText(chainOf(this.song, target))}\n${this.rev()}`;
+    },
+
+    remove_effect: (conn, args) => {
+      const iv = this.intervention(conn, args);
+      const found = this.effect(this.str(args, "effect")!);
+      this.write(iv, (tx) => removeInsert(tx, found.insert.id));
+      iv.other.push(`effects of ${this.chainName(found.target)}`);
+      this.emit();
+      return `Removed ${found.insert.id} ${insertName(found.insert)} from ${this.chainName(found.target)}.\nChain: ${chainText(chainOf(this.song, found.target)) || "empty"}\n${this.rev()}`;
+    },
+
+    move_effect: (conn, args) => {
+      const iv = this.intervention(conn, args);
+      const found = this.effect(this.str(args, "effect")!);
+      const position = Math.round(this.num(args, "position") ?? NaN);
+      if (!(position >= 1)) throw new MusicError("position starts at 1");
+      const trackText = this.str(args, "track", false);
+      const target = trackText ? this.chainTarget(trackText) : found.target;
+      this.write(iv, (tx) => moveInsert(tx, found.insert.id, position - 1, target));
+      iv.other.push(`effects of ${this.chainName(target)}`);
+      this.emit();
+      return `Chain of ${this.chainName(target)}: ${chainText(chainOf(this.song, target))}\n${this.rev()}`;
+    },
+
     move_track: (conn, args) => {
       const iv = this.intervention(conn, args);
       const trackId = this.track(this.str(args, "track")!);
@@ -1541,6 +1620,128 @@ export class AiDesk {
     return { trackId, changes };
   }
 
+  // -------------------------------------------------------------------------
+  // Insert effects (F2.2 parte C)
+
+  /** Tools that may wait for the engine: a plugin effect's parameters. Own effects answer at once. */
+  private readonly asyncHandlers: Record<string, (conn: Connection, args: Record<string, unknown>) => Promise<string>> = {
+    list_effect_parameters: async (_conn, args) => {
+      const found = this.effect(this.str(args, "effect")!);
+      const search = fold(this.str(args, "search", false) ?? "");
+      const x = found.insert;
+      const head = `Four Hands · ${x.id} ${insertName(x)} on ${this.chainName(found.target)}${x.bypass ? " (bypassed)" : ""}`;
+      if (x.kind !== "plugin") {
+        const rows = paramDefs(x.kind)
+          .filter((d) => !search || fold(d.name).includes(search))
+          .map((d) => `${d.name}: ${paramText(d, x.params?.[d.id] ?? d.default)}${d.unit === "on" ? " (on/off)" : ` (${paramText(d, d.min)} to ${paramText(d, d.max)})`}`);
+        return [head, ...rows].join("\n");
+      }
+      const params = await this.options.effectParams?.(x.id);
+      if (!params) throw new MusicError("The audio engine is not running or has not loaded this plugin yet: ask the user to play the song once, then try again");
+      const rows = params.filter((p) => !search || fold(p.name).includes(search));
+      const shown = rows.slice(0, 120).map((p) => `${p.name}: ${p.text}${p.label && !p.text.endsWith(p.label) ? ` ${p.label}` : ""}`);
+      return [head, `${rows.length} of ${params.length} parameters${rows.length > 120 ? " (first 120: narrow with search)" : ""}:`, ...shown].join("\n");
+    },
+
+    set_effect: async (conn, args) => {
+      const iv = this.intervention(conn, args);
+      const found = this.effect(this.str(args, "effect")!);
+      const x = found.insert;
+      const text = this.str(args, "settings")!;
+      if (x.kind !== "plugin") {
+        const own = this.ownSettings(x.kind, text);
+        this.write(iv, (tx) => updateInsert(tx, x.id, { params: own.params, ...(own.bypass === undefined ? {} : { bypass: own.bypass }) }));
+        iv.other.push(`effects of ${this.chainName(found.target)}`);
+        this.emit();
+        return `${x.id} ${effectText(findInsert(this.song, x.id)!.insert)}\n${this.rev()}`;
+      }
+      // A plugin: each line names one of its parameters; the engine reads the value text.
+      const params = await this.options.effectParams?.(x.id);
+      if (!params) throw new MusicError("The audio engine is not running or has not loaded this plugin yet: ask the user to play the song once, then try again");
+      let bypass: boolean | undefined;
+      const wanted: Array<{ p: EffectParam; text: string }> = [];
+      for (const { n, text: line } of lines(text)) {
+        const [name, value] = splitSetting(line, n);
+        if (fold(name) === "bypass") {
+          bypass = onOff(value, n);
+          continue;
+        }
+        const key = fold(name);
+        const p = params.find((q) => fold(q.name) === key) ?? params.find((q) => fold(q.name).startsWith(key));
+        if (!p) throw new MusicError(`Line ${n}: ${insertName(x)} has no parameter '${name}'. See list_effect_parameters`);
+        wanted.push({ p, text: value });
+      }
+      const changes: Record<string, { value: number; base: number }> = {};
+      const after: string[] = [];
+      for (const { p, text: value } of wanted) {
+        const r = await this.options.setEffectParam?.(x.id, p.index, value);
+        if (!r?.ok) throw new MusicError(`${insertName(x)} did not take '${p.name}: ${value}'`);
+        changes[String(p.index)] = { value: r.value, base: p.value };
+        after.push(`${p.name}: ${r.text}`);
+      }
+      // In the song too, so it is undone in one step and kept with the song.
+      if (Object.keys(changes).length || bypass !== undefined) {
+        this.write(iv, (tx) => updateInsert(tx, x.id, { ...(Object.keys(changes).length ? { pluginParams: changes } : {}), ...(bypass === undefined ? {} : { bypass }) }));
+        iv.other.push(`effects of ${this.chainName(found.target)}`);
+        this.emit();
+      }
+      if (bypass !== undefined) after.push(`bypass: ${bypass ? "on" : "off"}`);
+      return `${x.id} ${insertName(x)}: ${after.join(" · ") || "nothing changed"}\n${this.rev()}`;
+    },
+  };
+
+  /** "master", or a track by id or name. */
+  private chainTarget(text: string): ChainTarget {
+    return /^(master|máster|master bus)$/i.test(text.trim()) ? "master" : this.track(text);
+  }
+
+  private chainName(target: ChainTarget): string {
+    return target === "master" ? "the Master" : `${this.song.tracks[target]?.name ?? target} (${target})`;
+  }
+
+  private effect(text: string): { target: ChainTarget; index: number; insert: Insert } {
+    const found = findInsert(this.song, text.trim());
+    if (!found) throw new MusicError(`There is no effect ${text.trim()}. The overview lists each track's effects with their ids`);
+    return found;
+  }
+
+  /** 'eq', 'compressor', 'limiter' (also in Spanish), or a plugin effect by name. */
+  private effectSpec(text: string): InsertSpec {
+    const key = fold(text);
+    const own: Record<string, Exclude<InsertKind, "plugin">> = { eq: "eq", ecualizador: "eq", equalizer: "eq", compressor: "compressor", compresor: "compressor", limiter: "limiter", limitador: "limiter" };
+    if (own[key]) return { kind: own[key] };
+    const list = (this.options.plugins?.() ?? []).filter((p) => !p.instrument);
+    const found = list.find((p) => fold(p.name) === key) ?? list.find((p) => fold(p.name).startsWith(key));
+    if (!found) throw new MusicError(list.length ? `There is no effect '${text.trim()}': 'eq', 'compressor', 'limiter', or a plugin effect from list_instruments` : `'${text.trim()}' is not 'eq', 'compressor' or 'limiter', and Four Hands has not found plugin effects on this computer yet (Ajustes › Plugins)`);
+    return { kind: "plugin", plugin: { id: found.id, name: found.name } };
+  }
+
+  /** Lines 'Threshold: -24 dB' for an own effect: its parameters (and bypass). */
+  private ownSettings(kind: Exclude<InsertKind, "plugin">, text: string): { params: Record<string, number>; bypass?: boolean } {
+    const defs = paramDefs(kind);
+    const params: Record<string, number> = {};
+    let bypass: boolean | undefined;
+    for (const { n, text: line } of lines(text)) {
+      const [name, value] = splitSetting(line, n);
+      const key = fold(name);
+      if (key === "bypass") {
+        bypass = onOff(value, n);
+        continue;
+      }
+      const def = defs.find((d) => fold(d.name) === key || fold(d.id) === key) ?? defs.find((d) => fold(d.name).startsWith(key));
+      if (!def) throw new MusicError(`Line ${n}: the ${OWN_EFFECTS[kind].name.en} has no '${name}'. Its parameters: ${defs.map((d) => d.name).join(", ")}`);
+      if (def.unit === "on") {
+        params[def.id] = onOff(value, n) ? 1 : 0;
+        continue;
+      }
+      const v = readValue(value, def.unit);
+      if (v === null) throw new MusicError(`Line ${n}: '${value}' is not a value for ${def.name} (${paramText(def, def.min)} to ${paramText(def, def.max)})`);
+      if (v < def.min - 1e-9 || v > def.max + 1e-9) throw new MusicError(`Line ${n}: ${def.name} goes from ${paramText(def, def.min)} to ${paramText(def, def.max)}`);
+      params[def.id] = v;
+    }
+    return bypass === undefined ? { params } : { params, bypass };
+  }
+
   dispose(): void {
     this.unsubscribe();
     for (const iv of this.interventions.values()) this.clearTimer(iv.timer);
@@ -1553,8 +1754,35 @@ function isPluginSound(text: string): boolean {
   return /^\s*plugins?\s*\//i.test(text);
 }
 
-const READ_TOOLS = new Set(["get_song_overview", "get_user_context", "read_notes", "analyze", "get_changes_since", "get_history", "summarize", "list_instruments", "get_levels", "list_skills", "load_skill", "point_to"]);
+const READ_TOOLS = new Set(["list_effect_parameters", "get_song_overview", "get_user_context", "read_notes", "analyze", "get_changes_since", "get_history", "summarize", "list_instruments", "get_levels", "list_skills", "load_skill", "point_to"]);
 const NOT_READING_THE_SONG = new Set(["point_to", "list_skills", "load_skill"]);
+
+/** "Threshold: -24 dB" → ["Threshold", "-24 dB"]; also "Threshold = -24" and "threshold -24". */
+function splitSetting(line: string, n: number): [string, string] {
+  // "Ratio: 4:1" and "ratio 4:1": the name does not end in a digit before its colon.
+  const t = line.trim();
+  const m = /^(.*?[^\d\s])\s*[:=]\s*(.+)$/.exec(t) ?? /^(.*\D)\s+([-+−]?\d.*)$/.exec(t) ?? /^(.+?)\s+(on|off|true|false|yes|no|s[ií])$/i.exec(t);
+  if (!m) throw new MusicError(`Line ${n} ("${line}"): write 'name: value', e.g. 'Threshold: -24 dB'`);
+  return [m[1]!.trim().replace(/\s*[:=]$/, ""), m[2]!.trim()];
+}
+
+function onOff(value: string, n: number): boolean {
+  const v = fold(value);
+  if (["on", "true", "yes", "si", "1", "activo", "activado"].includes(v)) return true;
+  if (["off", "false", "no", "0", "inactivo", "desactivado"].includes(v)) return false;
+  throw new MusicError(`Line ${n}: '${value}' is not on or off`);
+}
+
+/** "-24 dB", "2,5 kHz", "4:1", "5 ms", "90" → a number in the parameter's unit (Hz, dB, ms…). */
+function readValue(text: string, unit: string): number | null {
+  const t = text.trim().toLowerCase().replace("−", "-").replace(",", ".");
+  const m = /^([-+]?\d+(?:\.\d+)?)\s*(khz|hz|db|ms|s|:1)?$/.exec(t);
+  if (!m) return null;
+  let v = Number(m[1]);
+  if (m[2] === "khz") v *= 1000;
+  if (m[2] === "s" && unit === "ms") v *= 1000;
+  return Number.isFinite(v) ? v : null;
+}
 
 function formatPitch(pitch: number): string {
   const names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
