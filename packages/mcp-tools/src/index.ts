@@ -15,7 +15,7 @@
 import { z } from "zod";
 
 /** Bumped whenever a tool, its parameters or its meaning changes. The app refuses other bridges. */
-export const TOOLS_VERSION = 18;
+export const TOOLS_VERSION = 19;
 
 /**
  * Track colours by name (H3.2). The app's palette (desktop/src/shared/track-colors.ts) has the same
@@ -170,6 +170,7 @@ export const TOOLS: readonly ToolDefinition[] = [
       "The levels each track reached in the last playback, measured in the audio engine after its fader (F2.2): peak and average (RMS) in dBFS, " +
       "how many samples went over 0 dBFS (clipping), and the master's. Silent tracks are listed apart. " +
       "It is a meter, not hearing: it says how loud, not which frequencies, nor whether two parts mask each other. Say so when you use it. " +
+      "It also says the audio engine's load and whether the audio was cut (too many plugins for the computer). " +
       "Use it before changing volumes with set_mix, and after the user plays, to check what a change did. Read-only.",
     inputSchema: {},
     annotations: readOnly,
@@ -581,9 +582,10 @@ export const TOOLS: readonly ToolDefinition[] = [
     name: "set_mix",
     title: "Balance the mix",
     description:
-      "Set volume, pan, reverb and mute of several tracks in one step, one track per line: the track (id or name), then any of " +
+      "Set volume, pan, reverb and mute of several tracks (and the master's volume) in one step, one track per line: the track (id or name), then any of " +
       "'vol 70' (0-100), 'pan -30' (-100 left to 100 right; also 'pan L30', 'pan R20', 'pan C'), 'rev 30' (reverb send, 0 dry to 100), 'mute' or 'unmute'. " +
       "E.g. 't1 vol 65 pan -40', 'Violines vol 80 pan L25 rev 35', 'Bateria mute'. Read the current mix in get_song_overview first. " +
+      "A line 'master vol 90' sets the master fader (0-100, 100 = 0 dB, the default): lower it only to take the whole mix down, not to fix one track. " +
       "Reverb places a track in depth: more sounds further back. Keep bass, drums and fast or short parts drier, and remember " +
       "tracks sounding in the user's DAW get the send too, where their own reverb may already be on. " +
       "You cannot hear the result: describe what you changed and why, and let the user listen. " +

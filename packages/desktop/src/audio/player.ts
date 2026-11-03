@@ -12,6 +12,7 @@ import type { SoundOut } from "./router.js";
 import { type LoopRange, METRONOME_CHANNEL, type SoundResolver, type StripResolver, clickEvents, curveResetEvents, curveStateEvents, noteEvents, setupEvents, windowPieces } from "./schedule.js";
 
 const LOOKAHEAD = 0.2;
+export const HIDDEN_LOOKAHEAD = 1.2;
 const TICK_MS = 25;
 /** Start a little in the future so the first events are never late. */
 const START_DELAY = 0.08;
@@ -68,6 +69,11 @@ export class Player {
   private anchorSong = 0;
   private anchorTime = 0;
   private timer: ReturnType<typeof setInterval> | null = null;
+  /**
+   * How far ahead the notes go out. Longer while the window is hidden (minimised): a second safety
+   * net if the system still slows its timers down (Fran, 03/11/2026: stutters after Alt+Tab).
+   */
+  lookahead = LOOKAHEAD;
   private listeners = new Set<() => void>();
   private held = new Map<number, { to: Target; pitch: number }>();
   private setupDone = false;
@@ -246,7 +252,7 @@ export class Player {
   private schedule(): void {
     const song = this.song();
     if (this.done >= 0) this.followLoop();
-    const horizon = this.linearAt(this.now() + LOOKAHEAD);
+    const horizon = this.linearAt(this.now() + this.lookahead);
     if (horizon <= this.done) return;
     const events: { time: number; ev: SynthEvent }[] = [];
     const at = (linear: number) => this.timeAt(linear);

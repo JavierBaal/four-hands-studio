@@ -16,7 +16,7 @@
  * H3 applies changes directly. Proposal mode (H4, off by default: Tu IA > Lo que escribe) only
  * changes what closing does: the intervention leaves the song and waits as a proposal.
  */
-import type { EngineLevels } from "../../shared/mix.js";
+import type { EngineLevels, EngineLoad } from "../../shared/mix.js";
 import { levelsText } from "./texts.js";
 import { TRACK_PALETTE, trackColorByName, trackColorId } from "../../shared/track-colors.js";
 import {
@@ -111,6 +111,8 @@ export interface AiDeskOptions {
   /** F2.2: what the engine measured in the last playback (the window asks it when playback stops). */
   /** The last playback's levels, and the strip each track had then (A2). */
   levels?: () => { levels: EngineLevels; at: number; strips?: Record<string, number> } | null;
+  /** F2.2 parte B: the engine's last load reading (for get_levels), null without engine. */
+  load?: () => EngineLoad | null;
   now?: () => number;
   /** 5 minutes (ESQUEMA_MCP.md, 5.1). */
   autoCloseMs?: number;
@@ -769,7 +771,10 @@ export class AiDesk {
       const last = this.options.levels?.() ?? null;
       const song = this.options.session().snapshot().song;
       const tracks = song.trackOrder.map((id) => song.tracks[id]!).filter(Boolean);
-      return levelsText(last?.levels ?? null, tracks.map((t) => ({ name: t.name, channel: t.channel, strip: last?.strips?.[t.id] })), last?.at ?? null);
+      return levelsText(last?.levels ?? null, tracks.map((t) => ({ name: t.name, channel: t.channel, strip: last?.strips?.[t.id] })), last?.at ?? null, {
+        masterVolume: song.masterVolume ?? 1,
+        load: this.options.load?.() ?? null,
+      });
     },
 
     list_skills: () => skillsListText(this.skillList()),
@@ -1319,7 +1324,20 @@ export class AiDesk {
       const iv = this.intervention(conn, args);
       const all = lines(this.str(args, "mix")!);
       if (all.length === 0) throw new MusicError("No tracks: one per line, e.g. 't1 vol 65 pan -40'");
-      const changes = all.map(({ n, text }) => {
+      // F2.2 parte B: a 'master vol 90' line sets the master fader (a track called so wins).
+      let master: number | undefined;
+      const trackLines = all.filter(({ n, text }) => {
+        const m = /^(master|máster|master bus)\s+(.*)$/i.exec(text.trim());
+        if (!m || orderedTracks(this.song).some((t) => t.name.toLowerCase() === m[1]!.toLowerCase())) return true;
+        if (master !== undefined) throw new MusicError(`Line ${n}: the master appears twice`);
+        const v = /^(?:vol|volume)\s+(\d+(?:\.\d+)?)$/i.exec(m[2]!.trim());
+        if (!v) throw new MusicError(`Line ${n} ("${text}"): the master only has 'vol' (0-100, 100 = 0 dB)`);
+        const vol = Number(v[1]);
+        if (!(vol >= 0 && vol <= 100)) throw new MusicError(`Line ${n}: volume goes from 0 to 100`);
+        master = vol / 100;
+        return false;
+      });
+      const changes = trackLines.map(({ n, text }) => {
         try {
           return { ...this.mixLine(text), line: n };
         } catch (error) {
@@ -1333,11 +1351,13 @@ export class AiDesk {
       }
       this.write(iv, (tx) => {
         for (const c of changes) updateTrack(tx, c.trackId, c.changes);
+        if (master !== undefined) setSongProperties(tx, { masterVolume: master });
       });
       for (const c of changes) iv.trackIds.add(c.trackId);
-      iv.other.push("the mix");
+      iv.other.push(master !== undefined ? "the mix and the master" : "the mix");
       this.emit();
       const after = changes.map((c) => `${c.trackId} ${this.song.tracks[c.trackId]!.name} · ${mixText(this.song.tracks[c.trackId]!)}`);
+      if (master !== undefined) after.push(`Master · vol ${Math.round((this.song.masterVolume ?? 1) * 100)}`);
       return `Mix set:\n${after.join("\n")}\n${this.rev()}`;
     },
 

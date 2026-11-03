@@ -889,4 +889,33 @@ describe("get_levels (F2.2, 03/11/2026)", () => {
     expect(text).toMatch(/meter, not hearing/);
     expect(levelsText(null, [], null)).toMatch(/Ask the user to play/);
   });
+
+  it("says the master's fader and the engine's load, and when the audio was cut (parte B)", async () => {
+    const { levelsText } = await import("./texts.js");
+    const channels = [{ peak: 0.5, rms: 0.1, clips: 0 }];
+    const text = levelsText({ channels, master: { peak: 0.5, rms: 0.1, clips: 0 } }, [{ name: "Piano", channel: 0 }], null, { masterVolume: 0.9, load: { avgLoad: 0.23, maxLoad: 0.4, dropouts: 0 } });
+    expect(text).toContain("- Master (after its fader, vol 90): -6.0 / -20.0");
+    expect(text).toContain("Engine load: 23 % average, 40 % peak of each audio block's time; no audio cut.");
+    const cut = levelsText(null, [], null, { load: { avgLoad: 0.95, maxLoad: 1.3, dropouts: 2 } });
+    expect(cut).toMatch(/Ask the user to play/);
+    expect(cut).toMatch(/audio was CUT 2 time/);
+  });
+});
+
+describe("the master fader for the AI (F2.2 parte B)", () => {
+  it("set_mix takes a 'master vol' line in the same undo step, and the overview shows the master", () => {
+    expect(ok("get_song_overview")).toContain("Master: vol 100 (0 dB)");
+    const id = begin("Bajo el máster");
+    const text = ok("set_mix", { intervention_id: id, mix: "t1 vol 70\nmaster vol 90" });
+    expect(text).toContain("Master · vol 90");
+    expect(session.song.masterVolume).toBe(0.9);
+    expect(session.song.tracks.t1!.volume).toBe(0.7);
+    expect(ok("get_song_overview")).toContain("Master: vol 90");
+    expect(fail("set_mix", { intervention_id: id, mix: "máster pan L20" })).toMatch(/the master only has 'vol'/);
+    expect(fail("set_mix", { intervention_id: id, mix: "master vol 120" })).toMatch(/volume goes from 0 to 100/);
+    ok("end_intervention", { intervention_id: id });
+    session.handle({ type: "undo" });
+    expect(session.song.masterVolume).toBeUndefined();
+    expect(session.song.tracks.t1!.volume).toBe(0.8);
+  });
 });

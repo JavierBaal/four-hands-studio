@@ -189,3 +189,20 @@ export const LibraryIcon = () => (
     <path d="M11 3.6l2.6.7-2.4 9-2.4-.6" {...line} />
   </svg>
 );
+
+/** The console (F2.2 parte B): three faders. */
+export const MixIcon = () => (
+  <svg {...svg}>
+    <path d="M4 2.5v11M8 2.5v11M12 2.5v11" fill="none" stroke={T.text} strokeWidth="1.4" strokeLinecap="round" opacity=".55" />
+    <rect x="2.5" y="8.5" width="3" height="2.5" rx=".8" fill={T.text} />
+    <rect x="6.5" y="4.5" width="3" height="2.5" rx=".8" fill={T.text} />
+    <rect x="10.5" y="10" width="3" height="2.5" rx=".8" fill={T.text} />
+  </svg>
+);
+/** The editor (F2.2 parte B): notes on a piano roll. */
+export const EditorIcon = () => (
+  <svg {...svg}>
+    <rect x="2" y="2.5" width="12" height="11" rx="1.5" fill="none" stroke={T.text} strokeWidth="1.4" opacity=".55" />
+    <path d="M4.5 6h3M8.5 8.5h3M5.5 11h4" fill="none" stroke={T.text} strokeWidth="1.6" strokeLinecap="round" />
+  </svg>
+);

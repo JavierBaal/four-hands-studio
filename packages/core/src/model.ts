@@ -249,6 +249,11 @@ export interface Song {
   key: KeySignature;
   /** Key changes after the start (H4, Fran 26/10/2026), sorted by tick, on bar lines. Absent: one key. */
   keyChanges?: KeyChange[];
+  /**
+   * The master fader (F2.2 parte B, Fran 03/11/2026), with the tracks' scale: 0–1 and the CC7 curve,
+   * 1 = 0 dB. Absent: 0 dB, so songs from before sound the same.
+   */
+  masterVolume?: number;
   /** Current revision (`r1532`). Every transaction, undo and redo increases it. */
   revision: number;
   /** Next number per id prefix. Ids are never reused within a song (ARQUITECTURA.md, 4.3). */

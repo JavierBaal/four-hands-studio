@@ -90,6 +90,11 @@ export interface EngineStrip {
   gain: number;
   pan: number;
   reverb: number;
+  /**
+   * F2.2 parte B: false when the track is muted, or another is soloed. The engine silences the strip
+   * after its sound, so a plugin's own tail and the reverb send stop at once. Absent: on.
+   */
+  on?: boolean;
   /** Whose strip it is: the main process keeps the map for the levels and the plugins' state. */
   track?: string;
 }
@@ -104,14 +109,18 @@ export function stripGain(volume: number): number {
  * to neutral (they belonged to tracks that are gone, or to the metronome).
  */
 export function engineStrips(
-  tracks: ReadonlyArray<{ id?: string; channel: number; strip?: number; output?: string | undefined; volume: number; pan: number; reverb?: number | undefined }>,
+  tracks: ReadonlyArray<{ id?: string; channel: number; strip?: number; output?: string | undefined; volume: number; pan: number; reverb?: number | undefined; mute?: boolean; solo?: boolean }>,
   reset: Iterable<number> = [],
 ): EngineStrip[] {
   const out = new Map<number, EngineStrip>();
   for (const ch of reset) out.set(ch, { ch, gain: 1, pan: 0, reverb: 0 });
+  // Solo wins over mute; with no solo, every track not muted (as the player decides, audibleTracks).
+  const anySolo = tracks.some((t) => t.solo);
   for (const t of tracks) {
     const ch = t.strip ?? t.channel;
     const strip: EngineStrip = t.output === "plugin" ? { ch, gain: stripGain(t.volume), pan: t.pan, reverb: t.reverb ?? 0 } : { ch, gain: 1, pan: 0, reverb: 0 };
+    const on = anySolo ? !!t.solo : !t.mute;
+    if (!on) strip.on = false;
     if (t.id !== undefined) strip.track = t.id;
     out.set(ch, strip);
   }
@@ -138,5 +147,29 @@ export function levelsReport(levels: EngineLevels, tracks: ReadonlyArray<{ name:
       const c = levels.channels[strip] ?? { peak: 0, rms: 0, clips: 0 };
       return { track: t.name, strip, peakDb: levelDb(c.peak), rmsDb: levelDb(c.rms), clips: c.clips };
     }),
+  };
+}
+
+/** The master fader's gain (F2.2 parte B): the song's `masterVolume`, same curve as a track. */
+export function masterGain(masterVolume: number | undefined): number {
+  return stripGain(masterVolume ?? 1);
+}
+
+/** What the engine says about its load (F2.2 parte B, the «Carga» indicator). */
+export interface EngineLoad {
+  /** Average share of each block's budget used since the last reading (0–1). */
+  avgLoad: number;
+  maxLoad: number;
+  /** Times the audio was cut since the last reading (blocks over budget, or the driver's count). */
+  dropouts: number;
+}
+
+/** From the engine's `stats` reply. */
+export function engineLoad(stats: { avgLoad?: number; maxLoad?: number; overruns?: number; xruns?: number }): EngineLoad {
+  return {
+    avgLoad: Math.max(0, stats.avgLoad ?? 0),
+    maxLoad: Math.max(0, stats.maxLoad ?? 0),
+    // The driver's count and ours often see the same cut: take the larger, not the sum.
+    dropouts: Math.max(0, stats.overruns ?? 0, stats.xruns ?? 0),
   };
 }

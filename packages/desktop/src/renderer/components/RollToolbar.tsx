@@ -3,7 +3,7 @@ import { barAt } from "@fourhands/core";
 import { SoundOriginIcon } from "./SidePanel.js";
 import { activeTrack, useActions, useApp, useSong, useView } from "../context.js";
 import { barRange } from "../music.js";
-import { ArrowToolIcon, EraserIcon, PencilIcon, ZoomIcon } from "./Icons.js";
+import { ArrowToolIcon, EditorIcon, EraserIcon, MixIcon, PencilIcon, ZoomIcon } from "./Icons.js";
 import type { Tool } from "../view.js";
 
 export interface RollToolbarProps {
@@ -29,6 +29,23 @@ export function aiSeesText(song: ReturnType<typeof useSong>, t: ReturnType<typeo
   return `${name} · ${t("bars", { range })}`;
 }
 
+/**
+ * F2.2 parte B (Fran, 03/11/2026): one button that says where it takes you, «Mezcla» in the editor
+ * and «Editor» in the console, first in both bars, so it is always in the same place. Never pressed:
+ * it is an action, not a layer like Autoría or Escala. The keys (F2, F3) are in the tooltip.
+ */
+export function ModeButton() {
+  const { t, view } = useApp();
+  const v = useView();
+  const mix = v.bottom === "mix";
+  return (
+    <button className="tool modeb" title={mix ? t("consoleBackTitle") : t("consoleOpenTitle")} onClick={() => view.set({ bottom: mix ? "editor" : "mix" })}>
+      {mix ? <EditorIcon /> : <MixIcon />}
+      {mix ? t("consoleEditor") : t("consoleMix")}
+    </button>
+  );
+}
+
 export function RollToolbar({ onGridMenu }: RollToolbarProps) {
   const { t, view } = useApp();
   const actions = useActions();
@@ -44,6 +61,8 @@ export function RollToolbar({ onGridMenu }: RollToolbarProps) {
   );
   return (
     <div className="rtools">
+      <ModeButton />
+      <span className="sep" />
       <span className="rtitle">{track?.name ?? ""}</span>
       {track && (
         <button

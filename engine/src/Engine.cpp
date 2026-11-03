@@ -366,13 +366,29 @@ void Engine::audioDeviceIOCallbackWithContext (const float* const*, int, float* 
     const juce::SpinLock::ScopedLockType sl (statsLock);
     stats.blocks++;
     stats.maxLoad = juce::jmax (stats.maxLoad, load);
+    stats.sumLoad += load;
+    if (load > 1.0)
+        stats.overruns++;
 }
 
 Engine::Stats Engine::takeStats()
 {
-    const juce::SpinLock::ScopedLockType sl (statsLock);
-    auto out = stats;
-    stats = {};
+    Stats out;
+    {
+        const juce::SpinLock::ScopedLockType sl (statsLock);
+        out = stats;
+        stats = {};
+    }
+    // The driver's own count of dropouts (WASAPI counts them), as the change since the last call.
+    if (auto* d = device.getCurrentAudioDevice())
+    {
+        const int now = d->getXRunCount();
+        if (now >= 0)
+        {
+            out.xruns = lastXRuns >= 0 ? juce::jmax (0, now - lastXRuns) : 0;
+            lastXRuns = now;
+        }
+    }
     return out;
 }
 
@@ -470,6 +486,14 @@ void Engine::process (float* const* outputs, int numOutputs, int numSamples)
         const auto& p = mix[(size_t) ch];
         float* L = strips.getWritePointer (2 * ch);
         float* R = strips.getWritePointer (2 * ch + 1);
+        if (! p.on)
+        {
+            // Off: silent from here, its sends too (the built-in sounds' own send included).
+            juce::FloatVectorOperations::clear (L, numSamples);
+            juce::FloatVectorOperations::clear (R, numSamples);
+            meters[(size_t) ch].add (L, R, numSamples);
+            continue;
+        }
         const float gL = (float) (p.gain * (p.pan <= 0 ? 1.0 : std::cos (p.pan * juce::MathConstants<double>::halfPi)));
         const float gR = (float) (p.gain * (p.pan >= 0 ? 1.0 : std::cos (-p.pan * juce::MathConstants<double>::halfPi)));
         if (gL != 1.0f)
@@ -487,6 +511,11 @@ void Engine::process (float* const* outputs, int numOutputs, int numSamples)
     }
     if (busReverb != nullptr)
         busReverb->process (busData, master.getWritePointer (0), master.getWritePointer (1), 0, numSamples);
+    if (const auto mg = (float) masterGain.load(); mg != 1.0f)
+    {
+        juce::FloatVectorOperations::multiply (master.getWritePointer (0), mg, numSamples);
+        juce::FloatVectorOperations::multiply (master.getWritePointer (1), mg, numSamples);
+    }
     meters[(size_t) kStrips].add (master.getReadPointer (0), master.getReadPointer (1), numSamples);
 
     for (int c = 0; c < numOutputs; ++c)
@@ -520,14 +549,14 @@ void Engine::Meter::add (const float* L, const float* R, int n)
     totalCount += n;
 }
 
-void Engine::setMix (int strip, double gain, double pan, double reverb)
+void Engine::setMix (int strip, double gain, double pan, double reverb, bool on)
 {
     if (! juce::isPositiveAndBelow (strip, kStrips))
         return;
     const juce::SpinLock::ScopedLockType sl (lock);
-    mix[(size_t) strip] = { juce::jlimit (0.0, 4.0, gain), juce::jlimit (-1.0, 1.0, pan), juce::jlimit (0.0, 1.0, reverb) };
+    mix[(size_t) strip] = { juce::jlimit (0.0, 4.0, gain), juce::jlimit (-1.0, 1.0, pan), juce::jlimit (0.0, 1.0, reverb), on };
     // A neutral strip does not need to be counted; one with a mix does (its plugin may come later).
-    if (gain != 1.0 || pan != 0.0 || reverb != 0.0)
+    if (gain != 1.0 || pan != 0.0 || reverb != 0.0 || ! on)
         touch (strip);
 }
 

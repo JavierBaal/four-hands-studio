@@ -97,7 +97,13 @@ public:
      * the fader). The built-in sounds keep their volume, pan and reverb as MIDI (CC7, CC10,
      * CC91) inside their synth, so they sound as before: their strip stays at 1, 0, 0.
      */
-    void setMix (int strip, double gain, double pan, double reverb);
+    /**
+     * F2.2 parte B: a strip that is off (`on` false: muted, or not soloed while another is) is
+     * silent here, after its sound, so the tails of its reverb send and of its plugin stop at once.
+     */
+    void setMix (int strip, double gain, double pan, double reverb, bool on = true);
+    /** The master fader (linear gain, after the Reverb bus and before the master meter). */
+    void setMasterGain (double gain) { masterGain.store (juce::jlimit (0.0, 4.0, gain)); }
 
     /** Peak and RMS (linear) of a strip, or of the master (index kStrips), and samples above 1. */
     struct Level { double peak = 0, rms = 0; juce::int64 clips = 0; };
@@ -131,7 +137,16 @@ public:
     void audioDeviceStopped() override;
 
     /** Blocks processed so far and the largest share of the block budget used (for the log). */
-    struct Stats { juce::int64 blocks = 0; double maxLoad = 0; int late = 0; };
+    struct Stats
+    {
+        juce::int64 blocks = 0;
+        double maxLoad = 0, sumLoad = 0;
+        int late = 0;
+        /** Blocks that took longer than their budget (the audio was cut). */
+        int overruns = 0;
+        /** What the driver counted as dropouts since the last call (-1: it does not say). */
+        int xruns = -1;
+    };
     Stats takeStats();
 
 private:
@@ -177,7 +192,9 @@ private:
     std::vector<SynthEvent> soundsEvents;
     std::atomic<int> used { 0 };
 
-    struct Strip { double gain = 1, pan = 0, reverb = 0; };
+    struct Strip { double gain = 1, pan = 0, reverb = 0; bool on = true; };
+    std::atomic<double> masterGain { 1.0 };
+    int lastXRuns = -1;
     struct Meter
     {
         float peak = 0, totalPeak = 0;
