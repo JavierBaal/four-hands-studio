@@ -1,0 +1,138 @@
+import { describe, expect, it } from "vitest";
+import { changesText } from "./changes.js";
+import { addTrack } from "./commands.js";
+import { SongDocument } from "./document.js";
+import { OWN_EFFECTS, addInsert, chainOf, defaultParams, findInsert, moveInsert, paramText, removeInsert, updateInsert } from "./effects.js";
+import { parseSongFile, serializeSong } from "./file.js";
+import { USER, ai, emptySong } from "./model.js";
+
+const CLAUDE = ai("claude-ai");
+
+function doc() {
+  const d = new SongDocument(emptySong("Efectos"), { now: () => 0 });
+  d.transact({ actor: USER, label: "pistas" }, (tx) => {
+    addTrack(tx, { name: "Piano" });
+    addTrack(tx, { name: "Cuerdas" });
+  });
+  return d;
+}
+
+describe("insert effects (F2.2 parte C)", () => {
+  it("adds own effects with every parameter at its default, each one undo step", () => {
+    const d = doc();
+    let eq = "";
+    d.transact({ actor: USER, label: "eq" }, (tx) => (eq = addInsert(tx, "t1", { kind: "eq" })));
+    expect(eq).toBe("x1");
+    expect(d.song.tracks.t1!.inserts).toEqual([{ id: "x1", kind: "eq", params: defaultParams("eq") }]);
+    d.transact({ actor: CLAUDE, label: "comp" }, (tx) => addInsert(tx, "t1", { kind: "compressor", params: { threshold: -24 } }, 0));
+    expect(chainOf(d.song, "t1").map((x) => x.kind)).toEqual(["compressor", "eq"]);
+    expect(chainOf(d.song, "t1")[0]!.params!.threshold).toBe(-24);
+    d.undo(CLAUDE);
+    expect(chainOf(d.song, "t1").map((x) => x.id)).toEqual(["x1"]);
+    d.undo(USER);
+    expect("inserts" in d.song.tracks.t1!).toBe(false);
+  });
+
+  it("never reuses an id, even after undo", () => {
+    const d = doc();
+    d.transact({ actor: USER, label: "a" }, (tx) => addInsert(tx, "t1", { kind: "eq" }));
+    d.undo(USER);
+    let id = "";
+    d.transact({ actor: USER, label: "b" }, (tx) => (id = addInsert(tx, "master", { kind: "limiter" })));
+    expect(id).toBe("x2");
+    expect(chainOf(d.song, "master").map((x) => x.kind)).toEqual(["limiter"]);
+  });
+
+  it("moves an effect inside its chain and to another track, and removes it", () => {
+    const d = doc();
+    d.transact({ actor: USER, label: "fx" }, (tx) => {
+      addInsert(tx, "t1", { kind: "eq" });
+      addInsert(tx, "t1", { kind: "compressor" });
+      addInsert(tx, "t1", { kind: "limiter" });
+    });
+    d.transact({ actor: USER, label: "mover" }, (tx) => moveInsert(tx, "x3", 0));
+    expect(chainOf(d.song, "t1").map((x) => x.id)).toEqual(["x3", "x1", "x2"]);
+    d.transact({ actor: USER, label: "a cuerdas" }, (tx) => moveInsert(tx, "x1", 0, "t2"));
+    expect(chainOf(d.song, "t1").map((x) => x.id)).toEqual(["x3", "x2"]);
+    expect(chainOf(d.song, "t2").map((x) => x.id)).toEqual(["x1"]);
+    expect(findInsert(d.song, "x1")?.target).toBe("t2");
+    d.transact({ actor: USER, label: "quitar" }, (tx) => removeInsert(tx, "x1"));
+    expect("inserts" in d.song.tracks.t2!).toBe(false);
+    d.undo(USER);
+    d.undo(USER);
+    expect(chainOf(d.song, "t1").map((x) => x.id)).toEqual(["x3", "x1", "x2"]);
+  });
+
+  it("sets parameters within their range, bypasses, and refuses what does not exist", () => {
+    const d = doc();
+    d.transact({ actor: USER, label: "comp" }, (tx) => addInsert(tx, "t1", { kind: "compressor" }));
+    d.transact({ actor: CLAUDE, label: "ajuste" }, (tx) => updateInsert(tx, "x1", { params: { ratio: 50, attack: 3 }, bypass: true }));
+    const comp = chainOf(d.song, "t1")[0]!;
+    expect(comp.params!.ratio).toBe(20);
+    expect(comp.params!.attack).toBe(3);
+    expect(comp.bypass).toBe(true);
+    d.transact({ actor: USER, label: "on" }, (tx) => updateInsert(tx, "x1", { bypass: false }));
+    expect("bypass" in chainOf(d.song, "t1")[0]!).toBe(false);
+    expect(() => d.transact({ actor: USER, label: "x" }, (tx) => updateInsert(tx, "x1", { params: { cutoff: 3 } }))).toThrow(/no parameter 'cutoff'/);
+    expect(() => d.transact({ actor: USER, label: "x" }, (tx) => updateInsert(tx, "x9", { bypass: true }))).toThrow(/Unknown effect/);
+    expect(() => d.transact({ actor: USER, label: "x" }, (tx) => addInsert(tx, "t9", { kind: "eq" }))).toThrow(/Unknown track/);
+  });
+
+  it("keeps only which plugin it is for a VST3 effect, whose parameters live in the engine", () => {
+    const d = doc();
+    d.transact({ actor: USER, label: "pro-q" }, (tx) => addInsert(tx, "t1", { kind: "plugin", plugin: { id: "VST3-Pro-Q 3-1", name: "Pro-Q 3" } }));
+    expect(chainOf(d.song, "t1")[0]).toEqual({ id: "x1", kind: "plugin", plugin: { id: "VST3-Pro-Q 3-1", name: "Pro-Q 3" } });
+    expect(() => d.transact({ actor: USER, label: "x" }, (tx) => updateInsert(tx, "x1", { params: { gain: 1 } }))).toThrow(/through the engine/);
+  });
+
+  it("travels in the .fourhands file; old songs without effects still open", () => {
+    const d = doc();
+    d.transact({ actor: USER, label: "fx" }, (tx) => {
+      addInsert(tx, "t2", { kind: "eq", params: { lowCut: 1, lowCutFreq: 120 } });
+      addInsert(tx, "master", { kind: "limiter" });
+    });
+    const back = parseSongFile(serializeSong({ song: d.song, history: d.history, proposals: [] }));
+    expect(back.song.tracks.t2!.inserts![0]!.params!.lowCutFreq).toBe(120);
+    expect(back.song.masterInserts![0]!.kind).toBe("limiter");
+    expect(back.song.counters.x).toBe(3);
+    // A song saved before effects existed: no `x` counter.
+    const old = JSON.parse(serializeSong({ song: doc().song, history: [], proposals: [] }));
+    delete old.song.counters.x;
+    expect(parseSongFile(JSON.stringify(old)).song.counters.x).toBe(1);
+  });
+
+  it("refuses a file where two effects share an id", () => {
+    const d = doc();
+    d.transact({ actor: USER, label: "fx" }, (tx) => {
+      addInsert(tx, "t1", { kind: "eq" });
+      addInsert(tx, "t2", { kind: "eq" });
+    });
+    const data = JSON.parse(serializeSong({ song: d.song, history: [], proposals: [] }));
+    data.song.tracks.t2.inserts[0].id = "x1";
+    expect(() => parseSongFile(JSON.stringify(data))).toThrow(/share an id/);
+  });
+
+  it("shows what changed in the changes the AI reads", () => {
+    const d = doc();
+    d.transact({ actor: USER, label: "comp" }, (tx) => addInsert(tx, "t1", { kind: "compressor" }));
+    const before = structuredClone(d.song);
+    d.transact({ actor: CLAUDE, label: "ajuste" }, (tx) => {
+      updateInsert(tx, "x1", { params: { threshold: -24 } });
+      addInsert(tx, "master", { kind: "limiter" });
+    });
+    const text = changesText(before, d.song, { since: "r1", history: [] });
+    expect(text).toContain("effects: Compressor (x1) threshold −18.0 dB → −24.0 dB");
+    expect(text).toContain("master effects: + Limiter (x2)");
+  });
+
+  it("writes values the way people read them", () => {
+    const def = (kind: "eq" | "compressor" | "limiter", id: string) => OWN_EFFECTS[kind].params.find((p) => p.id === id)!;
+    expect(paramText(def("eq", "lowCutFreq"), 80)).toBe("80 Hz");
+    expect(paramText(def("eq", "highMidFreq"), 2500, "es")).toBe("2,5 kHz");
+    expect(paramText(def("eq", "highCutFreq"), 16000)).toBe("16 kHz");
+    expect(paramText(def("compressor", "threshold"), -18, "es")).toBe("−18,0 dB");
+    expect(paramText(def("compressor", "ratio"), 3)).toBe("3:1");
+    expect(paramText(def("compressor", "attack"), 0.5)).toBe("0.5 ms");
+    expect(paramText(def("eq", "lowCut"), 1)).toBe("on");
+  });
+});

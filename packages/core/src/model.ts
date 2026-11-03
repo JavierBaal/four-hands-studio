@@ -130,6 +130,8 @@ export interface Track {
   solo: boolean;
   /** Index in the track palette (DIRECCION_ARTISTICA.md, 2.7), 0 to TRACK_COLOR_COUNT - 1. */
   color: number;
+  /** Insert effects after its sound, in order (F2.2 parte C, effects.ts). Absent: none. */
+  inserts?: Insert[];
   /** Sustain pedal. */
   pedal: PedalSpan[];
   /**
@@ -152,6 +154,21 @@ export interface Track {
 }
 
 /** A preset of a sound bank installed by the user (a SoundFont file), by its file name. */
+/** An insert effect (F2.2 parte C): one of Four Hands' own, or a plugin (VST3). */
+export type InsertKind = "eq" | "compressor" | "limiter" | "plugin";
+
+export interface Insert {
+  /** "x12": never reused in the song. */
+  id: string;
+  kind: InsertKind;
+  /** Off: the sound goes through untouched. Absent: on. */
+  bypass?: boolean;
+  /** Own effects: every parameter, by id (effects.ts OWN_EFFECTS). */
+  params?: Record<string, number>;
+  /** A plugin effect: which plugin (its state is kept by the app, like an instrument's). */
+  plugin?: TrackPlugin;
+}
+
 /** A plugin hosted by the engine (VST3). */
 export interface TrackPlugin {
   /** The engine's identifier for it (format, name, file and id). */
@@ -224,7 +241,7 @@ export interface MidiFileSettings {
   releaseVelocity: number;
 }
 
-export type IdPrefix = "n" | "t" | "s" | "a" | "p" | "i";
+export type IdPrefix = "n" | "t" | "s" | "a" | "p" | "i" | "x";
 
 /** The song concept (ESTUDIO_SKILLS_COMPOSICION.md, 6.3): the intention and the limits, in words. */
 export interface SongConcept {
@@ -254,6 +271,8 @@ export interface Song {
    * 1 = 0 dB. Absent: 0 dB, so songs from before sound the same.
    */
   masterVolume?: number;
+  /** Insert effects on the Master, before its fader (F2.2 parte C). Absent: none. */
+  masterInserts?: Insert[];
   /** Current revision (`r1532`). Every transaction, undo and redo increases it. */
   revision: number;
   /** Next number per id prefix. Ids are never reused within a song (ARQUITECTURA.md, 4.3). */
@@ -279,7 +298,7 @@ export function emptySong(title = "Sin título"): Song {
     meter: { numerator: 4, denominator: 4 },
     key: { fifths: 0, mode: "major" },
     revision: 0,
-    counters: { n: 1, t: 1, s: 1, a: 1, p: 1, i: 1 },
+    counters: { n: 1, t: 1, s: 1, a: 1, p: 1, i: 1, x: 1 },
     trackOrder: [],
     tracks: {},
     notes: {},

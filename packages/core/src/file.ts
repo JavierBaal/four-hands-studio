@@ -4,6 +4,7 @@
  *
  * Pure: text in, text out. Autosave, temporary files and renaming are the app's job.
  */
+import { allInsertIds } from "./effects.js";
 import { z } from "zod";
 import type { HistoryEntry } from "./document.js";
 import { type IdPrefix, type Song, idNumber } from "./model.js";
@@ -52,6 +53,15 @@ const note = z.object({
   shapedBy: authorship,
 });
 
+// F2.2 parte C: insert effects. Own effects keep their parameters; a plugin, only which it is.
+const insert = z.object({
+  id: z.string().regex(/^x\d+$/),
+  kind: z.enum(["eq", "compressor", "limiter", "plugin"]),
+  bypass: z.literal(true).optional(),
+  params: z.record(z.string().max(40), z.number()).optional(),
+  plugin: z.object({ id: z.string().min(1).max(2000), name: z.string().min(1).max(200) }).optional(),
+});
+
 const track = z.object({
   id: z.string().regex(/^t\d+$/),
   name: z.string(),
@@ -74,6 +84,7 @@ const track = z.object({
   plugin: z.object({ id: z.string().min(1).max(2000), name: z.string().min(1).max(200) }).optional(),
   extraEvents: z.array(passthrough),
   sound: z.object({ bank: z.string().min(1).max(255), program: int.min(0).max(127), bankMSB: int.min(0).max(127), name: z.string().max(100) }).optional(),
+  inserts: z.array(insert).max(64).optional(),
 });
 
 const section = z.object({ id: z.string().regex(/^s\d+$/), name: z.string(), startBar: int.min(1), endBar: int.min(1) });
@@ -96,8 +107,10 @@ const song = z.object({
   key: z.object({ fifths: int.min(-7).max(7), mode: z.enum(["major", "minor"]) }),
   keyChanges: z.array(z.object({ tick: int.min(1), key: z.object({ fifths: int.min(-7).max(7), mode: z.enum(["major", "minor"]) }) })).optional(),
   masterVolume: z.number().min(0).max(1).optional(),
+  masterInserts: z.array(insert).max(64).optional(),
   revision: int.min(0),
-  counters: z.object({ n: int.min(1), t: int.min(1), s: int.min(1), a: int.min(1), p: int.min(1), i: int.min(1) }),
+  // `x` (effects) came with F2.2 parte C: songs from before start it at 1.
+  counters: z.object({ n: int.min(1), t: int.min(1), s: int.min(1), a: int.min(1), p: int.min(1), i: int.min(1), x: int.min(1).default(1) }),
   trackOrder: z.array(z.string()),
   tracks: z.record(z.string(), track),
   notes: z.record(z.string(), note),
@@ -243,4 +256,12 @@ function checkConsistency(s: Song): void {
     const max = Math.max(0, ...Object.keys(record).map(idNumber));
     if (s.counters[prefix] <= max) s.counters[prefix] = max + 1;
   }
+  // Effects: every id once in the whole song, and the counter ahead of them.
+  const effects = allInsertIds(s);
+  if (new Set(effects).size !== effects.length) fail("The song is damaged: two effects share an id");
+  for (const x of [...(s.masterInserts ?? []), ...Object.values(s.tracks).flatMap((t) => t.inserts ?? [])]) {
+    if (x.kind === "plugin" ? !x.plugin : !!x.plugin) fail(`The song is damaged: effect ${x.id} does not match its kind`);
+  }
+  const maxEffect = Math.max(0, ...effects.map(idNumber));
+  if (s.counters.x <= maxEffect) s.counters.x = maxEffect + 1;
 }
