@@ -54,7 +54,8 @@ export interface SoundPrefs {
 }
 
 export const NO_SOUND_PREFS: SoundPrefs = { favorites: [], recents: [], hidden: [], categories: {} };
-export const RECENT_MAX = 10;
+/** Instruments and effects share the list (each browser shows its own). */
+export const RECENT_MAX = 20;
 
 export const builtinKey = (item: PaletteItem) => `fh:${item.program ?? "drums"}`;
 export const bankKey = (bankId: string, p: { bankMSB: number; program: number }) => `bank:${bankId}:${p.bankMSB}:${p.program}`;
@@ -180,4 +181,106 @@ export function groupCatalog(items: SoundItem[], by: "category" | "vendor", lang
 /** Puts a key first in the recents. */
 export function withRecent(prefs: SoundPrefs, key: string): SoundPrefs {
   return { ...prefs, recents: [key, ...prefs.recents.filter((k) => k !== key)].slice(0, RECENT_MAX) };
+}
+
+// ---------------------------------------------------------------------------
+// Effects (F2.2 parte C, Fran 04/11/2026): the same browser, for insert effects. With many plugins,
+// a flat menu is chaos: grouped by type or by vendor, folded, with search, favourites and recents.
+
+export const EFFECT_CATEGORIES = ["eq", "dynamics", "reverb", "delay", "modulation", "saturation", "mastering", "utility", "other"] as const;
+export type EffectCategory = (typeof EFFECT_CATEGORIES)[number];
+
+export const EFFECT_CATEGORY_NAMES: Record<EffectCategory, [es: string, en: string]> = {
+  eq: ["Ecualizadores", "EQs"],
+  dynamics: ["Dinámica", "Dynamics"],
+  reverb: ["Reverbs", "Reverbs"],
+  delay: ["Delays", "Delays"],
+  modulation: ["Modulación", "Modulation"],
+  saturation: ["Saturación y distorsión", "Saturation and distortion"],
+  mastering: ["Mastering", "Mastering"],
+  utility: ["Utilidades y medidores", "Utilities and meters"],
+  other: ["Otros", "Others"],
+};
+
+/** Keys of Four Hands' own effects in the catalog (favourites and recents are kept by key). */
+export const ownEffectKey = (kind: string) => `fx:${kind}`;
+
+export interface EffectItem {
+  key: string;
+  name: string;
+  /** "Four Hands" or the plugin's vendor. */
+  source: string;
+  origin: "builtin" | "plugin";
+  category: EffectCategory;
+  target: { kind: "eq" | "compressor" | "limiter" } | { kind: "plugin"; plugin: EnginePlugin };
+}
+
+const EFFECT_WORDS: [EffectCategory, RegExp][] = [
+  ["mastering", /ozone|master|maximi[sz]er|pro-l|l2\b|l3\b|elevate|limitless/i],
+  ["eq", /\beq\b|equali[sz]|pro-q|pultec|filter|q\d|channel ?eq|frequency/i],
+  ["dynamics", /comp|limit|gate|expander|de-?ess|transient|dynamic|leveler|1176|la-?2a|ssl|vca|opto|clipper/i],
+  ["reverb", /reverb|verb|room|hall|plate|spring|space|valhalla|seventh heaven|altiverb/i],
+  ["delay", /delay|echo|tape echo|h-?delay|timeless/i],
+  ["modulation", /chorus|flang|phas|tremolo|vibrato|rotary|ensemble|modulat|shimmer/i],
+  ["saturation", /satur|distort|drive|overdrive|fuzz|tube|tape|decapitat|saturn|crush|bit ?crush|amp\b|amplifier/i],
+  ["utility", /meter|analy[sz]|scope|tuner|utility|imager|stereo ?(tool|imag|width)|width|phase ?scope|loudness/i],
+];
+
+/** A plugin effect's type: its own VST3 category ("Fx|EQ", "Fx|Dynamics", "Fx|Reverb"…), else its name. */
+export function effectCategory(p: Pick<EnginePlugin, "name" | "category">): EffectCategory {
+  const c = p.category.toLowerCase();
+  if (/mastering/.test(c)) return "mastering";
+  if (/\beq\b|filter/.test(c)) return "eq";
+  if (/dynamics/.test(c)) return "dynamics";
+  if (/reverb/.test(c)) return "reverb";
+  if (/delay/.test(c)) return "delay";
+  if (/modulation/.test(c)) return "modulation";
+  if (/distortion/.test(c)) return "saturation";
+  if (/analyzer|tools|spatial|restoration/.test(c)) return "utility";
+  for (const [cat, re] of EFFECT_WORDS) if (re.test(p.name)) return cat;
+  return "other";
+}
+
+export function buildEffectCatalog(input: { lang: Lang; plugins: EnginePlugin[]; prefs: SoundPrefs; ownLabel: string; ownNames: Record<"eq" | "compressor" | "limiter", string> }): EffectItem[] {
+  const own: Array<["eq" | "compressor" | "limiter", EffectCategory]> = [
+    ["eq", "eq"],
+    ["compressor", "dynamics"],
+    ["limiter", "dynamics"],
+  ];
+  const items: EffectItem[] = own.map(([kind, category]) => ({ key: ownEffectKey(kind), name: input.ownNames[kind], source: input.ownLabel, origin: "builtin", category, target: { kind } }));
+  const hidden = new Set(input.prefs.hidden);
+  for (const p of input.plugins) {
+    if (p.instrument) continue;
+    const key = pluginKey(p.id);
+    if (hidden.has(key)) continue;
+    items.push({ key, name: p.name, source: p.vendor, origin: "plugin", category: effectCategory(p), target: { kind: "plugin", plugin: p } });
+  }
+  return items;
+}
+
+export function filterEffects(items: EffectItem[], filter: SoundFilter, query: string, prefs: SoundPrefs): EffectItem[] {
+  return filterCatalog(items as unknown as SoundItem[], filter, query, prefs) as unknown as EffectItem[];
+}
+
+export interface EffectGroup {
+  id: string;
+  label: string;
+  category: EffectCategory | null;
+  items: EffectItem[];
+}
+
+/** By type (in EFFECT_CATEGORIES order) or by vendor (alphabetical, Four Hands first). */
+export function groupEffects(items: EffectItem[], by: "category" | "vendor", lang: Lang, unknownVendor: string): EffectGroup[] {
+  if (by === "category") {
+    return EFFECT_CATEGORIES.map((c) => ({ id: `fx:${c}`, label: EFFECT_CATEGORY_NAMES[c][lang === "es" ? 0 : 1], category: c, items: items.filter((i) => i.category === c) })).filter((g) => g.items.length);
+  }
+  const groups = new Map<string, EffectItem[]>();
+  for (const i of items) {
+    const label = i.source || unknownVendor;
+    groups.set(label, [...(groups.get(label) ?? []), i]);
+  }
+  const own = items.find((i) => i.origin === "builtin")?.source;
+  return [...groups.entries()]
+    .sort(([a], [b]) => (a === own ? -1 : b === own ? 1 : a.localeCompare(b)))
+    .map(([label, list]) => ({ id: `fxv:${label}`, label, category: null, items: list.sort((a, b) => a.name.localeCompare(b.name)) }));
 }

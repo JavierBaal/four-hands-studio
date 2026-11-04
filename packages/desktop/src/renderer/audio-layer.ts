@@ -4,15 +4,15 @@
  * as one command at the end, so the whole take undoes in one step, and it is never quantized.
  */
 import { currentProposal, songWithProposal } from "./proposals.js";
-import { type Note, type PedalSpan, type Song, type Track, PPQ, barAt, barStart, orderedSections } from "@fourhands/core";
+import { type Note, OWN_EFFECTS, type PedalSpan, type Song, type Track, PPQ, barAt, barStart, orderedSections } from "@fourhands/core";
 import type { Lang, Strings, Translate } from "../shared/i18n.js";
 import { Engine } from "../audio/engine.js";
 import { INITIAL_KEYBOARD, type KeyboardState, keyAction } from "../audio/keyboard.js";
 import { HIDDEN_LOOKAHEAD, Player, type Target } from "../audio/player.js";
 import { type EnginePort, type MidiPort, SoundRouter, isOwnLoopback } from "../audio/router.js";
-import { type EngineLevels, type EngineLoad, engineStrips, levelsReport, masterGain } from "../shared/mix.js";
+import { type EngineLevels, type EngineLoad, engineChain, engineStrips, levelsReport, masterGain } from "../shared/mix.js";
 import { METRONOME_KEY, StripMap } from "../shared/strips.js";
-import { NO_SOUND_PREFS, type SoundItem, type SoundPrefs, buildCatalog, withRecent } from "../shared/sound-catalog.js";
+import { type EffectItem, NO_SOUND_PREFS, type SoundItem, type SoundPrefs, buildCatalog, buildEffectCatalog, withRecent } from "../shared/sound-catalog.js";
 import { ENGINE_OFF, type EnginePluginList, type EngineScanProgress, type EngineStatus } from "../shared/engine.js";
 import type { Bridge } from "./bridge.js";
 import type { SoundBankInfo } from "../shared/protocol.js";
@@ -68,6 +68,15 @@ export class AudioLayer {
   engineLoad: EngineLoad | null = null;
   lastDropoutAt = 0;
   private loadTimer: ReturnType<typeof setInterval> | null = null;
+  /**
+   * F2.2 parte C: the chain last sent for each strip (-1: the Master), and the effects that failed to
+   * load (id → why), for the console.
+   */
+  private chainsSent = new Map<number, string>();
+  private insertsGeneration = -1;
+  /** The AI's plugin parameters last applied, with the value each had before (to undo them). */
+  private pluginParamsSent = new Map<string, { params: Record<string, number>; base: Record<string, number> }>();
+  insertProblems = new Map<string, string>();
   private engine: Engine | null = null;
   /** Sound banks the user installed (refreshed when the sounds folder changes). */
   banks: SoundBankInfo[] = [];
@@ -185,6 +194,8 @@ export class AudioLayer {
         this.sendMix();
       }
       this.mixSignature = mixSig;
+      // F2.2 parte C: the chains that changed go to the engine.
+      this.syncInserts();
       if (sig !== this.trackSignature) {
         this.trackSignature = sig;
         this.sendMix();
@@ -242,6 +253,12 @@ export class AudioLayer {
     return buildCatalog({ lang, banks: this.banks, plugins: this.pluginList?.plugins ?? [], prefs: this.soundPrefs, builtInLabel });
   }
 
+  /** Every insert effect: Four Hands' own and the plugin effects (F2.2 parte C, the Sonidos tab). */
+  effectCatalog(lang: Lang, ownLabel: string): EffectItem[] {
+    const names = { eq: OWN_EFFECTS.eq.name[lang], compressor: OWN_EFFECTS.compressor.name[lang], limiter: OWN_EFFECTS.limiter.name[lang] };
+    return buildEffectCatalog({ lang, plugins: this.pluginList?.plugins ?? [], prefs: this.soundPrefs, ownLabel, ownNames: names });
+  }
+
   rememberSound(key: string): void {
     this.updateSoundPrefs((p) => withRecent(p, key));
   }
@@ -278,8 +295,10 @@ export class AudioLayer {
       this.player.setup();
     }
     if (status.state === "ready") {
-      // A new engine starts with neutral strips: it gets the song's mix again.
+      // A new engine starts with neutral strips: it gets the song's mix and effects again.
       this.sendMix();
+      this.syncInserts(status.generation !== this.insertsGeneration);
+      this.insertsGeneration = status.generation;
       this.ensurePlugins();
       this.ensureEngineSounds();
     }
@@ -331,10 +350,66 @@ export class AudioLayer {
   /** F2.2: the engine's strips for the song's tracks (plugin tracks: fader, balance, reverb send). */
   private sendMix(): void {
     if (this.engineStatus.state !== "ready") return;
-    const tracks = this.replica.song.trackOrder.map((id) => this.replica.song.tracks[id]!).filter(Boolean);
+    // The song heard (Con / Sin, a proposal): the AI's mix changes can be compared too.
+    const song = this.heard();
+    const tracks = song.trackOrder.map((id) => song.tracks[id]!).filter(Boolean);
     const reset = [...this.stripReset, this.strips.of(METRONOME_KEY, 15)];
     this.stripReset = [];
-    this.bridge.engineMix(engineStrips(tracks.map((t) => ({ ...t, strip: this.stripOf(t) })), reset), masterGain(this.replica.song.masterVolume));
+    this.bridge.engineMix(engineStrips(tracks.map((t) => ({ ...t, strip: this.stripOf(t) })), reset), masterGain(song.masterVolume));
+  }
+
+  /**
+   * F2.2 parte C: every strip's effect chain to the engine, only where it changed (`force`: all of
+   * them, a new engine). From the song heard, so Con / Sin and proposals reach the effects too.
+   */
+  private syncInserts(force = false): void {
+    if (this.engineStatus.state !== "ready") return;
+    if (force) this.chainsSent.clear();
+    const song = this.heard();
+    const want = new Map<number, ReturnType<typeof engineChain>>();
+    for (const id of song.trackOrder) {
+      const t = song.tracks[id];
+      if (t && t.output !== "external") want.set(this.stripOf(t), engineChain(t.inserts ?? []));
+    }
+    want.set(-1, engineChain(song.masterInserts ?? []));
+    // Strips whose track went (or now sounds outside): their chain goes.
+    for (const strip of this.chainsSent.keys()) if (!want.has(strip)) want.set(strip, []);
+    for (const [strip, chain] of want) {
+      const sig = JSON.stringify(chain);
+      const was = this.chainsSent.get(strip);
+      if (was === sig || (was === undefined && chain.length === 0)) continue;
+      if (chain.length === 0) this.chainsSent.delete(strip);
+      else this.chainsSent.set(strip, sig);
+      void this.bridge.engineInserts(strip, chain).then((r) => {
+        for (const x of chain) this.insertProblems.delete(x.id);
+        for (const e of r.errors) if (e.id) this.insertProblems.set(e.id, e.error);
+        if (r.errors.length) this.bridge.log({ type: "insert_problems", strip, errors: r.errors });
+        this.changed();
+      });
+    }
+    // After the chains (the engine loads a new plugin effect before it gets its parameters).
+    // The AI's plugin parameters: only the ones that changed, and back to what was there when undone.
+    const seen = new Set<string>();
+    for (const x of [...(song.masterInserts ?? []), ...song.trackOrder.flatMap((t) => song.tracks[t]?.inserts ?? [])]) {
+      if (x.kind !== "plugin") continue;
+      seen.add(x.id);
+      const now = x.pluginParams ?? {};
+      const before = force ? { params: {}, base: {} } : (this.pluginParamsSent.get(x.id) ?? { params: {}, base: {} });
+      for (const [k, v] of Object.entries(now)) if (before.params[k] !== v) this.bridge.engineSetParam(x.id, Number(k), v);
+      for (const k of Object.keys(before.params)) if (!(k in now)) {
+        const was = before.base[k];
+        if (was !== undefined) this.bridge.engineSetParam(x.id, Number(k), was);
+      }
+      this.pluginParamsSent.set(x.id, { params: { ...now }, base: { ...before.base, ...(x.pluginBase ?? {}) } });
+    }
+    for (const id of [...this.pluginParamsSent.keys()]) if (!seen.has(id)) this.pluginParamsSent.delete(id);
+  }
+
+  /** A plugin effect's own window, from the engine. */
+  async showInsert(id: string): Promise<boolean> {
+    const ok = await this.bridge.engineShowInsert(id);
+    this.bridge.log({ type: "engine_insert_window", id, ok });
+    return ok;
   }
 
   /** F2.2 parte B: the strips' levels since the last reading, for the console (null without engine). */
@@ -505,6 +580,8 @@ export class AudioLayer {
     if (mode === this.proposalListen) return;
     this.proposalListen = mode;
     this.player.setup();
+    this.sendMix();
+    this.syncInserts();
     this.bridge.log({ type: "compare_proposal", mode });
     this.changed();
   }
@@ -525,6 +602,8 @@ export class AudioLayer {
     }
     this.compare = "without";
     this.player.setup(); // the AI may have changed sounds or the mix
+    this.sendMix();
+    this.syncInserts();
     this.bridge.log({ type: "compare", mode: "without", revision: last.revision });
     this.changed();
   }
@@ -541,6 +620,8 @@ export class AudioLayer {
     this.before = null;
     if (was === "without") {
       this.player.setup();
+      this.sendMix();
+      this.syncInserts();
       this.changed();
     }
   }

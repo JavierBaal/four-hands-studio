@@ -5,6 +5,7 @@
 // Four Hands keeps the song; the engine only makes sound.
 #pragma once
 
+#include "Effects.h"
 #include "GsEffects.h"
 #include "SoundFontSynth.h"
 
@@ -114,6 +115,40 @@ public:
     void resetLevels();
 
     // -------------------------------------------------------------------------
+    // Insert effects (F2.2 parte C, 03/11/2026)
+
+    /** One link as Four Hands sends it: its id in the song, kind, plugin (if any), on/off, parameters. */
+    struct InsertSpec
+    {
+        juce::String id, kind, pluginId;
+        bool bypass = false;
+        std::vector<std::pair<juce::String, double>> params;
+    };
+    /** Strip -1 (or kStrips) is the master. */
+    static constexpr int kMasterChain = kStrips;
+    /**
+     * Makes a strip's chain the one given, keeping the links that are already there (same id and
+     * kind: a plugin is not loaded again). Returns, per id, what went wrong (a plugin that would not
+     * load is left out of the chain). Message thread.
+     */
+    std::vector<std::pair<juce::String, juce::String>> setChain (int strip, const std::vector<InsertSpec>& specs);
+    /** Sum of the chain's latencies, and the latency every track is delayed to (compensation). */
+    int chainLatency (int strip) const;
+    int compensation() const { return maxLatency.load(); }
+    /** How much a compressor or limiter is reducing now, in dB (0 for others or unknown ids). */
+    float insertReduction (const juce::String& id) const;
+    /** A plugin effect's window. False if it has none, or the id is not a plugin. */
+    bool showInsert (const juce::String& id);
+    juce::StringArray openInsertWindows() const;
+    juce::MemoryBlock insertState (const juce::String& id);
+    bool setInsertState (const juce::String& id, const juce::MemoryBlock& data);
+    /** A plugin effect's parameters (or an instrument's: `slot` >= 0 and empty id). */
+    struct ParamInfo { int index; juce::String name, text, label; float value; };
+    std::vector<ParamInfo> parameters (const juce::String& id, int slot = -1);
+    /** Sets a parameter by normalised value, or by text ("-6 dB") when `text` is not empty. Returns its text after. */
+    juce::String setParameter (const juce::String& id, int slot, int index, float value, const juce::String& text, bool& ok, float* valueAfter = nullptr);
+
+    // -------------------------------------------------------------------------
     // MIDI
 
     /**
@@ -151,7 +186,7 @@ public:
 
 private:
     void changeListenerCallback (juce::ChangeBroadcaster*) override { checkDefaultOutput (false); }
-    void timerCallback() override { checkDefaultOutput (true); }
+    void timerCallback() override { timerTick(); }
     /** Moves to the system's default output if it is not the one open. `rescan`: ask the system again. */
     void checkDefaultOutput (bool rescan);
     std::function<void (const juce::String&, double)> deviceChanged;
@@ -210,6 +245,17 @@ private:
 
     juce::SpinLock statsLock;
     Stats stats;
+
+    // Insert effects: one chain per strip and the master's; delay lines for compensation.
+    std::array<std::shared_ptr<Chain>, (size_t) kStrips + 1> chains;
+    std::vector<DelayLine> delays = std::vector<DelayLine> ((size_t) kStrips);
+    std::atomic<int> maxLatency { 0 };
+    juce::MidiBuffer noMidi;
+    std::shared_ptr<Insert> findInsert (const juce::String& id) const;
+    void runChain (Chain& chain, float* L, float* R, int n);
+    /** Delay lines long enough for the compensation, for every strip in use (message thread). */
+    void ensureDelays();
+    void timerTick();
 };
 
 } // namespace fh

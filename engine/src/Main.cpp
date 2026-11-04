@@ -136,6 +136,80 @@ int selfTest (const juce::String& folder)
             return 11;
         }
     }
+    // F2.2 parte C: insert effects on strip 0.
+    {
+        using Spec = fh::Engine::InsertSpec;
+        auto rmsWith = [&] (std::vector<Spec> chain) {
+            engine.setChain (0, chain);
+            const auto b = play (1.0, 0.0);
+            return b.getRMSLevel (0, 4800, 9600);
+        };
+        const auto plain = rmsWith ({});
+        // A high cut at 200 Hz takes most of a synth's energy away; bypassed, nothing changes.
+        Spec eq { "x1", "eq", "", false, { { "highCut", 1 }, { "highCutFreq", 200 } } };
+        const auto cut = rmsWith ({ eq });
+        eq.bypass = true;
+        const auto eqOff = rmsWith ({ eq });
+        // A compressor at -40 dB, 10:1, lowers it; the limiter keeps every sample under -12 dB.
+        Spec comp { "x2", "compressor", "", false, { { "threshold", -40 }, { "ratio", 10 }, { "attack", 1 }, { "knee", 0 } } };
+        const auto squeezed = rmsWith ({ comp });
+        engine.setChain (0, { Spec { "x3", "limiter", "", false, { { "gain", 12 }, { "ceiling", -12 } } } });
+        const auto lim = play (1.0, 0.0);
+        const auto peak = lim.getMagnitude (0, 0, lim.getNumSamples());
+        std::cout << "effects: plain " << plain << ", high cut " << cut << ", eq off " << eqOff << ", compressed " << squeezed
+                  << ", limiter peak " << peak << " (ceiling 0.251), latency " << engine.chainLatency (0) << ", compensation " << engine.compensation() << std::endl;
+        if (cut > plain * 0.6f || std::abs (eqOff / plain - 1.0f) > 0.02f)
+        {
+            std::cout << "FAIL the EQ" << std::endl;
+            return 12;
+        }
+        if (squeezed > plain * 0.6f)
+        {
+            std::cout << "FAIL the compressor" << std::endl;
+            return 13;
+        }
+        if (peak > 0.2512f + 1e-4f || engine.chainLatency (0) != 240 || engine.compensation() != 240)
+        {
+            std::cout << "FAIL the limiter" << std::endl;
+            return 14;
+        }
+        // Compensation: strip 1 has no effects, so it waits the limiter's 240 samples. A note on
+        // each strip at the same time starts at the same sample on both.
+        engine.load (1, chosen);
+        auto onset = [&] (int strip) {
+            engine.setMix (0, 1.0, 0.0, 0.0, strip == 0);
+            engine.setMix (1, 1.0, 0.0, 0.0, strip == 1);
+            engine.schedule (strip, 0.0, juce::MidiMessage::noteOn (1, 60, (juce::uint8) 100));
+            engine.schedule (strip, 0.2, juce::MidiMessage::noteOff (1, 60));
+            juce::AudioBuffer<float> b (2, 24000);
+            b.clear();
+            engine.renderOffline (b);
+            juce::AudioBuffer<float> rest (2, 48000);
+            engine.renderOffline (rest);
+            for (int i = 0; i < b.getNumSamples(); ++i)
+                if (std::abs (b.getSample (0, i)) > 1e-4f)
+                    return i;
+            return -1;
+        };
+        engine.setChain (0, { Spec { "x3", "limiter", "", false, { { "gain", 0 }, { "ceiling", 0 } } } });
+        const int a = onset (0), c = onset (1);
+        std::cout << "compensation: onset with limiter " << a << ", without " << c << std::endl;
+        if (a < 0 || c < 0 || std::abs (a - c) > 1)
+        {
+            std::cout << "FAIL the compensation" << std::endl;
+            return 15;
+        }
+        // Back as before: no effects, no compensation, both strips on.
+        engine.setChain (0, {});
+        engine.setMix (0, 1.0, 0.0, 0.0, true);
+        engine.setMix (1, 1.0, 0.0, 0.0, true);
+        engine.unload (1);
+        if (engine.compensation() != 0)
+        {
+            std::cout << "FAIL the compensation stays after the effects went" << std::endl;
+            return 16;
+        }
+    }
     // A2: a strip far past the 16 MIDI channels plays the same as the first one.
     engine.unload (0);
     if (const auto again = engine.load (300, chosen); again.isNotEmpty())

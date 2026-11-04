@@ -4,8 +4,9 @@
  * grouped by kind (notes per track, harmony, form, song, tracks, annotations). Pure: the app keeps
  * the earlier version and passes both.
  */
+import { insertName, paramDefs, paramText } from "./effects.js";
 import type { HistoryEntry } from "./document.js";
-import { type Authorship, type Note, type Song, bpm, orderedSections, orderedTracks } from "./model.js";
+import { type Authorship, type Insert, type Note, type Song, bpm, orderedSections, orderedTracks } from "./model.js";
 import { barHarmony, formatNote } from "./compact.js";
 import { barsOf, keyChangesText, keyText, songBars, tempoChangesText } from "./notation.js";
 
@@ -153,6 +154,8 @@ export function changesText(before: Song, after: Song, options: ChangesOptions):
   const keysBefore = keyChangesText(before);
   const keysAfter = keyChangesText(after);
   if (keysBefore !== keysAfter) songLines.push(`  key changes: ${keysBefore ? keysBefore.split("\n").join(" · ") : "none"} → ${keysAfter ? keysAfter.split("\n").join(" · ") : "none"}`);
+  const masterFx = chainChanges(before.masterInserts ?? [], after.masterInserts ?? []);
+  if (masterFx) songLines.push(`  master effects: ${masterFx}`);
   if ((before.masterVolume ?? 1) !== (after.masterVolume ?? 1))
     songLines.push(`  master vol ${Math.round((before.masterVolume ?? 1) * 100)} → ${Math.round((after.masterVolume ?? 1) * 100)}`);
   if ((before.concept?.text ?? "") !== (after.concept?.text ?? ""))
@@ -174,6 +177,8 @@ export function changesText(before: Song, after: Song, options: ChangesOptions):
     if (old.pan !== t.pan) d.push(`pan ${Math.round(old.pan * 100)} → ${Math.round(t.pan * 100)}`);
     if ((old.reverb ?? 0) !== (t.reverb ?? 0)) d.push(`rev ${Math.round((old.reverb ?? 0) * 100)} → ${Math.round((t.reverb ?? 0) * 100)}`);
     if (old.mute !== t.mute) d.push(t.mute ? "muted" : "unmuted");
+    const fx = chainChanges(old.inserts ?? [], t.inserts ?? []);
+    if (fx) d.push(`effects: ${fx}`);
     if (JSON.stringify(old.pedal) !== JSON.stringify(t.pedal)) d.push("pedal rewritten");
     if (JSON.stringify(old.curves?.expression ?? []) !== JSON.stringify(t.curves?.expression ?? [])) d.push("expression (CC11) rewritten");
     if (JSON.stringify(old.curves?.modulation ?? []) !== JSON.stringify(t.curves?.modulation ?? [])) d.push("modulation (CC1) rewritten");
@@ -200,3 +205,29 @@ export function changesText(before: Song, after: Song, options: ChangesOptions):
   return lines.join("\n");
 }
 
+
+/** "+ EQ (x3), Compressor (x4) threshold −18,0 dB → −24,0 dB, − Limiter (x5)": what changed in a chain. */
+function chainChanges(before: readonly Insert[], after: readonly Insert[]): string {
+  const out: string[] = [];
+  const old = new Map(before.map((x) => [x.id, x]));
+  for (const x of after) {
+    const was = old.get(x.id);
+    const name = `${insertName(x)} (${x.id})`;
+    if (!was) {
+      out.push(`+ ${name}`);
+      continue;
+    }
+    const d: string[] = [];
+    if ((was.name ?? "") !== (x.name ?? "")) d.push(x.name ? `renamed "${x.name}"` : "name removed");
+    if (!!was.bypass !== !!x.bypass) d.push(x.bypass ? "bypassed" : "on");
+    for (const def of paramDefs(x.kind)) {
+      const a = was.params?.[def.id] ?? def.default;
+      const b = x.params?.[def.id] ?? def.default;
+      if (a !== b) d.push(`${def.name.toLowerCase()} ${paramText(def, a)} → ${paramText(def, b)}`);
+    }
+    if (d.length) out.push(`${name} ${d.join(", ")}`);
+  }
+  for (const x of before) if (!after.some((y) => y.id === x.id)) out.push(`− ${insertName(x)} (${x.id})`);
+  if (!out.length && before.map((x) => x.id).join() !== after.map((x) => x.id).join()) out.push(`reordered: ${after.map((x) => insertName(x)).join(" → ")}`);
+  return out.join("; ");
+}

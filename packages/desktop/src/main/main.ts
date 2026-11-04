@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 import { BRIDGE_CONFIG_FILE, TOOLS_VERSION, bridgeConfigDir } from "@fourhands/mcp-tools";
 import { type Lang, langFrom, translator } from "../shared/i18n.js";
 import { type AiApply, type AiTone, CH, DEFAULT_AI_APPLY, DEFAULT_AI_TONE, type FolderKind, NO_AI, type MenuAction, type ToolKind, type Request, type SkillImportResult, type ViewInfo } from "../shared/protocol.js";
-import { AiDesk } from "./ai/desk.js";
+import { AiDesk, type EffectParam } from "./ai/desk.js";
 import { SkillImportError, SkillLibrary, importSkillZip } from "./ai/skills.js";
 import { AiServer } from "./ai/server.js";
 import { connectClaude, findMcpb } from "./ai/connect.js";
@@ -255,14 +255,14 @@ function appendLog(entry: Record<string, unknown>): void {
  * F2.1: what each plugin track's plugin has loaded, from the engine (its slot is the track's strip).
  * Nothing when the engine is not running: the session keeps what the file had.
  */
-async function collectPluginStates(song: Song, slots?: Set<number>): Promise<PluginStates> {
+async function collectPluginStates(song: Song, slots?: Set<number>, insertIds?: Set<string>): Promise<PluginStates> {
   const out: PluginStates = {};
   if (!engine || engine.current.state !== "ready") return out;
   for (const id of song.trackOrder) {
     const track = song.tracks[id];
     if (track?.output !== "plugin" || !track.plugin) continue;
     const slot = stripOfTrack(track);
-    if (slots && !slots.has(slot)) continue;
+    if ((slots !== undefined || insertIds !== undefined) && !slots?.has(slot)) continue;
     try {
       const reply = await engine.request({ type: "getState", slot });
       const data = String(reply.data ?? "");
@@ -271,8 +271,33 @@ async function collectPluginStates(song: Song, slots?: Set<number>): Promise<Plu
       // That slot did not answer: its saved state stays.
     }
   }
+  // F2.2 parte C: plugin effects keep what they have inside too, under their own id ("x12").
+  // On saving (no filter): every plugin effect loaded in this run. From the watcher: only those asked.
+  const watching = slots !== undefined || insertIds !== undefined;
+  for (const x of pluginInserts(song)) {
+    if (watching ? !insertIds?.has(x.id) : insertsLoaded.get(x.id) !== x.plugin) continue;
+    try {
+      const reply = await engine.request({ type: "getInsertState", id: x.id });
+      const data = String(reply.data ?? "");
+      if (data) out[x.id] = { id: x.plugin, data };
+    } catch {
+      // Not answered: the saved state stays.
+    }
+  }
   return out;
 }
+
+/** Every plugin effect in the song (tracks and Master), with the plugin it is. */
+function pluginInserts(song: Song): Array<{ id: string; plugin: string }> {
+  const chains = [song.masterInserts ?? [], ...song.trackOrder.map((t) => song.tracks[t]?.inserts ?? [])];
+  return chains.flat().filter((x) => x.kind === "plugin" && x.plugin).map((x) => ({ id: x.id, plugin: x.plugin!.id }));
+}
+
+/** F2.2 parte C: plugin effects the engine has loaded in this run (id → plugin), to restore their state once. */
+const insertsLoaded = new Map<string, string>();
+let insertsGeneration = -1;
+/** Plugin effects whose window was open at the last look (their state is checked once more after closing). */
+let insertWindowsOpen = new Set<string>();
 
 const pluginWatch = new PluginWatch();
 
@@ -289,9 +314,19 @@ async function watchPluginStates(): Promise<void> {
   } catch {
     // An engine built before 29/10/2026: it cannot tell.
   }
+  // Plugin effects (parte C): those with their window open now, or open at the last look.
+  let openFx = new Set<string>();
+  try {
+    const reply = await engine.request({ type: "insertWindows" });
+    if (Array.isArray(reply.ids)) openFx = new Set(reply.ids.map(String));
+  } catch {
+    // An engine before parte C.
+  }
+  const fxToCheck = new Set([...openFx, ...insertWindowsOpen]);
+  insertWindowsOpen = openFx;
   const slots = pluginWatch.slotsToCheck(open, Date.now());
-  if (slots.size === 0) return;
-  const fresh = await collectPluginStates(songs.snapshot().song, slots);
+  if (slots.size === 0 && fxToCheck.size === 0) return;
+  const fresh = await collectPluginStates(songs.snapshot().song, slots, fxToCheck);
   if (Object.entries(fresh).some(([trackId, s]) => songs!.pluginState(trackId, s.id) !== s.data)) {
     appendLog({ type: "plugin_state_changed", tracks: Object.keys(fresh) });
     songs.pluginsChanged();
@@ -491,6 +526,25 @@ async function startAi(): Promise<void> {
     plugins: () => knownPlugins,
     levels: () => lastLevels,
     load: () => (engine && engine.current.state === "ready" ? lastLoad : null),
+    // F2.2 parte C: a plugin effect's parameters, from the engine.
+    effectParams: async (id) => {
+      if (!engine || engine.current.state !== "ready") return null;
+      try {
+        const reply = await engine.request({ type: "params", id });
+        return Array.isArray(reply.params) && reply.params.length ? (reply.params as EffectParam[]) : null;
+      } catch {
+        return null;
+      }
+    },
+    setEffectParam: async (id, index, text) => {
+      if (!engine || engine.current.state !== "ready") return null;
+      try {
+        const reply = await engine.request({ type: "setParam", id, index, text });
+        return { ok: !!reply.ok, text: String(reply.text ?? ""), value: Number(reply.value ?? 0) };
+      } catch {
+        return null;
+      }
+    },
     skills: skills!,
     onState: (state) => win?.webContents.send(CH.aiState, state),
     tone: aiTone,
@@ -739,6 +793,48 @@ function registerIpc(): void {
     try {
       pluginWatch.shown(Number(slot), Date.now());
       return !!(await engineHost().request({ type: "show", slot: Number(slot) })).ok;
+    } catch {
+      return false;
+    }
+  });
+  // F2.2 parte C: a strip's effect chain (-1: the Master). Plugin effects new to this run get back
+  // what they had in this song.
+  ipcMain.handle(CH.engineInserts, async (_e, strip: unknown, chain: unknown) => {
+    if (!engine || engine.current.state !== "ready" || !Array.isArray(chain)) return { ok: false, errors: [] };
+    if (engine.current.generation !== insertsGeneration) {
+      insertsLoaded.clear();
+      insertsGeneration = engine.current.generation;
+    }
+    const started = Date.now();
+    try {
+      const links = chain as Array<{ id: string; kind: string; plugin?: string }>;
+      const reply = await engine.request({ type: "inserts", strip: Number(strip), chain: links });
+      const errors = Array.isArray(reply.errors) ? (reply.errors as Array<{ id: string; error: string }>) : [];
+      for (const x of links) {
+        if (x.kind !== "plugin" || !x.plugin || errors.some((e) => e.id === x.id)) continue;
+        if (insertsLoaded.get(x.id) === x.plugin) continue;
+        insertsLoaded.set(x.id, x.plugin);
+        appendLog({ type: "engine_insert_loaded", id: x.id, plugin: x.plugin, ms: Date.now() - started });
+        const state = songs?.pluginState(x.id, x.plugin);
+        if (state) {
+          const set = await engine.request({ type: "setInsertState", id: x.id, data: state });
+          appendLog({ type: "engine_insert_state_restored", id: x.id, ok: !!set.ok });
+        }
+      }
+      for (const e of errors) appendLog({ type: "engine_insert_failed", ...e });
+      return { ok: true, errors, latency: Number(reply.latency ?? 0), compensation: Number(reply.compensation ?? 0) };
+    } catch (error) {
+      return { ok: false, errors: [{ id: "", error: (error as Error).message }] };
+    }
+  });
+  // The AI's plugin parameters (and undoing them): the window says which value each must have.
+  ipcMain.on(CH.engineSetParam, (_e, id: unknown, index: unknown, value: unknown) => {
+    if (!engine || engine.current.state !== "ready") return;
+    void engine.request({ type: "setParam", id: String(id), index: Number(index), value: Number(value) }).catch(() => {});
+  });
+  ipcMain.handle(CH.engineShowInsert, async (_e, id: unknown) => {
+    try {
+      return !!(await engineHost().request({ type: "showInsert", id: String(id) })).ok;
     } catch {
       return false;
     }

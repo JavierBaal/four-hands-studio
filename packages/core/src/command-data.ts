@@ -2,6 +2,7 @@
  * Commands as data: what the window sends to the main process for one gesture, and what an AI
  * proposal stores until it is accepted (H4). `runCommands` applies a list inside one transaction.
  */
+import { type ChainTarget, type InsertChanges, type InsertSpec, addInsert, moveInsert, removeInsert, updateInsert } from "./effects.js";
 import {
   type NoteChange,
   type NoteSpec,
@@ -52,7 +53,11 @@ export type CommandData =
   | { type: "addAnnotation"; spec: Omit<Annotation, "id" | "author"> }
   | { type: "updateAnnotation"; id: string; changes: Partial<Pick<Annotation, "start" | "end" | "text" | "trackIds">> }
   | { type: "removeAnnotation"; id: string }
-  | { type: "setSongProperties"; props: SongProperties };
+  | { type: "setSongProperties"; props: SongProperties }
+  | { type: "addInsert"; target: ChainTarget; spec: InsertSpec; index?: number }
+  | { type: "removeInsert"; id: string }
+  | { type: "moveInsert"; id: string; index: number; target?: ChainTarget }
+  | { type: "updateInsert"; id: string; changes: InsertChanges };
 
 /** What each command returns: new ids for the commands that create things, otherwise null. */
 export type CommandResult = string[] | string | null;
@@ -118,6 +123,17 @@ export function runCommand(tx: Transaction, c: CommandData): CommandResult {
       return null;
     case "setSongProperties":
       setSongProperties(tx, c.props);
+      return null;
+    case "addInsert":
+      return addInsert(tx, c.target, c.spec, c.index);
+    case "removeInsert":
+      removeInsert(tx, c.id);
+      return null;
+    case "moveInsert":
+      moveInsert(tx, c.id, c.index, c.target);
+      return null;
+    case "updateInsert":
+      updateInsert(tx, c.id, c.changes);
       return null;
     default:
       throw new CommandError(`Unknown command: ${(c as { type?: unknown }).type}`);

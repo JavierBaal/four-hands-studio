@@ -41,8 +41,8 @@ const transport = new StdioClientTransport({ command: process.execPath, args: [b
 const client = new Client({ name: "claude-ai", version: "e2e" });
 await client.connect(transport);
 const tools = (await client.listTools()).tools;
-check("the bridge lists the tools, analyze and the skills included", tools.length === 36 && ["analyze", "get_levels", "remove_annotations", "list_skills", "load_skill", "get_changes_since", "get_history", "summarize"].every((n) => tools.some((t) => t.name === n)), tools.length);
-check("read tools are read-only for Claude's permissions", tools.filter((t) => t.annotations?.readOnlyHint).length === 12);
+check("the bridge lists the tools, analyze and the skills included", tools.length === 41 && ["analyze", "add_effect", "set_effect", "list_effect_parameters", "get_levels", "remove_annotations", "list_skills", "load_skill", "get_changes_since", "get_history", "summarize"].every((n) => tools.some((t) => t.name === n)), tools.length);
+check("read tools are read-only for Claude's permissions", tools.filter((t) => t.annotations?.readOnlyHint).length === 13);
 const instructions = client.getInstructions() ?? "";
 check("the server instructions ask to load four-hands-basics first", instructions.includes('load_skill("four-hands-basics")'));
 await win.waitForFunction(() => document.querySelector(".aichip")?.textContent?.includes("Claude conectado"), null, { timeout: 8000 }).catch(() => {});

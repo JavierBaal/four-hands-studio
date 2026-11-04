@@ -1306,6 +1306,112 @@ const picked = await page.evaluate(() => {
 check("a click on a scrolled lane picks the track under the mouse", picked.active === picked.under, JSON.stringify(picked));
 await page.evaluate(() => window.fhTest.view.set({ arrHeight: null }));
 
+// F2.2 parte C1: effects in the console. Ozone is a favourite, so the short «+» menu has it.
+await page.evaluate(() => window.fhTest.audio.updateSoundPrefs((p) => ({ ...p, favorites: [...p.favorites, "plugin:VST3-Ozone 11-3"] })));
+await page.evaluate(() => window.fhTest.view.set({ bottom: "mix", mixNarrow: false, mixMax: false }));
+await settle();
+const fxTrack = (await song()).trackOrder[0];
+const fxStrip = page.locator(`.cstrip[data-track="${fxTrack}"]`);
+await fxStrip.locator("button.cslot.add").click();
+await menuItem("EQ").click();
+await settle();
+let fxChain = (await song()).tracks[fxTrack].inserts ?? [];
+check("«+» › EQ adds an EQ to the track, with its parameters", fxChain.length === 1 && fxChain[0].kind === "eq" && fxChain[0].params.lowMidFreq === 400, JSON.stringify(fxChain));
+const fxSent = await page.evaluate((id) => window.fhTest.ai.engine.inserts.get(window.fhTest.audio.stripOf(window.fhTest.replica.song.tracks[id])), fxTrack);
+check("the engine gets the track's chain", fxSent?.length === 1 && fxSent[0].kind === "eq" && fxSent[0].params.lowMidFreq === 400, JSON.stringify(fxSent));
+await fxStrip.locator("button.cslot.add").click();
+await menuItem("Compresor").click();
+await settle();
+await fxStrip.locator("button.cslot.add").click();
+await page.locator(".menu [role=menuitem]", { hasText: "Ozone 11" }).first().click();
+await settle();
+fxChain = (await song()).tracks[fxTrack].inserts;
+check("a plugin effect goes in the chain as which plugin it is", fxChain.length === 3 && fxChain[2].kind === "plugin" && fxChain[2].plugin.name === "Ozone 11");
+await fxStrip.locator(".cslot[data-fx]").nth(2).dblclick();
+await settle();
+check("double click on a plugin effect opens its window", await page.evaluate((id) => window.fhTest.ai.engine.shownInserts.includes(id), fxChain[2].id));
+// Drag the compressor before the EQ.
+await fxStrip.locator(".cslot[data-fx]").nth(1).dragTo(fxStrip.locator(".cslot[data-fx]").nth(0));
+await settle();
+check("dragging a slot reorders the chain", (await song()).tracks[fxTrack].inserts.map((x) => x.kind).join() === "compressor,eq,plugin", (await song()).tracks[fxTrack].inserts.map((x) => x.kind).join());
+// Down (Fran, 04/11/2026): the first one onto the lower half of the second goes after it.
+{
+  const second = fxStrip.locator(".cslot[data-fx]").nth(1);
+  const box = await second.boundingBox();
+  await fxStrip.locator(".cslot[data-fx]").nth(0).dragTo(second, { targetPosition: { x: box.width / 2, y: box.height - 3 } });
+  await settle();
+  check("dragging a slot down onto the next one puts it after it", (await song()).tracks[fxTrack].inserts.map((x) => x.kind).join() === "eq,compressor,plugin", (await song()).tracks[fxTrack].inserts.map((x) => x.kind).join());
+  await page.keyboard.press("Control+z");
+  await settle();
+}
+// To another strip.
+const fxOther = (await song()).trackOrder[1];
+await fxStrip.locator(".cslot[data-fx]").nth(0).dragTo(page.locator(`.cstrip[data-track="${fxOther}"] button.cslot.add`));
+await settle();
+check("dragging a slot onto another strip moves the effect there", (await song()).tracks[fxOther].inserts?.[0]?.kind === "compressor" && (await song()).tracks[fxTrack].inserts.length === 2);
+await page.keyboard.press("Control+z");
+await settle();
+check("one undo brings it back", (await song()).tracks[fxTrack].inserts.length === 3 && !(await song()).tracks[fxOther].inserts);
+// Bypass from the menu.
+await fxStrip.locator(".cslot[data-fx]").nth(1).click({ button: "right" });
+await menuItem("Anular").click();
+await settle();
+check("«Anular» bypasses the effect and the slot shows it", (await song()).tracks[fxTrack].inserts[1].bypass === true && (await fxStrip.locator(".cslot.byp").count()) === 1);
+// A name of the user's (Fran, 04/11/2026).
+await fxStrip.locator(".cslot[data-fx]").nth(0).click({ button: "right" });
+await menuItem("Cambiar nombre").click();
+await page.keyboard.press("Control+a");
+await page.keyboard.type("Compresor voces");
+await page.keyboard.press("Enter");
+await settle();
+check("«Cambiar nombre» gives the effect the user's name, shown in its slot", (await song()).tracks[fxTrack].inserts[0].name === "Compresor voces" && /Compresor voces/.test(await fxStrip.locator(".cslot[data-fx]").nth(0).innerText()));
+check("its tooltip still says what it is", /Compresor voces · Compresor/.test(await fxStrip.locator(".cslot[data-fx]").nth(0).getAttribute("title")));
+await fxStrip.locator(".cslot[data-fx]").nth(0).click({ button: "right" });
+await menuItem("Volver a llamarlo Compresor").click();
+await settle();
+check("and it can go back to its own name", !("name" in (await song()).tracks[fxTrack].inserts[0]));
+// Supr removes the selected effect, not notes.
+const notesBefore = Object.keys((await song()).notes).length;
+await fxStrip.locator(".cslot[data-fx]").nth(0).click();
+await page.keyboard.press("Delete");
+await settle();
+check("Supr removes the selected effect and no notes", (await song()).tracks[fxTrack].inserts.length === 2 && Object.keys((await song()).notes).length === notesBefore);
+// The Master's chain.
+await page.locator(".cstrip.master button.cslot.add").click();
+await menuItem("Limitador").click();
+await settle();
+check("the Master takes effects too", (await song()).masterInserts?.[0]?.kind === "limiter" && (await page.evaluate(() => window.fhTest.ai.engine.inserts.get(-1)?.[0]?.kind)) === "limiter");
+// A plugin that fails is marked.
+await page.evaluate(() => (window.fhTest.ai.engine.failPlugin = "VST3-Ozone 11-3"));
+await fxStrip.locator("button.cslot.add").click();
+await page.locator(".menu [role=menuitem]", { hasText: "Ozone 11" }).first().click();
+await settle();
+check("a plugin effect that cannot load is marked in amber with why", (await fxStrip.locator(".cslot.bad").count()) >= 1 && /no se pudo cargar/.test(await fxStrip.locator(".cslot.bad").last().getAttribute("title")));
+// Fran, 04/11/2026: the «+» menu stays short; the whole list is in Sonidos › Efectos, folded.
+await fxStrip.locator("button.cslot.add").click();
+const plusItems = await page.locator(".menu [role=menuitem]").allInnerTexts();
+check("«+» lists Four Hands' effects, the favourites and «Todos los efectos…», not every plugin", plusItems.some((x) => /^EQ$/.test(x)) && plusItems.some((x) => /Ozone 11/.test(x)) && plusItems.some((x) => /Todos los efectos/.test(x)), JSON.stringify(plusItems));
+await page.locator(".menu [role=menuitem]", { hasText: "Todos los efectos" }).click();
+await settle();
+check("«Todos los efectos…» opens Sonidos with the effects", (await page.getByRole("radio", { name: "Efectos" }).getAttribute("aria-checked")) === "true" && (await page.locator("[data-effect]").count()) === 0 && (await page.locator(".sndgh").count()) > 0);
+await page.locator(".sndgh", { hasText: "Ecualizadores" }).click();
+await settle();
+const fxBefore = (await song()).tracks[fxTrack].inserts.length;
+await page.locator('[data-effect="fx:eq"]').dblclick();
+await settle();
+check("double click on an effect in Sonidos adds it to the active track", (await song()).tracks[fxTrack].inserts.length === fxBefore + 1 && (await song()).tracks[fxTrack].inserts.at(-1).kind === "eq");
+await page.locator('[data-effect="fx:eq"]').dragTo(fxStrip.locator(".cslot[data-fx]").nth(0));
+await settle();
+check("dragging an effect from Sonidos onto a slot puts it there", (await song()).tracks[fxTrack].inserts.length === fxBefore + 2 && (await song()).tracks[fxTrack].inserts[0].kind === "eq");
+await page.locator(".sndfor .linkbtn").click();
+await settle();
+const masterBefore = (await song()).masterInserts?.length ?? 0;
+await page.locator('[data-effect="fx:eq"]').dblclick();
+await settle();
+check("«al Máster» sends the effects there", ((await song()).masterInserts?.length ?? 0) === masterBefore + 1);
+await page.getByRole("radio", { name: "Instrumentos" }).click();
+await page.evaluate(() => window.fhTest.view.set({ bottom: "editor" }));
+
 console.log(`${passed} passed, ${failures.length} failed`);
 for (const f of failures) console.log("FAIL", f);
 if (errors.length) console.log("page errors", errors);

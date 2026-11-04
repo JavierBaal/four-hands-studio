@@ -176,6 +176,8 @@ export function App({ audio, onEditor }: AppProps) {
           editor.selectAll();
           return true;
         case "delete":
+          // With the console in sight, Supr is for the selected effect, never for notes out of view.
+          if (view.state.bottom === "mix") return actions.removeSelectedEffect();
           editor.deleteSelection();
           return true;
         case "quantize":

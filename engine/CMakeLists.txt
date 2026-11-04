@@ -22,7 +22,7 @@ juce_add_gui_app(FourHandsEngine
   BUNDLE_ID com.fourhandsstudio.engine
   VERSION 0.1.0)
 
-target_sources(FourHandsEngine PRIVATE src/Main.cpp src/Engine.cpp src/Link.cpp src/SoundFontSynth.cpp src/SoundBank.cpp)
+target_sources(FourHandsEngine PRIVATE src/Main.cpp src/Engine.cpp src/Effects.cpp src/Link.cpp src/SoundFontSynth.cpp src/SoundBank.cpp)
 # The built-in sounds (F2.1, 31/10 and 01/11/2026): voices that follow SpessaSynth (Apache-2.0), on
 # banks read by TinySoundFont (MIT) with stb_vorbis (MIT or public domain), single files kept in
 # third_party with their licences.

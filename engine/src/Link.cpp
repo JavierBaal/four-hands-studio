@@ -297,6 +297,81 @@ juce::var Link::handle (const juce::var& m, Connection& from)
                       { "overruns", s.overruns }, { "xruns", s.xruns } });
     }
 
+    // --- Insert effects (F2.2 parte C) ---------------------------------------------------------
+    if (type == "inserts")
+    {
+        // { strip (-1: the master), chain: [{ id, kind, plugin, bypass, params: { name: value } }] }
+        std::vector<Engine::InsertSpec> specs;
+        if (auto* list = m["chain"].getArray())
+            for (const auto& c : *list)
+            {
+                Engine::InsertSpec spec;
+                spec.id = c["id"].toString();
+                spec.kind = c["kind"].toString();
+                spec.pluginId = c["plugin"].toString();
+                spec.bypass = (bool) c["bypass"];
+                if (auto* params = c["params"].getDynamicObject())
+                    for (const auto& p : params->getProperties())
+                        spec.params.push_back ({ p.name.toString(), (double) p.value });
+                specs.push_back (std::move (spec));
+            }
+        const int strip = m["strip"];
+        const auto problems = engine.setChain (strip, specs);
+        juce::Array<juce::var> errors;
+        for (const auto& [id, message] : problems)
+            errors.add (obj ({ { "id", id }, { "error", message } }));
+        return obj ({ { "type", "insertsSet" }, { "strip", strip }, { "latency", engine.chainLatency (strip) }, { "compensation", engine.compensation() }, { "errors", errors } });
+    }
+
+    if (type == "showInsert")
+        return obj ({ { "type", "shown" }, { "id", m["id"] }, { "ok", engine.showInsert (m["id"].toString()) } });
+
+    if (type == "insertWindows")
+    {
+        juce::Array<juce::var> ids;
+        for (const auto& id : engine.openInsertWindows())
+            ids.add (id);
+        return obj ({ { "type", "insertWindows" }, { "ids", ids } });
+    }
+
+    if (type == "getInsertState")
+        return obj ({ { "type", "insertState" }, { "id", m["id"] }, { "data", engine.insertState (m["id"].toString()).toBase64Encoding() } });
+
+    if (type == "setInsertState")
+    {
+        juce::MemoryBlock data;
+        data.fromBase64Encoding (m["data"].toString());
+        return obj ({ { "type", "insertStateSet" }, { "id", m["id"] }, { "ok", engine.setInsertState (m["id"].toString(), data) } });
+    }
+
+    if (type == "reductions")
+    {
+        // How much each compressor and limiter is reducing now (the console's meters, later).
+        juce::DynamicObject::Ptr out = new juce::DynamicObject();
+        if (auto* ids = m["ids"].getArray())
+            for (const auto& id : *ids)
+                out->setProperty (id.toString(), engine.insertReduction (id.toString()));
+        return obj ({ { "type", "reductions" }, { "values", juce::var (out.get()) } });
+    }
+
+    if (type == "params")
+    {
+        // A plugin's parameters: an effect's (`id`) or an instrument's (`slot`).
+        const auto list = engine.parameters (m["id"].toString(), m.hasProperty ("slot") ? (int) m["slot"] : -1);
+        juce::Array<juce::var> out;
+        for (const auto& p : list)
+            out.add (obj ({ { "index", p.index }, { "name", p.name }, { "text", p.text }, { "label", p.label }, { "value", p.value } }));
+        return obj ({ { "type", "params" }, { "params", out } });
+    }
+
+    if (type == "setParam")
+    {
+        bool ok = false;
+        float after = 0;
+        const auto text = engine.setParameter (m["id"].toString(), m.hasProperty ("slot") ? (int) m["slot"] : -1, (int) m["index"], (float) (double) m["value"], m["text"].toString(), ok, &after);
+        return obj ({ { "type", "paramSet" }, { "ok", ok }, { "text", text }, { "value", after } });
+    }
+
     if (type == "quit")
     {
         juce::JUCEApplicationBase::quit();

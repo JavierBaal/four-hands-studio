@@ -42,6 +42,9 @@ Engine::~Engine()
         const juce::SpinLock::ScopedLockType sl (lock);
         live.fill (nullptr);
     }
+    // Effects go before the format manager (their plugins) and with their windows first.
+    for (auto& c : chains)
+        c.reset();
     for (auto& s : slots)
         s.reset();
 }
@@ -92,6 +95,11 @@ void Engine::checkDefaultOutput (bool rescan)
     for (auto& p : slots)
         if (p != nullptr)
             p->releaseResources();
+    for (auto& c : chains)
+        if (c != nullptr)
+            for (auto& x : c->inserts)
+                if (x->plugin != nullptr)
+                    x->plugin->releaseResources();
     setup.outputDeviceName = wanted;
     const auto error = device.setAudioDeviceSetup (setup, true);
     lastDeviceError = error.isNotEmpty() ? error : (device.getCurrentAudioDevice() == nullptr ? juce::String ("There is no audio output device") : juce::String());
@@ -161,6 +169,17 @@ void Engine::prepare (double rate, int block)
     // Plugins are prepared out of the lock: Kontakt takes its time, and the audio is stopped anyway.
     for (auto* p : plugins)
         p->prepareToPlay (rate, block);
+    // The effects too (F2.2 parte C): their filters and look-ahead depend on the rate.
+    for (auto& c : chains)
+        if (c != nullptr)
+            for (auto& x : c->inserts)
+            {
+                if (x->own != nullptr)
+                    x->own->prepare (rate, block);
+                if (x->plugin != nullptr)
+                    x->plugin->prepareToPlay (rate, block);
+            }
+    noMidi.ensureSize (16);
 }
 
 // -----------------------------------------------------------------------------
@@ -479,6 +498,27 @@ void Engine::process (float* const* outputs, int numOutputs, int numSamples)
     if (auto* sounds = static_cast<SoundFontSynth*> (live[(size_t) kSoundsSlot]))
         sounds->processSplit (soundsEvents, numSamples, strips.getArrayOfWritePointers(), sends.getArrayOfWritePointers(), master.getWritePointer (0), master.getWritePointer (1));
 
+    // Insert effects (F2.2 parte C), then the delay that lines every strip up with the slowest one.
+    const int comp = maxLatency.load();
+    for (int ch = 0; ch < inUse; ++ch)
+    {
+        float* L = strips.getWritePointer (2 * ch);
+        float* R = strips.getWritePointer (2 * ch + 1);
+        auto* chain = chains[(size_t) ch].get();
+        int own = 0;
+        if (chain != nullptr && ! chain->inserts.empty())
+        {
+            runChain (*chain, L, R, numSamples);
+            own = chain->latency;
+        }
+        if (comp > own)
+        {
+            float* lines[3] = { L, R, sends.getWritePointer (ch) };
+            // The built-in sounds' own reverb send is delayed as much as the whole strip.
+            delays[(size_t) ch].process (lines, 3, numSamples, comp - own);
+        }
+    }
+
     // The strips: fader and balance, meters, into the master and the Reverb bus (post-fader).
     float* busData = busIn.getWritePointer (0);
     for (int ch = 0; ch < inUse; ++ch)
@@ -511,6 +551,8 @@ void Engine::process (float* const* outputs, int numOutputs, int numSamples)
     }
     if (busReverb != nullptr)
         busReverb->process (busData, master.getWritePointer (0), master.getWritePointer (1), 0, numSamples);
+    if (auto* mc = chains[(size_t) kMasterChain].get(); mc != nullptr && ! mc->inserts.empty())
+        runChain (*mc, master.getWritePointer (0), master.getWritePointer (1), numSamples);
     if (const auto mg = (float) masterGain.load(); mg != 1.0f)
     {
         juce::FloatVectorOperations::multiply (master.getWritePointer (0), mg, numSamples);
@@ -602,6 +644,294 @@ void Engine::renderOffline (juce::AudioBuffer<float>& out)
         std::array<float*, 2> ptrs { out.getWritePointer (0, done), out.getWritePointer (juce::jmin (1, out.getNumChannels() - 1), done) };
         process (ptrs.data(), out.getNumChannels(), n);
     }
+}
+
+
+// -----------------------------------------------------------------------------
+// Insert effects (F2.2 parte C)
+
+void Engine::runChain (Chain& chain, float* L, float* R, int n)
+{
+    for (auto& x : chain.inserts)
+    {
+        const bool off = x->bypass.load();
+        if (x->own != nullptr)
+        {
+            x->own->process (L, R, n, off);
+            continue;
+        }
+        auto* plugin = x->plugin.get();
+        if (plugin == nullptr)
+            continue;
+        const int channels = juce::jmin (scratch.getNumChannels(), juce::jmax (2, plugin->getTotalNumInputChannels(), plugin->getTotalNumOutputChannels()));
+        juce::AudioBuffer<float> buffer (scratch.getArrayOfWritePointers(), channels, n);
+        buffer.clear();
+        const int ins = plugin->getTotalNumInputChannels();
+        if (ins == 1)
+        {
+            buffer.copyFrom (0, 0, L, n, 0.5f);
+            buffer.addFrom (0, 0, R, n, 0.5f);
+        }
+        else
+        {
+            buffer.copyFrom (0, 0, L, n);
+            buffer.copyFrom (1, 0, R, n);
+        }
+        noMidi.clear();
+        if (off)
+            plugin->processBlockBypassed (buffer, noMidi);
+        else
+            plugin->processBlock (buffer, noMidi);
+        const int outs = juce::jmin (plugin->getTotalNumOutputChannels(), channels);
+        if (outs <= 0)
+            continue;
+        juce::FloatVectorOperations::copy (L, buffer.getReadPointer (0), n);
+        juce::FloatVectorOperations::copy (R, buffer.getReadPointer (outs > 1 ? 1 : 0), n);
+    }
+}
+
+std::vector<std::pair<juce::String, juce::String>> Engine::setChain (int strip, const std::vector<InsertSpec>& specs)
+{
+    std::vector<std::pair<juce::String, juce::String>> problems;
+    const int index = strip < 0 ? kMasterChain : strip;
+    if (index > kMasterChain)
+    {
+        problems.push_back ({ "", "Invalid strip" });
+        return problems;
+    }
+    auto before = chains[(size_t) index];
+    auto next = std::make_shared<Chain>();
+    int channels = 2;
+    for (const auto& spec : specs)
+    {
+        std::shared_ptr<Insert> x;
+        if (before != nullptr)
+            for (auto& old : before->inserts)
+                if (old->id == spec.id && old->kind == spec.kind && old->pluginId == spec.pluginId)
+                    x = old;
+        if (x == nullptr)
+        {
+            x = std::make_shared<Insert>();
+            x->id = spec.id;
+            x->kind = spec.kind;
+            x->pluginId = spec.pluginId;
+            if (spec.kind == "plugin")
+            {
+                juce::PluginDescription description;
+                bool found = false;
+                for (const auto& d : knownPlugins.getTypes())
+                    if (! found && d.createIdentifierString() == spec.pluginId)
+                    {
+                        description = d;
+                        found = true;
+                    }
+                if (! found)
+                {
+                    problems.push_back ({ spec.id, "Unknown plugin: " + spec.pluginId });
+                    continue;
+                }
+                juce::String error;
+                x->plugin = formatManager.createPluginInstance (description, sampleRate, blockSize, error);
+                if (x->plugin == nullptr)
+                {
+                    problems.push_back ({ spec.id, error.isNotEmpty() ? error : "The plugin could not be created" });
+                    continue;
+                }
+                x->plugin->enableAllBuses();
+                x->plugin->prepareToPlay (sampleRate, blockSize);
+            }
+            else
+            {
+                x->own = makeOwnEffect (spec.kind);
+                if (x->own == nullptr)
+                {
+                    problems.push_back ({ spec.id, "Unknown effect: " + spec.kind });
+                    continue;
+                }
+                x->own->prepare (sampleRate, blockSize);
+            }
+        }
+        x->bypass.store (spec.bypass);
+        if (x->own != nullptr)
+            for (const auto& [name, value] : spec.params)
+                x->own->setParam (name, value);
+        if (x->plugin != nullptr)
+            channels = juce::jmax (channels, x->plugin->getTotalNumInputChannels(), x->plugin->getTotalNumOutputChannels());
+        next->latency += x->latency();
+        next->inserts.push_back (x);
+    }
+    // The slowest strip sets how much the others wait (the master's chain delays everything alike).
+    int most = 0;
+    for (int s = 0; s < kStrips; ++s)
+    {
+        const auto& c = s == index ? next : chains[(size_t) s];
+        if (c != nullptr)
+            most = juce::jmax (most, c->latency);
+    }
+    if (index < kStrips)
+        touch (index);
+    // Longer delay lines are made here and swapped in under the lock (the audio thread uses them).
+    std::vector<std::pair<int, DelayLine>> longer;
+    if (most > 0)
+        for (int s = 0; s < used.load(); ++s)
+            if (delays[(size_t) s].size() < most + 1)
+            {
+                longer.emplace_back (s, DelayLine());
+                longer.back().second.setSize (most);
+            }
+    {
+        const juce::SpinLock::ScopedLockType sl (lock);
+        if (scratch.getNumChannels() < channels)
+            scratch.setSize (channels, blockSize, false, true, true);
+        for (auto& [s, line] : longer)
+            std::swap (delays[(size_t) s], line);
+        chains[(size_t) index] = next->inserts.empty() ? nullptr : next;
+        maxLatency.store (most);
+    }
+    // What left the chain is released here, out of the audio lock (its window first).
+    return problems;
+}
+
+void Engine::ensureDelays()
+{
+    const int most = maxLatency.load();
+    if (most <= 0)
+        return;
+    for (int s = 0; s < used.load(); ++s)
+        if (delays[(size_t) s].size() < most + 1)
+        {
+            DelayLine fresh;
+            fresh.setSize (most);
+            const juce::SpinLock::ScopedLockType sl (lock);
+            std::swap (delays[(size_t) s], fresh);
+        }
+}
+
+void Engine::timerTick()
+{
+    checkDefaultOutput (true);
+    // A track that started to sound after the last chain change gets its delay line here.
+    ensureDelays();
+}
+
+int Engine::chainLatency (int strip) const
+{
+    const int index = strip < 0 ? kMasterChain : strip;
+    if (index > kMasterChain || chains[(size_t) index] == nullptr)
+        return 0;
+    return chains[(size_t) index]->latency;
+}
+
+std::shared_ptr<Insert> Engine::findInsert (const juce::String& id) const
+{
+    for (const auto& c : chains)
+        if (c != nullptr)
+            for (const auto& x : c->inserts)
+                if (x->id == id)
+                    return x;
+    return nullptr;
+}
+
+float Engine::insertReduction (const juce::String& id) const
+{
+    auto x = findInsert (id);
+    return x != nullptr && x->own != nullptr ? x->own->reduction() : 0.0f;
+}
+
+bool Engine::showInsert (const juce::String& id)
+{
+    auto x = findInsert (id);
+    if (x == nullptr || x->plugin == nullptr)
+        return false;
+    if (x->window == nullptr)
+    {
+        if (! x->plugin->hasEditor())
+            return false;
+        auto* editor = x->plugin->createEditorIfNeeded();
+        if (editor == nullptr)
+            return false;
+        x->window = std::make_unique<PluginWindow> (x->plugin->getName(), editor);
+    }
+    x->window->setVisible (true);
+    x->window->toFront (true);
+    return true;
+}
+
+juce::StringArray Engine::openInsertWindows() const
+{
+    juce::StringArray out;
+    for (const auto& c : chains)
+        if (c != nullptr)
+            for (const auto& x : c->inserts)
+                if (x->window != nullptr && x->window->isVisible())
+                    out.add (x->id);
+    return out;
+}
+
+juce::MemoryBlock Engine::insertState (const juce::String& id)
+{
+    juce::MemoryBlock data;
+    if (auto x = findInsert (id); x != nullptr && x->plugin != nullptr)
+        x->plugin->getStateInformation (data);
+    return data;
+}
+
+bool Engine::setInsertState (const juce::String& id, const juce::MemoryBlock& data)
+{
+    auto x = findInsert (id);
+    if (x == nullptr || x->plugin == nullptr)
+        return false;
+    x->plugin->setStateInformation (data.getData(), (int) data.getSize());
+    return true;
+}
+
+std::vector<Engine::ParamInfo> Engine::parameters (const juce::String& id, int slot)
+{
+    std::vector<ParamInfo> out;
+    juce::AudioProcessor* p = nullptr;
+    if (id.isNotEmpty())
+    {
+        if (auto x = findInsert (id); x != nullptr)
+            p = x->plugin.get();
+    }
+    else if (slot >= 0 && slot < kSlots)
+        p = slots[(size_t) slot].get();
+    if (p == nullptr)
+        return out;
+    const auto& params = p->getParameters();
+    for (int i = 0; i < params.size(); ++i)
+    {
+        auto* q = params[i];
+        out.push_back ({ i, q->getName (64), q->getCurrentValueAsText(), q->getLabel(), q->getValue() });
+    }
+    return out;
+}
+
+juce::String Engine::setParameter (const juce::String& id, int slot, int index, float value, const juce::String& text, bool& ok, float* valueAfter)
+{
+    ok = false;
+    juce::AudioProcessor* p = nullptr;
+    if (id.isNotEmpty())
+    {
+        if (auto x = findInsert (id); x != nullptr)
+            p = x->plugin.get();
+    }
+    else if (slot >= 0 && slot < kSlots)
+        p = slots[(size_t) slot].get();
+    if (p == nullptr)
+        return {};
+    const auto& params = p->getParameters();
+    if (! juce::isPositiveAndBelow (index, params.size()))
+        return {};
+    auto* q = params[index];
+    const float v = text.isNotEmpty() ? q->getValueForText (text) : juce::jlimit (0.0f, 1.0f, value);
+    q->beginChangeGesture();
+    q->setValueNotifyingHost (v);
+    q->endChangeGesture();
+    ok = true;
+    if (valueAfter != nullptr)
+        *valueAfter = q->getValue();
+    return q->getCurrentValueAsText();
 }
 
 } // namespace fh

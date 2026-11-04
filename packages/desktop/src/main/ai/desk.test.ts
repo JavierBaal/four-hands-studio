@@ -542,7 +542,8 @@ describe("form, harmony, pedal, properties, tracks and annotations", () => {
 
   it("puts plugins on tracks (fase 2): one sound per track", () => {
     expect(ok("list_instruments")).toMatch(/Kontakt 8 · Native Instruments · Instrument\|Sampler/);
-    expect(ok("list_instruments")).not.toMatch(/Ozone/);
+    // An effect plugin is not an instrument: it is listed apart, for add_effect (F2.2 parte C).
+    expect(ok("list_instruments").split("Effect plugins")[0]).not.toMatch(/Ozone/);
     const id = begin("Kontakt");
     ok("add_track", { intervention_id: id, name: "Cuerdas Kontakt", sound: "plugin / kontakt" });
     expect(trackByName("Cuerdas Kontakt")).toMatchObject({ output: "plugin", plugin: { id: "VST3-Kontakt 8-1", name: "Kontakt 8" } });
@@ -917,5 +918,99 @@ describe("the master fader for the AI (F2.2 parte B)", () => {
     session.handle({ type: "undo" });
     expect(session.song.masterVolume).toBeUndefined();
     expect(session.song.tracks.t1!.volume).toBe(0.8);
+  });
+});
+
+describe("insert effects for the AI (F2.2 parte C)", () => {
+  it("adds an own effect with settings, shows it in the overview, and undoes it in one step", () => {
+    const id = begin("Limpio el órgano");
+    const text = ok("add_effect", { intervention_id: id, track: "t1", effect: "ecualizador", settings: "Low cut: on\nLow cut freq: 120 Hz\nHigh-mid gain: -3 dB" });
+    expect(text).toMatch(/Added x1 EQ \(low cut on, low cut freq 120 Hz, high-mid gain −3.0 dB\) to Organo \(t1\)/);
+    expect(session.song.tracks.t1!.inserts![0]!.params!.lowCutFreq).toBe(120);
+    expect(ok("get_song_overview")).toMatch(/t1 .*effects: x1 EQ \(low cut on/);
+    ok("end_intervention", { intervention_id: id });
+    session.handle({ type: "undo" });
+    expect(session.song.tracks.t1!.inserts).toBeUndefined();
+  });
+
+  it("puts a limiter on the Master, adjusts and moves effects, and refuses what does not exist", async () => {
+    const aok = async (tool: string, args: Record<string, unknown>) => {
+      const r = await desk.callAsync("c1", tool, args);
+      if (!r.ok) throw new Error(`${tool} failed: ${r.error}`);
+      return r.text;
+    };
+    const afail = async (tool: string, args: Record<string, unknown>) => {
+      const r = await desk.callAsync("c1", tool, args);
+      if (r.ok) throw new Error(`${tool} should have failed`);
+      return r.error;
+    };
+    const id = begin("Máster");
+    ok("add_effect", { intervention_id: id, track: "master", effect: "limiter" });
+    ok("add_effect", { intervention_id: id, track: "master", effect: "compresor", position: 1 });
+    expect(session.song.masterInserts!.map((x) => x.kind)).toEqual(["compressor", "limiter"]);
+    expect(await aok("set_effect", { intervention_id: id, effect: "x1", settings: "Ceiling: -1.5 dB\nBypass: off" })).toMatch(/Limiter \(ceiling −1.5 dB\)/);
+    expect(await aok("set_effect", { intervention_id: id, effect: "x2", settings: "ratio 4:1\nattack 5 ms" })).toMatch(/ratio 4:1, attack 5.0 ms/);
+    ok("move_effect", { intervention_id: id, effect: "x2", position: 2 });
+    expect(session.song.masterInserts!.map((x) => x.id)).toEqual(["x1", "x2"]);
+    expect(ok("get_song_overview")).toMatch(/Master: vol 100 \(0 dB\) · effects: x1 Limiter/);
+    expect(await afail("set_effect", { intervention_id: id, effect: "x1", settings: "Ceiling: -30 dB" })).toMatch(/Ceiling goes from −12.0 dB to 0.0 dB/);
+    expect(await afail("set_effect", { intervention_id: id, effect: "x1", settings: "Drive: 3" })).toMatch(/has no 'Drive'/);
+    expect(fail("add_effect", { intervention_id: id, track: "t1", effect: "Valhalla" })).toMatch(/There is no effect 'Valhalla'/);
+    expect(fail("remove_effect", { intervention_id: id, effect: "x9" })).toMatch(/There is no effect x9/);
+    ok("remove_effect", { intervention_id: id, effect: "x2" });
+    expect(session.song.masterInserts!.map((x) => x.id)).toEqual(["x1"]);
+    ok("end_intervention", { intervention_id: id });
+  });
+
+  it("names effects, and the overview says the name with what it is (Fran, 04/11/2026)", async () => {
+    const id = begin("Tres EQ");
+    ok("add_effect", { intervention_id: id, track: "t1", effect: "eq", name: "EQ graves" });
+    ok("add_effect", { intervention_id: id, track: "t1", effect: "eq" });
+    const r = await desk.callAsync("c1", "set_effect", { intervention_id: id, effect: "x2", settings: "Name: EQ medios\nHigh-mid gain: -2 dB" });
+    expect(r.ok && r.text).toMatch(/"EQ medios" \(EQ, high-mid gain −2.0 dB\)/);
+    expect(ok("get_song_overview")).toMatch(/effects: x1 "EQ graves" \(EQ, neutral\) → x2 "EQ medios"/);
+    ok("end_intervention", { intervention_id: id });
+  });
+
+  it("lists an own effect's parameters with their ranges", async () => {
+    const id = begin("Compresor");
+    ok("add_effect", { intervention_id: id, track: "t2", effect: "compressor" });
+    const r = await desk.callAsync("c1", "list_effect_parameters", { effect: "x1" });
+    expect(r.ok && r.text).toMatch(/Threshold: −18.0 dB \(−60.0 dB to 0.0 dB\)/);
+    const s = await desk.callAsync("c1", "list_effect_parameters", { effect: "x1", search: "att" });
+    expect(s.ok && s.text.split("\n").length).toBe(2);
+    ok("end_intervention", { intervention_id: id });
+  });
+
+  it("adds a plugin effect by name; its parameters go through the engine, into the song for undo", async () => {
+    const params = [
+      { index: 0, name: "Input Gain", text: "0.0 dB", label: "dB", value: 0.5 },
+      { index: 1, name: "Output Ceiling", text: "-0.3 dB", label: "dB", value: 0.97 },
+    ];
+    const set: Array<[string, number, string]> = [];
+    await open();
+    (desk as unknown as { options: Record<string, unknown> }).options.effectParams = async () => params;
+    (desk as unknown as { options: Record<string, unknown> }).options.setEffectParam = async (id: string, index: number, text: string) => (set.push([id, index, text]), { ok: true, text: "-1.0 dB", value: 0.9 });
+    const id = begin("Ozone en el máster");
+    expect(ok("add_effect", { intervention_id: id, track: "master", effect: "ozone" })).toMatch(/Added x1 Ozone 11 to the Master/);
+    const list = await desk.callAsync("c1", "list_effect_parameters", { effect: "x1", search: "ceiling" });
+    expect(list.ok && list.text).toContain("Output Ceiling: -0.3 dB");
+    const r = await desk.callAsync("c1", "set_effect", { intervention_id: id, effect: "x1", settings: "Output Ceiling: -1 dB" });
+    expect(r.ok && r.text).toMatch(/Output Ceiling: -1.0 dB/);
+    expect(set).toEqual([["x1", 1, "-1 dB"]]);
+    expect(session.song.masterInserts![0]!.pluginParams).toEqual({ "1": 0.9 });
+    expect(session.song.masterInserts![0]!.pluginBase).toEqual({ "1": 0.97 });
+    const bad = await desk.callAsync("c1", "set_effect", { intervention_id: id, effect: "x1", settings: "Drive: 3" });
+    expect(!bad.ok && bad.error).toMatch(/has no parameter 'Drive'/);
+    ok("end_intervention", { intervention_id: id });
+    expect(ok("list_instruments")).toMatch(/Effect plugins on this computer[^\n]*\n  Ozone 11 · iZotope/);
+  });
+
+  it("says when the engine cannot give a plugin's parameters", async () => {
+    const id = begin("Ozone");
+    ok("add_effect", { intervention_id: id, track: "t1", effect: "Ozone 11" });
+    const r = await desk.callAsync("c1", "list_effect_parameters", { effect: "x1" });
+    expect(!r.ok && r.error).toMatch(/engine is not running/);
+    ok("end_intervention", { intervention_id: id });
   });
 });

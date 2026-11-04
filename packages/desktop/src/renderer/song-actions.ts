@@ -3,6 +3,7 @@
  * sections, chords and annotations. Every action is one command list (one undo step) with its
  * sentence in the history. Also holds which field is being typed into (one at a time).
  */
+import { EFFECT_NAME_MAX, type InsertSpec, OWN_EFFECTS, OWN_KINDS, findInsert, insertName, kindName } from "@fourhands/core";
 import {
   type CommandData,
   type KeySignature,
@@ -24,7 +25,7 @@ import {
   nextChannel,
 } from "@fourhands/core";
 import type { AudioLayer } from "./audio-layer.js";
-import type { SoundItem } from "../shared/sound-catalog.js";
+import type { EffectItem, SoundItem } from "../shared/sound-catalog.js";
 import type { ViewStore } from "./view.js";
 import type { SkillImportResult, SoundBankInfo } from "../shared/protocol.js";
 import type { Bridge } from "./bridge.js";
@@ -53,7 +54,8 @@ export type Typing =
   | { kind: "chord"; tick: number }
   | { kind: "annotation"; id: string | null; tick: number }
   /** A tempo change typed on the Tempo ruler (H4); `editing` is the tick of the change being rewritten. */
-  | { kind: "tempoChange"; tick: number; editing: number | null };
+  | { kind: "tempoChange"; tick: number; editing: number | null }
+  | { kind: "effectName"; id: string };
 
 /** What the palette gives: an instrument of the default bank, or a preset of an installed bank. */
 export type SoundChoice = { kind: "default"; item: PaletteItem } | { kind: "bank"; bank: SoundBankInfo; preset: BankPreset };
@@ -86,6 +88,14 @@ export class SongActions {
   settings: SettingsSection | null = null;
   /** A short message at the bottom of the window, gone after a few seconds. */
   notice: string | null = null;
+  /** F2.2 parte C: the effect slot selected in the console (Supr removes it). */
+  selectedEffect: string | null = null;
+  /**
+   * The Sonidos tab shows instruments or effects (Fran, 04/11/2026), and where an effect goes from
+   * there: a track's chain or the Master's (null: the active track).
+   */
+  soundsMode: "instruments" | "effects" = "instruments";
+  fxTarget: string | null = null;
   private noticeTimer: ReturnType<typeof setTimeout> | null = null;
 
   say(text: string): void {
@@ -131,9 +141,51 @@ export class SongActions {
   }
 
   /** Opens the Sonidos tab for this track (it becomes the active one). */
+  setSoundsMode(mode: "instruments" | "effects"): void {
+    if (this.soundsMode === mode) return;
+    this.soundsMode = mode;
+    if (mode === "instruments") this.fxTarget = null;
+    this.changed();
+  }
+
+  /** Effects from the browser go to the Master, or to the active track (null). */
+  setFxTarget(target: "master" | null): void {
+    this.fxTarget = target;
+    this.changed();
+  }
+
+  /** «Todos los efectos…»: the Sonidos tab with the effects, for that chain ("master" or a track). */
+  openEffects(target: string): void {
+    this.editor.closeMenus();
+    this.soundsMode = "effects";
+    this.fxTarget = target === "master" ? "master" : null;
+    if (target !== "master" && this.song.tracks[target] && this.song.context.activeTrackId !== target) void this.replica.setContext({ activeTrackId: target });
+    this.changed();
+    const v = this.viewStore?.state;
+    if (!v) return;
+    const compact = typeof window !== "undefined" && window.innerWidth < SIZE.compactBelow;
+    const folded = compact ? !v.compactPanel : !v.panelOpen;
+    this.viewStore!.set({ panelOpen: true, panelTab: "sounds", compactPanel: true, panelPeek: folded });
+  }
+
+  /** Where an effect from the browser goes now: the Master, or the active track. */
+  effectTarget(): string | null {
+    if (this.fxTarget === "master") return "master";
+    return activeTrack(this.song)?.id ?? null;
+  }
+
+  /** An effect of the catalog onto a chain (double click in the browser, or dropped on a slot). */
+  addEffectItem(item: EffectItem, target: string, index?: number): void {
+    const spec: InsertSpec = item.target.kind === "plugin" ? { kind: "plugin", plugin: { id: item.target.plugin.id, name: item.target.plugin.name } } : { kind: item.target.kind };
+    this.addEffect(target, spec, index);
+    this.audio?.rememberSound(item.key);
+  }
+
   openSounds(trackId: string): void {
     if (!this.song.tracks[trackId]) return;
     this.editor.closeMenus();
+    this.soundsMode = "instruments";
+    this.fxTarget = null;
     if (this.song.context.activeTrackId !== trackId) void this.replica.setContext({ activeTrackId: trackId });
     const v = this.viewStore?.state;
     if (!v) return;
@@ -436,6 +488,105 @@ export class SongActions {
     if (track.volume === volume && track.pan === pan && !revChanged) return;
     const onlyReverb = track.volume === volume && track.pan === pan;
     void this.run(this.h(onlyReverb ? "hReverb" : "hMix", { name: track.name }), [{ type: "updateTrack", id, changes: { volume, pan, reverb: rev } }]);
+  }
+
+  // -------------------------------------------------------------------------
+  // Insert effects (F2.2 parte C)
+
+  /** "el Piano" / "el Máster", for the history. */
+  private chainLabel(target: string): string {
+    return target === "master" ? this.t("consoleMaster") : (this.song.tracks[target]?.name ?? target);
+  }
+
+  selectEffect(id: string | null): void {
+    if (this.selectedEffect === id) return;
+    this.selectedEffect = id;
+    this.changed();
+  }
+
+  /** «+» in a slot: Four Hands' own effects, then the plugin effects the engine knows. */
+  effectAddMenu(target: string, x: number, y: number): void {
+    const t = this.t;
+    const close = (fn: () => void) => () => (this.editor.closeMenus(), fn());
+    // Short (Fran, 04/11/2026: with many plugins a flat list was chaos): Four Hands' own, the
+    // favourite and recent plugins, and the whole organised list in the Sonidos tab.
+    const catalog = this.audio?.effectCatalog(this.lang, t("sndBuiltIn")) ?? [];
+    const prefs = this.audio?.soundPrefs;
+    const plugins = catalog.filter((i) => i.origin === "plugin");
+    const favs = plugins.filter((i) => prefs?.favorites.includes(i.key)).sort((a, b) => a.name.localeCompare(b.name));
+    const recents = (prefs?.recents ?? []).map((k) => plugins.find((i) => i.key === k)).filter((i): i is EffectItem => !!i && !favs.includes(i)).slice(0, 5);
+    const pick = (i: EffectItem): MenuItem => (i.origin === "plugin" ? { label: i.name, shortcut: i.source, run: close(() => this.addEffectItem(i, target)) } : { label: i.name, run: close(() => this.addEffectItem(i, target)) });
+    const items: MenuItem[] = [{ label: t("fxOwn"), header: true }, ...catalog.filter((i) => i.origin === "builtin").map(pick)];
+    if (favs.length) items.push({ separator: true }, { label: t("fxFavorites"), header: true }, ...favs.map(pick));
+    if (recents.length) items.push({ separator: true }, { label: t("fxRecents"), header: true }, ...recents.map(pick));
+    items.push({ separator: true });
+    if (plugins.length) items.push({ label: t("fxAll", { n: plugins.length }), run: close(() => this.openEffects(target)) });
+    else if (this.audio?.engineStatus.state === "missing") items.push({ label: t("fxNoEngine"), disabled: true });
+    else items.push({ label: t("fxScan"), run: close(() => void this.audio?.loadPlugins(true)) });
+    this.editor.openMenu(x, y, items);
+  }
+
+  /** Right click on a slot. */
+  effectMenu(id: string, x: number, y: number): void {
+    const found = findInsert(this.song, id);
+    if (!found) return;
+    const t = this.t;
+    const close = (fn: () => void) => () => (this.editor.closeMenus(), fn());
+    const name = insertName(found.insert, this.lang);
+    this.editor.openMenu(x, y, [
+      { label: name, header: true },
+      ...(found.insert.kind === "plugin" ? [{ label: t("fxOpen"), run: close(() => void this.audio?.showInsert(id)) }] : []),
+      { label: found.insert.bypass ? t("fxEnable") : t("fxBypass"), run: close(() => this.setEffectBypass(id, !found.insert.bypass)) },
+      { label: t("fxRename"), run: close(() => this.type({ kind: "effectName", id })) },
+      ...(found.insert.name ? [{ label: t("fxRenameBack", { name: kindName(found.insert, this.lang) }), run: close(() => this.renameEffect(id, "")) }] : []),
+      { separator: true },
+      { label: t("fxRemove"), shortcut: "Supr", run: close(() => this.removeEffect(id)) },
+    ]);
+  }
+
+  addEffect(target: string, spec: InsertSpec, index?: number): void {
+    const name = spec.kind === "plugin" ? spec.plugin.name : OWN_EFFECTS[spec.kind].name[this.lang];
+    void this.run(this.h("hEffectAdd", { effect: name, where: this.chainLabel(target) }), [index === undefined ? { type: "addInsert", target, spec } : { type: "addInsert", target, spec, index }]);
+  }
+
+  removeEffect(id: string): void {
+    const found = findInsert(this.song, id);
+    if (!found) return;
+    if (this.selectedEffect === id) this.selectedEffect = null;
+    void this.run(this.h("hEffectRemove", { effect: insertName(found.insert, this.lang), where: this.chainLabel(found.target) }), [{ type: "removeInsert", id }]);
+  }
+
+  /** Supr in the console: the selected effect goes. False if none was selected. */
+  removeSelectedEffect(): boolean {
+    if (!this.selectedEffect || !findInsert(this.song, this.selectedEffect)) return false;
+    this.removeEffect(this.selectedEffect);
+    return true;
+  }
+
+  /** Dragged to `index` of `target`'s chain (its own chain or another strip's). */
+  moveEffect(id: string, index: number, target: string): void {
+    const found = findInsert(this.song, id);
+    if (!found) return;
+    // Dropping before itself or right after itself, in the same chain, is no move.
+    if (found.target === target && (index === found.index || index === found.index + 1)) return;
+    const at = found.target === target && index > found.index ? index - 1 : index;
+    void this.run(this.h("hEffectMove", { effect: insertName(found.insert, this.lang), where: this.chainLabel(target) }), [{ type: "moveInsert", id, index: at, target }]);
+  }
+
+  /** The user's own name for an effect; "" goes back to what it is (Fran, 04/11/2026). */
+  renameEffect(id: string, text: string): void {
+    const found = findInsert(this.song, id);
+    if (!found) return;
+    const name = text.trim().slice(0, EFFECT_NAME_MAX);
+    if ((found.insert.name ?? "") === name || (!found.insert.name && name === kindName(found.insert, this.lang))) return;
+    void this.run(this.h(name ? "hEffectRename" : "hEffectRenameBack", { effect: insertName(found.insert, this.lang), name: name || kindName(found.insert, this.lang) }), [{ type: "updateInsert", id, changes: { name } }]);
+  }
+
+  setEffectBypass(id: string, bypass: boolean): void {
+    const found = findInsert(this.song, id);
+    if (!found) return;
+    const key = bypass ? "hEffectBypass" : "hEffectOn";
+    void this.run(this.h(key, { effect: insertName(found.insert, this.lang), where: this.chainLabel(found.target) }), [{ type: "updateInsert", id, changes: { bypass } }]);
   }
 
   /** F2.2 parte B: the master fader while it moves; the song changes with `setMasterVolume`. */
