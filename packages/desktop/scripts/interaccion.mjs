@@ -1306,7 +1306,8 @@ const picked = await page.evaluate(() => {
 check("a click on a scrolled lane picks the track under the mouse", picked.active === picked.under, JSON.stringify(picked));
 await page.evaluate(() => window.fhTest.view.set({ arrHeight: null }));
 
-// F2.2 parte C1: effects in the console.
+// F2.2 parte C1: effects in the console. Ozone is a favourite, so the short «+» menu has it.
+await page.evaluate(() => window.fhTest.audio.updateSoundPrefs((p) => ({ ...p, favorites: [...p.favorites, "plugin:VST3-Ozone 11-3"] })));
 await page.evaluate(() => window.fhTest.view.set({ bottom: "mix", mixNarrow: false, mixMax: false }));
 await settle();
 const fxTrack = (await song()).trackOrder[0];
@@ -1386,6 +1387,29 @@ await fxStrip.locator("button.cslot.add").click();
 await page.locator(".menu [role=menuitem]", { hasText: "Ozone 11" }).first().click();
 await settle();
 check("a plugin effect that cannot load is marked in amber with why", (await fxStrip.locator(".cslot.bad").count()) >= 1 && /no se pudo cargar/.test(await fxStrip.locator(".cslot.bad").last().getAttribute("title")));
+// Fran, 04/11/2026: the «+» menu stays short; the whole list is in Sonidos › Efectos, folded.
+await fxStrip.locator("button.cslot.add").click();
+const plusItems = await page.locator(".menu [role=menuitem]").allInnerTexts();
+check("«+» lists Four Hands' effects, the favourites and «Todos los efectos…», not every plugin", plusItems.some((x) => /^EQ$/.test(x)) && plusItems.some((x) => /Ozone 11/.test(x)) && plusItems.some((x) => /Todos los efectos/.test(x)), JSON.stringify(plusItems));
+await page.locator(".menu [role=menuitem]", { hasText: "Todos los efectos" }).click();
+await settle();
+check("«Todos los efectos…» opens Sonidos with the effects", (await page.getByRole("radio", { name: "Efectos" }).getAttribute("aria-checked")) === "true" && (await page.locator("[data-effect]").count()) === 0 && (await page.locator(".sndgh").count()) > 0);
+await page.locator(".sndgh", { hasText: "Ecualizadores" }).click();
+await settle();
+const fxBefore = (await song()).tracks[fxTrack].inserts.length;
+await page.locator('[data-effect="fx:eq"]').dblclick();
+await settle();
+check("double click on an effect in Sonidos adds it to the active track", (await song()).tracks[fxTrack].inserts.length === fxBefore + 1 && (await song()).tracks[fxTrack].inserts.at(-1).kind === "eq");
+await page.locator('[data-effect="fx:eq"]').dragTo(fxStrip.locator(".cslot[data-fx]").nth(0));
+await settle();
+check("dragging an effect from Sonidos onto a slot puts it there", (await song()).tracks[fxTrack].inserts.length === fxBefore + 2 && (await song()).tracks[fxTrack].inserts[0].kind === "eq");
+await page.locator(".sndfor .linkbtn").click();
+await settle();
+const masterBefore = (await song()).masterInserts?.length ?? 0;
+await page.locator('[data-effect="fx:eq"]').dblclick();
+await settle();
+check("«al Máster» sends the effects there", ((await song()).masterInserts?.length ?? 0) === masterBefore + 1);
+await page.getByRole("radio", { name: "Instrumentos" }).click();
 await page.evaluate(() => window.fhTest.view.set({ bottom: "editor" }));
 
 console.log(`${passed} passed, ${failures.length} failed`);

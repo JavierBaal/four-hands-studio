@@ -696,3 +696,8 @@ button.cslot.add { cursor: pointer; font: inherit; font-size: 11px; width: 100%;
 button.cslot.add:hover { color: var(--text); border-color: var(--text-2); }
 button.cfxcount { background: transparent; cursor: pointer; font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--text-2); width: 100%; padding: 0; }
 .cfxcount.off { border-style: dashed; opacity: .4; }
+/* Sonidos: Instrumentos / Efectos (Fran, 04/11/2026). */
+.sndwrap { display: flex; flex-direction: column; gap: 10px; min-height: 0; flex: 1; }
+.sndmode { align-self: stretch; display: flex; }
+.sndmode .segb { flex: 1; }
+.sndfor .linkbtn { margin-left: auto; font-size: 12px; }

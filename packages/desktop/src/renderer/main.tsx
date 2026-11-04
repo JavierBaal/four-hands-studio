@@ -1,3 +1,4 @@
+import type { EnginePlugin } from "../shared/engine.js";
 /** Starts the window: theme, bridge, replica, view, then React. */
 import { createRoot } from "react-dom/client";
 import { langFrom, translator } from "../shared/i18n.js";
@@ -71,7 +72,21 @@ async function start(): Promise<void> {
                       ["Captain Chords Epic", "Mixed In Key", "Instrument"],
                       ["Serato Sample", "Serato", "Instrument|Sampler"],
                     ] as const
-                  ).map(([name, vendor, category], i) => ({ id: `VST3-${name}-${i + 10}`, name, vendor, category, format: "VST3", instrument: true }))
+                  )
+                    .map(([name, vendor, category], i): EnginePlugin => ({ id: `VST3-${name}-${i + 10}`, name, vendor, category, format: "VST3", instrument: true }))
+                    .concat(
+                      // Effect plugins like a working studio's (F2.2 parte C: the organised browser).
+                      (
+                        [
+                          ["Pro-Q 3", "FabFilter", "Fx|EQ"], ["Pro-C 2", "FabFilter", "Fx|Dynamics"], ["Pro-L 2", "FabFilter", "Fx|Mastering"], ["Pro-R", "FabFilter", "Fx|Reverb"], ["Saturn 2", "FabFilter", "Fx|Distortion"],
+                          ["ValhallaVintageVerb", "Valhalla DSP, LLC", "Fx|Reverb"], ["ValhallaSupermassive", "Valhalla DSP, LLC", "Fx|Reverb"], ["ValhallaDelay", "Valhalla DSP, LLC", "Fx|Delay"],
+                          ["Decapitator", "Soundtoys", "Fx"], ["EchoBoy", "Soundtoys", "Fx"], ["MicroShift", "Soundtoys", "Fx"],
+                          ["CLA-76 Stereo", "Waves", "Fx"], ["CLA-2A Stereo", "Waves", "Fx"], ["H-Delay Stereo", "Waves", "Fx"], ["Renaissance Reverb Stereo", "Waves", "Fx"], ["SSL G-Master Buss Compressor Stereo", "Waves", "Fx"], ["L2 Stereo", "Waves", "Fx"], ["CLA Effects Stereo", "Waves", "Fx"], ["Classic EQ", "Waves", "Fx"],
+                          ["Neutron 4", "iZotope", "Fx|Dynamics"], ["RX 10 De-click", "iZotope", "Fx|Restoration"],
+                          ["Pro EQ3", "PreSonus", "Fx|EQ"], ["Room Reverb", "PreSonus", "Fx|Reverb"], ["Analog Delay", "PreSonus", "Fx|Delay"], ["Chorus", "PreSonus", "Fx|Modulation"],
+                        ] as const
+                      ).map(([name, vendor, category], i): EnginePlugin => ({ id: `VST3-${name}-${i + 40}`, name, vendor, category, format: "VST3", instrument: false })),
+                    )
                 : []),
             ],
           }),

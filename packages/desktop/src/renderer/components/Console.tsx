@@ -20,6 +20,7 @@ import { trackColor } from "../theme.js";
 import { Fader } from "./Fader.js";
 import { InlineEdit } from "./InlineEdit.js";
 import { ModeButton } from "./RollToolbar.js";
+import { EFFECT_DRAG } from "./SoundsBrowser.js";
 
 /** About 30 readings a second, only while the console is on screen. */
 const METER_MS = 33;
@@ -234,10 +235,18 @@ function FxChain({ audio, target, inserts, narrow }: { audio: AudioLayer; target
       </button>
     );
   }
+  // A slot being moved, or a new effect from the Sonidos tab (Fran, 04/11/2026).
+  const ours = (e: React.DragEvent) => e.dataTransfer.types.includes(FX_DRAG) || e.dataTransfer.types.includes(EFFECT_DRAG);
   const drop = (index: number) => (e: React.DragEvent) => {
-    if (!e.dataTransfer.types.includes(FX_DRAG)) return;
+    if (!ours(e)) return;
     e.preventDefault();
     setOver(null);
+    const key = e.dataTransfer.getData(EFFECT_DRAG);
+    if (key) {
+      const item = audio.effectCatalog(lang, t("sndBuiltIn")).find((i) => i.key === key);
+      if (item) actions.addEffectItem(item, target, at(index, e));
+      return;
+    }
     actions.moveEffect(e.dataTransfer.getData(FX_DRAG), at(index, e), target);
   };
   // Over a slot, the upper half drops before it and the lower half after it (Fran, 04/11/2026:
@@ -248,9 +257,9 @@ function FxChain({ audio, target, inserts, narrow }: { audio: AudioLayer; target
     return e.clientY > r.top + r.height / 2 ? index + 1 : index;
   };
   const dragOver = (index: number) => (e: React.DragEvent) => {
-    if (!e.dataTransfer.types.includes(FX_DRAG)) return;
+    if (!ours(e)) return;
     e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
+    e.dataTransfer.dropEffect = e.dataTransfer.types.includes(EFFECT_DRAG) ? "copy" : "move";
     setOver(at(index, e));
   };
   return (

@@ -25,7 +25,7 @@ import {
   nextChannel,
 } from "@fourhands/core";
 import type { AudioLayer } from "./audio-layer.js";
-import type { SoundItem } from "../shared/sound-catalog.js";
+import type { EffectItem, SoundItem } from "../shared/sound-catalog.js";
 import type { ViewStore } from "./view.js";
 import type { SkillImportResult, SoundBankInfo } from "../shared/protocol.js";
 import type { Bridge } from "./bridge.js";
@@ -90,6 +90,12 @@ export class SongActions {
   notice: string | null = null;
   /** F2.2 parte C: the effect slot selected in the console (Supr removes it). */
   selectedEffect: string | null = null;
+  /**
+   * The Sonidos tab shows instruments or effects (Fran, 04/11/2026), and where an effect goes from
+   * there: a track's chain or the Master's (null: the active track).
+   */
+  soundsMode: "instruments" | "effects" = "instruments";
+  fxTarget: string | null = null;
   private noticeTimer: ReturnType<typeof setTimeout> | null = null;
 
   say(text: string): void {
@@ -135,9 +141,51 @@ export class SongActions {
   }
 
   /** Opens the Sonidos tab for this track (it becomes the active one). */
+  setSoundsMode(mode: "instruments" | "effects"): void {
+    if (this.soundsMode === mode) return;
+    this.soundsMode = mode;
+    if (mode === "instruments") this.fxTarget = null;
+    this.changed();
+  }
+
+  /** Effects from the browser go to the Master, or to the active track (null). */
+  setFxTarget(target: "master" | null): void {
+    this.fxTarget = target;
+    this.changed();
+  }
+
+  /** «Todos los efectos…»: the Sonidos tab with the effects, for that chain ("master" or a track). */
+  openEffects(target: string): void {
+    this.editor.closeMenus();
+    this.soundsMode = "effects";
+    this.fxTarget = target === "master" ? "master" : null;
+    if (target !== "master" && this.song.tracks[target] && this.song.context.activeTrackId !== target) void this.replica.setContext({ activeTrackId: target });
+    this.changed();
+    const v = this.viewStore?.state;
+    if (!v) return;
+    const compact = typeof window !== "undefined" && window.innerWidth < SIZE.compactBelow;
+    const folded = compact ? !v.compactPanel : !v.panelOpen;
+    this.viewStore!.set({ panelOpen: true, panelTab: "sounds", compactPanel: true, panelPeek: folded });
+  }
+
+  /** Where an effect from the browser goes now: the Master, or the active track. */
+  effectTarget(): string | null {
+    if (this.fxTarget === "master") return "master";
+    return activeTrack(this.song)?.id ?? null;
+  }
+
+  /** An effect of the catalog onto a chain (double click in the browser, or dropped on a slot). */
+  addEffectItem(item: EffectItem, target: string, index?: number): void {
+    const spec: InsertSpec = item.target.kind === "plugin" ? { kind: "plugin", plugin: { id: item.target.plugin.id, name: item.target.plugin.name } } : { kind: item.target.kind };
+    this.addEffect(target, spec, index);
+    this.audio?.rememberSound(item.key);
+  }
+
   openSounds(trackId: string): void {
     if (!this.song.tracks[trackId]) return;
     this.editor.closeMenus();
+    this.soundsMode = "instruments";
+    this.fxTarget = null;
     if (this.song.context.activeTrackId !== trackId) void this.replica.setContext({ activeTrackId: trackId });
     const v = this.viewStore?.state;
     if (!v) return;
@@ -460,16 +508,20 @@ export class SongActions {
   effectAddMenu(target: string, x: number, y: number): void {
     const t = this.t;
     const close = (fn: () => void) => () => (this.editor.closeMenus(), fn());
-    const plugins = (this.audio?.pluginList?.plugins ?? []).filter((p) => !p.instrument).sort((a, b) => a.name.localeCompare(b.name));
-    const items: MenuItem[] = [
-      { label: t("fxOwn"), header: true },
-      ...OWN_KINDS.map((kind) => ({ label: OWN_EFFECTS[kind].name[this.lang], run: close(() => this.addEffect(target, { kind })) })),
-      { separator: true },
-      { label: t("fxPlugins"), header: true },
-    ];
-    if (plugins.length) {
-      for (const p of plugins) items.push({ label: p.name, shortcut: p.vendor, run: close(() => this.addEffect(target, { kind: "plugin", plugin: { id: p.id, name: p.name } })) });
-    } else if (this.audio?.engineStatus.state === "missing") items.push({ label: t("fxNoEngine"), disabled: true });
+    // Short (Fran, 04/11/2026: with many plugins a flat list was chaos): Four Hands' own, the
+    // favourite and recent plugins, and the whole organised list in the Sonidos tab.
+    const catalog = this.audio?.effectCatalog(this.lang, t("sndBuiltIn")) ?? [];
+    const prefs = this.audio?.soundPrefs;
+    const plugins = catalog.filter((i) => i.origin === "plugin");
+    const favs = plugins.filter((i) => prefs?.favorites.includes(i.key)).sort((a, b) => a.name.localeCompare(b.name));
+    const recents = (prefs?.recents ?? []).map((k) => plugins.find((i) => i.key === k)).filter((i): i is EffectItem => !!i && !favs.includes(i)).slice(0, 5);
+    const pick = (i: EffectItem): MenuItem => (i.origin === "plugin" ? { label: i.name, shortcut: i.source, run: close(() => this.addEffectItem(i, target)) } : { label: i.name, run: close(() => this.addEffectItem(i, target)) });
+    const items: MenuItem[] = [{ label: t("fxOwn"), header: true }, ...catalog.filter((i) => i.origin === "builtin").map(pick)];
+    if (favs.length) items.push({ separator: true }, { label: t("fxFavorites"), header: true }, ...favs.map(pick));
+    if (recents.length) items.push({ separator: true }, { label: t("fxRecents"), header: true }, ...recents.map(pick));
+    items.push({ separator: true });
+    if (plugins.length) items.push({ label: t("fxAll", { n: plugins.length }), run: close(() => this.openEffects(target)) });
+    else if (this.audio?.engineStatus.state === "missing") items.push({ label: t("fxNoEngine"), disabled: true });
     else items.push({ label: t("fxScan"), run: close(() => void this.audio?.loadPlugins(true)) });
     this.editor.openMenu(x, y, items);
   }

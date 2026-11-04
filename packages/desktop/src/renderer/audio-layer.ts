@@ -4,7 +4,7 @@
  * as one command at the end, so the whole take undoes in one step, and it is never quantized.
  */
 import { currentProposal, songWithProposal } from "./proposals.js";
-import { type Note, type PedalSpan, type Song, type Track, PPQ, barAt, barStart, orderedSections } from "@fourhands/core";
+import { type Note, OWN_EFFECTS, type PedalSpan, type Song, type Track, PPQ, barAt, barStart, orderedSections } from "@fourhands/core";
 import type { Lang, Strings, Translate } from "../shared/i18n.js";
 import { Engine } from "../audio/engine.js";
 import { INITIAL_KEYBOARD, type KeyboardState, keyAction } from "../audio/keyboard.js";
@@ -12,7 +12,7 @@ import { HIDDEN_LOOKAHEAD, Player, type Target } from "../audio/player.js";
 import { type EnginePort, type MidiPort, SoundRouter, isOwnLoopback } from "../audio/router.js";
 import { type EngineLevels, type EngineLoad, engineChain, engineStrips, levelsReport, masterGain } from "../shared/mix.js";
 import { METRONOME_KEY, StripMap } from "../shared/strips.js";
-import { NO_SOUND_PREFS, type SoundItem, type SoundPrefs, buildCatalog, withRecent } from "../shared/sound-catalog.js";
+import { type EffectItem, NO_SOUND_PREFS, type SoundItem, type SoundPrefs, buildCatalog, buildEffectCatalog, withRecent } from "../shared/sound-catalog.js";
 import { ENGINE_OFF, type EnginePluginList, type EngineScanProgress, type EngineStatus } from "../shared/engine.js";
 import type { Bridge } from "./bridge.js";
 import type { SoundBankInfo } from "../shared/protocol.js";
@@ -251,6 +251,12 @@ export class AudioLayer {
   /** Every sound a track can have, as the Sonidos browser lists it (also to resolve a dragged key). */
   soundCatalog(lang: Lang, builtInLabel: string): SoundItem[] {
     return buildCatalog({ lang, banks: this.banks, plugins: this.pluginList?.plugins ?? [], prefs: this.soundPrefs, builtInLabel });
+  }
+
+  /** Every insert effect: Four Hands' own and the plugin effects (F2.2 parte C, the Sonidos tab). */
+  effectCatalog(lang: Lang, ownLabel: string): EffectItem[] {
+    const names = { eq: OWN_EFFECTS.eq.name[lang], compressor: OWN_EFFECTS.compressor.name[lang], limiter: OWN_EFFECTS.limiter.name[lang] };
+    return buildEffectCatalog({ lang, plugins: this.pluginList?.plugins ?? [], prefs: this.soundPrefs, ownLabel, ownNames: names });
   }
 
   rememberSound(key: string): void {

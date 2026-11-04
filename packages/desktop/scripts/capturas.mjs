@@ -354,6 +354,38 @@ export const SHOTS = [
     await page.locator(".cslot[data-fx]").nth(1).click({ button: "right" });
     await page.waitForTimeout(200);
   } },
+  // Fran, 04/11/2026: many plugins, organised. The short «+» menu, and the effects in Sonidos.
+  { name: "efectos_5_menu_corto", q: `?song=boceto&plugins=fran&view=${view({ bottom: "mix" })}`, act: async (page) => {
+    await page.evaluate(async () => {
+      const { audio } = window.fhTest;
+      audio.updateSoundPrefs((p) => ({ ...p, favorites: ["plugin:VST3-Pro-Q 3-40", "plugin:VST3-ValhallaVintageVerb-45"], recents: ["plugin:VST3-Decapitator-48", "plugin:VST3-CLA-76 Stereo-51"] }));
+    });
+    await consoleLevels(page);
+    await page.locator('.cstrip[data-track]').nth(1).locator("button.cslot.add").click();
+    await page.waitForTimeout(200);
+  } },
+  { name: "efectos_6_sonidos_tipo", q: `?song=boceto&plugins=fran&view=${view({ bottom: "mix", panelOpen: true, panelTab: "sounds" })}`, act: async (page) => {
+    await page.evaluate(() => window.fhTest.audio.updateSoundPrefs((p) => ({ ...p, favorites: ["plugin:VST3-Pro-Q 3-40"] })));
+    await page.getByRole("radio", { name: "Efectos" }).click();
+    await page.locator(".sndgh", { hasText: "Reverbs" }).click();
+    await page.waitForTimeout(300);
+  } },
+  { name: "efectos_7_sonidos_fabricante", q: `?song=boceto&plugins=fran&view=${view({ bottom: "mix", panelOpen: true, panelTab: "sounds" })}`, act: async (page) => {
+    await page.getByRole("radio", { name: "Efectos" }).click();
+    await page.getByRole("radio", { name: "Fabricante" }).click();
+    await page.locator(".sndgh", { hasText: "FabFilter" }).click();
+    await page.waitForTimeout(300);
+  } },
+  { name: "efectos_8_nombre", q: `?song=boceto&view=${view({ bottom: "mix" })}`, act: async (page) => {
+    await page.evaluate(async () => {
+      const { replica } = window.fhTest;
+      const t2 = replica.song.trackOrder[2];
+      await replica.run("x", [{ type: "addInsert", target: t2, spec: { kind: "eq" } }, { type: "addInsert", target: t2, spec: { kind: "eq" } }, { type: "addInsert", target: t2, spec: { kind: "eq" } }]);
+      const [a, b, c] = replica.song.tracks[t2].inserts.map((x) => x.id);
+      await replica.run("x", [{ type: "updateInsert", id: a, changes: { name: "EQ graves" } }, { type: "updateInsert", id: b, changes: { name: "EQ medios" } }, { type: "updateInsert", id: c, changes: { name: "EQ efectos" } }]);
+    });
+    await consoleLevels(page);
+  } },
   // The Mezcla / Editor button (Fran, 03/11/2026: at the start of the bar).
   { name: "boton_mezcla_editor", q: `?song=boceto&view=${sketchView(1440 - 288 - 72, 12)}` },
   { name: "boton_mezcla_consola", q: `?song=boceto&view=${view({ bottom: "mix" })}`, act: consoleLevels },
