@@ -73,8 +73,17 @@ int selfTest (const juce::String& folder)
         return 5;
     }
     // F2.2: the plugin's strip. Half the fader halves the sound (dry); a reverb send leaves a tail.
-    auto play = [&engine] (double gain, double reverb) {
-        engine.setMix (0, gain, 0.0, reverb);
+    // Parte D: the send goes to bus 0, which has Four Hands' Reverb (the «Reverb» bus).
+    auto sendToReverb = [&engine] (double level) {
+        engine.setChain (fh::Engine::kBusChain, { fh::Engine::InsertSpec { "xr", "reverb", "", false, {} } });
+        fh::Engine::Route strip;
+        if (level > 0)
+            strip.sends.push_back ({ 0, (float) level, false });
+        engine.setRouting ({ { 0, strip } }, { { 0, fh::Engine::Route {} } }, { 0 }, 0);
+    };
+    auto play = [&engine, &sendToReverb] (double gain, double reverb) {
+        engine.setMix (0, gain, 0.0);
+        sendToReverb (reverb);
         engine.schedule (0, 0.0, juce::MidiMessage::noteOn (1, 60, (juce::uint8) 100));
         engine.schedule (0, 0.5, juce::MidiMessage::noteOff (1, 60));
         juce::AudioBuffer<float> b (2, 48000);
@@ -100,18 +109,18 @@ int selfTest (const juce::String& folder)
     // F2.2 parte B: a strip that goes off is silent at once, in the middle of a note (its plugin's
     // own tail stops; what it already sent to the Reverb bus rings out there, as in the DAWs).
     {
-        engine.setMix (0, 1.0, 0.0, 0.0, true);
+        engine.setMix (0, 1.0, 0.0, true);
         engine.schedule (0, 0.0, juce::MidiMessage::noteOn (1, 60, (juce::uint8) 100));
         engine.schedule (0, 1.0, juce::MidiMessage::noteOff (1, 60));
         juce::AudioBuffer<float> a (2, 14400), b (2, 14400);
         a.clear();
         b.clear();
         engine.renderOffline (a);
-        engine.setMix (0, 1.0, 0.0, 0.0, false);
+        engine.setMix (0, 1.0, 0.0, false);
         engine.takeMeters (false); // count from here on
         engine.renderOffline (b);
         const auto offStrip = engine.takeMeters (false)[0].peak;
-        engine.setMix (0, 1.0, 0.0, 0.0, true);
+        engine.setMix (0, 1.0, 0.0, true);
         juce::AudioBuffer<float> rest (2, 48000);
         engine.renderOffline (rest);
         const auto on = a.getRMSLevel (0, 4800, 4800);
@@ -177,8 +186,8 @@ int selfTest (const juce::String& folder)
         // each strip at the same time starts at the same sample on both.
         engine.load (1, chosen);
         auto onset = [&] (int strip) {
-            engine.setMix (0, 1.0, 0.0, 0.0, strip == 0);
-            engine.setMix (1, 1.0, 0.0, 0.0, strip == 1);
+            engine.setMix (0, 1.0, 0.0, strip == 0);
+            engine.setMix (1, 1.0, 0.0, strip == 1);
             engine.schedule (strip, 0.0, juce::MidiMessage::noteOn (1, 60, (juce::uint8) 100));
             engine.schedule (strip, 0.2, juce::MidiMessage::noteOff (1, 60));
             juce::AudioBuffer<float> b (2, 24000);
@@ -201,14 +210,128 @@ int selfTest (const juce::String& folder)
         }
         // Back as before: no effects, no compensation, both strips on.
         engine.setChain (0, {});
-        engine.setMix (0, 1.0, 0.0, 0.0, true);
-        engine.setMix (1, 1.0, 0.0, 0.0, true);
+        engine.setMix (0, 1.0, 0.0, true);
+        engine.setMix (1, 1.0, 0.0, true);
         engine.unload (1);
         if (engine.compensation() != 0)
         {
             std::cout << "FAIL the compensation stays after the effects went" << std::endl;
             return 16;
         }
+    }
+    // F2.2 parte D: buses.
+    {
+        using Spec = fh::Engine::InsertSpec;
+        using Route = fh::Engine::Route;
+        // Four Hands' Reverb at its defaults is the GS reverb exactly (what a send at 100 % gave).
+        {
+            const auto fx = fh::makeOwnEffect ("reverb");
+            fx->prepare (48000.0, 512);
+            fh::gs::Reverb gs (48000.0);
+            juce::Random random (7);
+            std::vector<float> in (48000), l (48000, 0.0f), r (48000, 0.0f), gl (48000, 0.0f), gr (48000, 0.0f);
+            for (int i = 0; i < 2400; ++i)
+                in[(size_t) i] = random.nextFloat() * 0.5f - 0.25f;
+            for (int i = 0; i < 48000; ++i)
+                l[(size_t) i] = r[(size_t) i] = in[(size_t) i] / 1.8f;
+            for (int i = 0; i < 48000; i += 512)
+            {
+                const int n = juce::jmin (512, 48000 - i);
+                fx->process (l.data() + i, r.data() + i, n, false);
+                gs.process (in.data() + i, gl.data() + i, gr.data() + i, 0, n);
+            }
+            float worst = 0, energy = 0;
+            for (int i = 0; i < 48000; ++i)
+            {
+                worst = juce::jmax (worst, std::abs (l[(size_t) i] - gl[(size_t) i]), std::abs (r[(size_t) i] - gr[(size_t) i]));
+                energy = juce::jmax (energy, std::abs (gl[(size_t) i]));
+            }
+            std::cout << "reverb effect: largest difference with the GS reverb " << worst << " (peak " << energy << ")" << std::endl;
+            if (energy < 1e-3f || worst > 1e-5f)
+            {
+                std::cout << "FAIL the Reverb effect is not the GS reverb" << std::endl;
+                return 30;
+            }
+        }
+        auto rms = [&] (double stripGain) {
+            engine.setMix (0, stripGain, 0.0);
+            const auto b = [&] {
+                engine.schedule (0, 0.0, juce::MidiMessage::noteOn (1, 60, (juce::uint8) 100));
+                engine.schedule (0, 0.5, juce::MidiMessage::noteOff (1, 60));
+                juce::AudioBuffer<float> x (2, 48000);
+                x.clear();
+                engine.renderOffline (x);
+                return x;
+            }();
+            return b.getRMSLevel (0, 4800, 9600);
+        };
+        engine.setChain (fh::Engine::kBusChain, {});
+        // Strip 0 → bus 1 → bus 0 → master; bus 0 at half.
+        Route strip, bus1, bus0;
+        strip.out = 1;
+        bus1.out = 0;
+        engine.setRouting ({ { 0, strip } }, { { 0, bus0 }, { 1, bus1 } }, { 1, 0 }, -1);
+        const auto through = rms (1.0);
+        engine.setBusMix (0, 0.5, 0.0);
+        const auto halfBus = rms (1.0);
+        engine.setBusMix (0, 1.0, 0.0, false);
+        const auto busOff = rms (1.0);
+        engine.setBusMix (0, 1.0, 0.0);
+        const auto busLevels = engine.takeBusMeters (false);
+        // A send before the fader still sounds with the fader down; one after it does not.
+        Route pre, post;
+        pre.sends.push_back ({ 1, 1.0f, true });
+        post.sends.push_back ({ 1, 1.0f, false });
+        engine.setRouting ({ { 0, pre } }, { { 0, bus0 }, { 1, bus1 } }, { 1, 0 }, -1);
+        const auto preSend = rms (0.0);
+        engine.setRouting ({ { 0, post } }, { { 0, bus0 }, { 1, bus1 } }, { 1, 0 }, -1);
+        const auto postSend = rms (0.0);
+        std::cout << "buses: through two buses " << through << " (direct " << during << "), bus at half " << halfBus << ", bus off " << busOff
+                  << ", pre send with the fader down " << preSend << ", post send " << postSend << ", buses metered " << busLevels.size() << std::endl;
+        if (std::abs (through / during - 1.0f) > 0.02f || std::abs (halfBus / through - 0.5f) > 0.05f || busOff > 1e-6f)
+        {
+            std::cout << "FAIL the buses" << std::endl;
+            return 31;
+        }
+        if (std::abs (preSend / through - 1.0f) > 0.02f || postSend > 1e-6f || busLevels.size() != 2)
+        {
+            std::cout << "FAIL the sends" << std::endl;
+            return 32;
+        }
+        // Compensation through a bus: bus 0 has the limiter (240 samples); strip 0 goes through it,
+        // strip 1 straight to the master. Both start at the same sample.
+        engine.load (1, chosen);
+        engine.setChain (fh::Engine::kBusChain, { Spec { "x9", "limiter", "", false, { { "gain", 0 }, { "ceiling", 0 } } } });
+        Route via;
+        via.out = 0;
+        engine.setRouting ({ { 0, via } }, { { 0, Route {} } }, { 0 }, -1);
+        auto onset = [&] (int s) {
+            engine.setMix (0, 1.0, 0.0, s == 0);
+            engine.setMix (1, 1.0, 0.0, s == 1);
+            engine.schedule (s, 0.0, juce::MidiMessage::noteOn (1, 60, (juce::uint8) 100));
+            engine.schedule (s, 0.2, juce::MidiMessage::noteOff (1, 60));
+            juce::AudioBuffer<float> b (2, 24000);
+            b.clear();
+            engine.renderOffline (b);
+            juce::AudioBuffer<float> rest (2, 48000);
+            engine.renderOffline (rest);
+            for (int i = 0; i < b.getNumSamples(); ++i)
+                if (std::abs (b.getSample (0, i)) > 1e-4f)
+                    return i;
+            return -1;
+        };
+        const int viaBus = onset (0), direct = onset (1);
+        std::cout << "bus compensation: through the limiter's bus " << viaBus << ", straight " << direct << std::endl;
+        if (viaBus < 0 || direct < 0 || std::abs (viaBus - direct) > 1)
+        {
+            std::cout << "FAIL the compensation through a bus" << std::endl;
+            return 33;
+        }
+        engine.setChain (fh::Engine::kBusChain, {});
+        engine.setRouting ({}, {}, {}, -1);
+        engine.setMix (0, 1.0, 0.0, true);
+        engine.setMix (1, 1.0, 0.0, true);
+        engine.unload (1);
     }
     // F2.2 (04/11/2026): the plugins read where the song is. Playing from beat 4 at 120 BPM, half
     // a second later it is at beat 5; stopped, it says so.
@@ -307,8 +430,18 @@ int renderSong (const juce::String& bankPath, const juce::String& midiPath, cons
     // the strip must not change the sound).
     const int stripBase = juce::SystemStats::getEnvironmentVariable ("FH_RENDER_STRIP", "-1").getIntValue();
     if (send > 0)
+    {
+        // Parte D: every strip sends to bus 0, which has the Reverb, as Four Hands' «Reverb» bus.
+        engine.setChain (fh::Engine::kBusChain, { fh::Engine::InsertSpec { "xr", "reverb", "", false, {} } });
+        std::vector<std::pair<int, fh::Engine::Route>> strips;
         for (int ch = 0; ch < 16; ++ch)
-            engine.setMix (stripBase >= 0 ? stripBase + ch : ch, 1.0, 0.0, send);
+        {
+            fh::Engine::Route r;
+            r.sends.push_back ({ 0, (float) send, false });
+            strips.push_back ({ stripBase >= 0 ? stripBase + ch : ch, r });
+        }
+        engine.setRouting (strips, { { 0, fh::Engine::Route {} } }, { 0 }, 0);
+    }
     for (const auto* e : all)
     {
         if (e->message.isMetaEvent())

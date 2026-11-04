@@ -141,7 +141,9 @@ juce::var Link::handle (const juce::var& m, Connection& from)
                       { "sounds", true },
                       { "soundsSlot", kSoundsSlot },
                       // A2 (03/11/2026): strips numbered by Four Hands, not by MIDI channel.
-                      { "strips", kStrips } });
+                      { "strips", kStrips },
+                      // F2.2 parte D: buses, and an engine that can route (older ones ignore "routing").
+                      { "buses", kBuses } });
 
     if (type == "plugins")
         return pluginList();
@@ -279,26 +281,62 @@ juce::var Link::handle (const juce::var& m, Connection& from)
 
     if (type == "mix")
     {
-        // F2.2: the strips of the tracks that changed, { ch (the strip), gain, pan, reverb, on }, and
-        // the master fader (`master`, linear), when it comes. No reply.
+        // F2.2: the strips that changed, { ch (the strip), gain, pan, on }; parte D: the buses that
+        // changed, { bus, gain, pan, on }; the master fader (`master`, linear), when it comes. No reply.
         if (auto* list = m["channels"].getArray())
             for (const auto& c : *list)
-                engine.setMix ((int) c["ch"], (double) c["gain"], (double) c["pan"], (double) c["reverb"], c.hasProperty ("on") ? (bool) c["on"] : true);
+                engine.setMix ((int) c["ch"], (double) c["gain"], (double) c["pan"], c.hasProperty ("on") ? (bool) c["on"] : true);
+        if (auto* list = m["buses"].getArray())
+            for (const auto& c : *list)
+                engine.setBusMix ((int) c["bus"], (double) c["gain"], (double) c["pan"], c.hasProperty ("on") ? (bool) c["on"] : true);
         if (m.hasProperty ("master"))
             engine.setMasterGain ((double) m["master"]);
         return {};
+    }
+
+    if (type == "routing")
+    {
+        // F2.2 parte D, the whole routing: { strips: [{ ch, out, sends: [{ bus, level, pre }] }],
+        // buses: [{ bus, out, sends }], order: [bus…], instrumentReverb }. `out` -1: the master.
+        auto route = [] (const juce::var& c) {
+            Engine::Route r;
+            r.out = c.hasProperty ("out") ? (int) c["out"] : -1;
+            if (auto* sends = c["sends"].getArray())
+                for (const auto& x : *sends)
+                    r.sends.push_back ({ (int) x["bus"], (float) (double) x["level"], (bool) x["pre"] });
+            return r;
+        };
+        std::vector<std::pair<int, Engine::Route>> strips, buses;
+        std::vector<int> order;
+        if (auto* list = m["strips"].getArray())
+            for (const auto& c : *list)
+                strips.push_back ({ (int) c["ch"], route (c) });
+        if (auto* list = m["buses"].getArray())
+            for (const auto& c : *list)
+                buses.push_back ({ (int) c["bus"], route (c) });
+        if (auto* list = m["order"].getArray())
+            for (const auto& b : *list)
+                order.push_back ((int) b);
+        engine.setRouting (std::move (strips), std::move (buses), std::move (order), m.hasProperty ("instrumentReverb") ? (int) m["instrumentReverb"] : -1);
+        juce::Array<juce::var> delays;
+        for (int b : order)
+            delays.add (engine.busDelay (b));
+        return obj ({ { "type", "routed" }, { "delays", delays } });
     }
 
     if (type == "meters" || type == "levels")
     {
         // "meters": since the last time (the mixer's meters); "levels": since resetLevels (the AI).
         const auto levels = engine.takeMeters (type == "levels");
-        juce::Array<juce::var> list;
-        // A2: one per strip in use (the app maps them to its tracks), then the master.
+        const auto busLevels = engine.takeBusMeters (type == "levels");
+        auto level = [] (const Engine::Level& l) { return obj ({ { "peak", l.peak }, { "rms", l.rms }, { "clips", (juce::int64) l.clips } }); };
+        juce::Array<juce::var> list, buses;
+        // A2: one per strip in use (the app maps them to its tracks), then the master; parte D: the buses.
         for (size_t i = 0; i + 1 < levels.size(); ++i)
-            list.add (obj ({ { "peak", levels[i].peak }, { "rms", levels[i].rms }, { "clips", (juce::int64) levels[i].clips } }));
-        const auto& mst = levels.back();
-        return obj ({ { "type", type }, { "channels", list }, { "master", obj ({ { "peak", mst.peak }, { "rms", mst.rms }, { "clips", (juce::int64) mst.clips } }) } });
+            list.add (level (levels[i]));
+        for (const auto& l : busLevels)
+            buses.add (level (l));
+        return obj ({ { "type", type }, { "channels", list }, { "master", level (levels.back()) }, { "buses", buses } });
     }
 
     if (type == "resetLevels")
@@ -333,12 +371,13 @@ juce::var Link::handle (const juce::var& m, Connection& from)
                         spec.params.push_back ({ p.name.toString(), (double) p.value });
                 specs.push_back (std::move (spec));
             }
-        const int strip = m["strip"];
+        // Parte D: { bus: n } instead of a strip, for a bus's chain.
+        const int strip = m.hasProperty ("bus") ? Engine::kBusChain + (int) m["bus"] : (int) m["strip"];
         const auto problems = engine.setChain (strip, specs);
         juce::Array<juce::var> errors;
         for (const auto& [id, message] : problems)
             errors.add (obj ({ { "id", id }, { "error", message } }));
-        return obj ({ { "type", "insertsSet" }, { "strip", strip }, { "latency", engine.chainLatency (strip) }, { "compensation", engine.compensation() }, { "errors", errors } });
+        return obj ({ { "type", "insertsSet" }, { "strip", m.hasProperty ("bus") ? m["strip"] : juce::var (strip) }, { "bus", m["bus"] }, { "latency", engine.chainLatency (strip) }, { "compensation", engine.compensation() }, { "errors", errors } });
     }
 
     if (type == "showInsert")

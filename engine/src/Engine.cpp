@@ -159,6 +159,9 @@ void Engine::prepare (double rate, int block)
         soundsEvents.reserve (8192);
         master.setSize (2, block, false, true, true);
         busIn.setSize (1, block, false, true, true);
+        busBuffers.setSize (2 * kBuses, block, false, true, true);
+        masterIn.setSize (2, block, false, true, true);
+        edgeBuffer.setSize (2, block, false, true, true);
         // The Reverb bus (F2.2): the GS reverb the built-in sounds had inside, now for every track.
         if (busReverb == nullptr || rate != busRate)
         {
@@ -471,7 +474,14 @@ void Engine::process (float* const* outputs, int numOutputs, int numSamples)
         sends.setSize (kStrips, numSamples, false, false, true);
         master.setSize (2, numSamples, false, false, true);
         busIn.setSize (1, numSamples, false, false, true);
+        busBuffers.setSize (2 * kBuses, numSamples, false, false, true);
+        masterIn.setSize (2, numSamples, false, false, true);
+        edgeBuffer.setSize (2, numSamples, false, false, true);
     }
+    // F2.2 parte D: with Four Hands' routing, strips go to buses or to the master's input.
+    auto* r = routing.get();
+    masterIn.clear (0, numSamples);
+    masterIn.clear (1, numSamples);
     // Only the strips in use: a song with 20 tracks does not pay for 512.
     const int inUse = used.load();
     for (int s = 0; s < inUse; ++s)
@@ -500,7 +510,8 @@ void Engine::process (float* const* outputs, int numOutputs, int numSamples)
             strips.addFrom (2 * s + c, 0, buffer, juce::jmin (c, outChannels - 1), 0, numSamples);
     }
     if (auto* sounds = static_cast<SoundFontSynth*> (live[(size_t) kSoundsSlot]))
-        sounds->processSplit (soundsEvents, numSamples, strips.getArrayOfWritePointers(), sends.getArrayOfWritePointers(), master.getWritePointer (0), master.getWritePointer (1));
+        sounds->processSplit (soundsEvents, numSamples, strips.getArrayOfWritePointers(), sends.getArrayOfWritePointers(),
+                              (r != nullptr ? masterIn : master).getWritePointer (0), (r != nullptr ? masterIn : master).getWritePointer (1));
 
     // Insert effects (F2.2 parte C), then the delay that lines every strip up with the slowest one.
     const int comp = maxLatency.load();
@@ -523,38 +534,10 @@ void Engine::process (float* const* outputs, int numOutputs, int numSamples)
         }
     }
 
-    // The strips: fader and balance, meters, into the master and the Reverb bus (post-fader).
-    float* busData = busIn.getWritePointer (0);
-    for (int ch = 0; ch < inUse; ++ch)
-    {
-        const auto& p = mix[(size_t) ch];
-        float* L = strips.getWritePointer (2 * ch);
-        float* R = strips.getWritePointer (2 * ch + 1);
-        if (! p.on)
-        {
-            // Off: silent from here, its sends too (the built-in sounds' own send included).
-            juce::FloatVectorOperations::clear (L, numSamples);
-            juce::FloatVectorOperations::clear (R, numSamples);
-            meters[(size_t) ch].add (L, R, numSamples);
-            continue;
-        }
-        const float gL = (float) (p.gain * (p.pan <= 0 ? 1.0 : std::cos (p.pan * juce::MathConstants<double>::halfPi)));
-        const float gR = (float) (p.gain * (p.pan >= 0 ? 1.0 : std::cos (-p.pan * juce::MathConstants<double>::halfPi)));
-        if (gL != 1.0f)
-            juce::FloatVectorOperations::multiply (L, gL, numSamples);
-        if (gR != 1.0f)
-            juce::FloatVectorOperations::multiply (R, gR, numSamples);
-        meters[(size_t) ch].add (L, R, numSamples);
-        master.addFrom (0, 0, L, numSamples);
-        master.addFrom (1, 0, R, numSamples);
-        // The built-in sounds' own send (it already follows their volume) and the plugins' send.
-        juce::FloatVectorOperations::add (busData, sends.getReadPointer (ch), numSamples);
-        if (p.reverb > 0)
-            for (int i = 0; i < numSamples; ++i)
-                busData[i] += (float) ((L[i] + R[i]) * 0.5 * p.reverb * kPluginSendMatch);
-    }
-    if (busReverb != nullptr)
-        busReverb->process (busData, master.getWritePointer (0), master.getWritePointer (1), 0, numSamples);
+    if (r != nullptr)
+        mixRouted (*r, inUse, numSamples);
+    else
+        mixLegacy (inUse, numSamples);
     if (auto* mc = chains[(size_t) kMasterChain].get(); mc != nullptr && ! mc->inserts.empty())
         runChain (*mc, master.getWritePointer (0), master.getWritePointer (1), numSamples);
     if (const auto mg = (float) masterGain.load(); mg != 1.0f)
@@ -640,15 +623,322 @@ void Engine::Meter::add (const float* L, const float* R, int n)
     totalCount += n;
 }
 
-void Engine::setMix (int strip, double gain, double pan, double reverb, bool on)
+namespace
+{
+/** Balance: the far side stays, the near side follows a quarter cosine (as the strips always did). */
+inline void applyFader (float* L, float* R, int n, double gain, double pan)
+{
+    const float gL = (float) (gain * (pan <= 0 ? 1.0 : std::cos (pan * juce::MathConstants<double>::halfPi)));
+    const float gR = (float) (gain * (pan >= 0 ? 1.0 : std::cos (-pan * juce::MathConstants<double>::halfPi)));
+    if (gL != 1.0f)
+        juce::FloatVectorOperations::multiply (L, gL, n);
+    if (gR != 1.0f)
+        juce::FloatVectorOperations::multiply (R, gR, n);
+}
+
+/**
+ * What a plugin track's strip sent to the GS reverb before parte D, against the built-in sounds'
+ * own CC91 send (measured 03/11/2026, see ReverbFx): only for renders without Four Hands' routing.
+ */
+constexpr double kLegacySendMatch = 1.8;
+} // namespace
+
+void Engine::mixLegacy (int inUse, int numSamples)
+{
+    // Before parte D: strips into the master; the built-in sounds' CC91 send into the GS reverb.
+    float* busData = busIn.getWritePointer (0);
+    for (int ch = 0; ch < inUse; ++ch)
+    {
+        const auto& p = mix[(size_t) ch];
+        float* L = strips.getWritePointer (2 * ch);
+        float* R = strips.getWritePointer (2 * ch + 1);
+        if (! p.on)
+        {
+            juce::FloatVectorOperations::clear (L, numSamples);
+            juce::FloatVectorOperations::clear (R, numSamples);
+            meters[(size_t) ch].add (L, R, numSamples);
+            continue;
+        }
+        applyFader (L, R, numSamples, p.gain, p.pan);
+        meters[(size_t) ch].add (L, R, numSamples);
+        master.addFrom (0, 0, L, numSamples);
+        master.addFrom (1, 0, R, numSamples);
+        juce::FloatVectorOperations::add (busData, sends.getReadPointer (ch), numSamples);
+    }
+    if (busReverb != nullptr)
+        busReverb->process (busData, master.getWritePointer (0), master.getWritePointer (1), 0, numSamples);
+}
+
+void Engine::mixRouted (Routing& r, int inUse, int numSamples)
+{
+    const int nb = r.busesInUse;
+    for (int c = 0; c < 2 * nb; ++c)
+        busBuffers.clear (c, 0, numSamples);
+    auto addTo = [this, numSamples] (int bus, const float* L, const float* R, float level) {
+        float* dL = bus >= 0 ? busBuffers.getWritePointer (2 * bus) : masterIn.getWritePointer (0);
+        float* dR = bus >= 0 ? busBuffers.getWritePointer (2 * bus + 1) : masterIn.getWritePointer (1);
+        if (level == 1.0f)
+        {
+            juce::FloatVectorOperations::add (dL, L, numSamples);
+            juce::FloatVectorOperations::add (dR, R, numSamples);
+        }
+        else if (level > 0.0f)
+        {
+            juce::FloatVectorOperations::addWithMultiply (dL, L, level, numSamples);
+            juce::FloatVectorOperations::addWithMultiply (dR, R, level, numSamples);
+        }
+    };
+
+    // The strips: sends before the fader, fader and balance, meter, output, sends after it.
+    for (int ch = 0; ch < inUse; ++ch)
+    {
+        const auto& p = mix[(size_t) ch];
+        const auto& route = r.strips[(size_t) ch];
+        float* L = strips.getWritePointer (2 * ch);
+        float* R = strips.getWritePointer (2 * ch + 1);
+        if (! p.on)
+        {
+            juce::FloatVectorOperations::clear (L, numSamples);
+            juce::FloatVectorOperations::clear (R, numSamples);
+            meters[(size_t) ch].add (L, R, numSamples);
+            continue;
+        }
+        for (const auto& send : route.sends)
+            if (send.pre && send.bus < nb)
+                addTo (send.bus, L, R, send.level);
+        applyFader (L, R, numSamples, p.gain, p.pan);
+        meters[(size_t) ch].add (L, R, numSamples);
+        addTo (route.out < nb ? route.out : -1, L, R, 1.0f);
+        for (const auto& send : route.sends)
+            if (! send.pre && send.bus < nb)
+                addTo (send.bus, L, R, send.level);
+        // What a built-in instrument sends to reverb on its own (its SoundFont's setting; CC91 is 0
+        // now), after the fader, into both sides so the Reverb effect hears it as before.
+        if (r.instrumentReverb >= 0 && r.instrumentReverb < nb)
+        {
+            const auto g = (float) (p.gain / kLegacySendMatch);
+            juce::FloatVectorOperations::addWithMultiply (busBuffers.getWritePointer (2 * r.instrumentReverb), sends.getReadPointer (ch), g, numSamples);
+            juce::FloatVectorOperations::addWithMultiply (busBuffers.getWritePointer (2 * r.instrumentReverb + 1), sends.getReadPointer (ch), g, numSamples);
+        }
+    }
+
+    // What came from the strips waits for the slowest path into its bus, and into the master.
+    for (int b : r.order)
+        if (b < nb && r.busInDelay[(size_t) b] > 0)
+        {
+            float* lines[2] = { busBuffers.getWritePointer (2 * b), busBuffers.getWritePointer (2 * b + 1) };
+            r.busInLines[(size_t) b].process (lines, 2, numSamples, r.busInDelay[(size_t) b]);
+        }
+    if (r.masterInDelay > 0)
+    {
+        float* lines[2] = { masterIn.getWritePointer (0), masterIn.getWritePointer (1) };
+        r.masterInLine.process (lines, 2, numSamples, r.masterInDelay);
+    }
+
+    // The buses, each after those that feed it: chain, sends before the fader, fader, the rest.
+    for (int b : r.order)
+    {
+        if (b >= nb)
+            continue;
+        float* L = busBuffers.getWritePointer (2 * b);
+        float* R = busBuffers.getWritePointer (2 * b + 1);
+        if (auto* chain = chains[(size_t) (kBusChain + b)].get(); chain != nullptr && ! chain->inserts.empty())
+            runChain (*chain, L, R, numSamples);
+        const auto& bm = busMix[(size_t) b];
+        if (! bm.on)
+        {
+            juce::FloatVectorOperations::clear (L, numSamples);
+            juce::FloatVectorOperations::clear (R, numSamples);
+            busMeters[(size_t) b].add (L, R, numSamples);
+            continue;
+        }
+        auto edge = [&] (Edge& e) {
+            float* eL = edgeBuffer.getWritePointer (0);
+            float* eR = edgeBuffer.getWritePointer (1);
+            juce::FloatVectorOperations::copyWithMultiply (eL, L, e.level, numSamples);
+            juce::FloatVectorOperations::copyWithMultiply (eR, R, e.level, numSamples);
+            if (e.delay > 0)
+            {
+                float* lines[2] = { eL, eR };
+                e.line.process (lines, 2, numSamples, e.delay);
+            }
+            addTo (e.to < nb ? e.to : -1, eL, eR, 1.0f);
+        };
+        for (auto& e : r.edges[(size_t) b])
+            if (e.pre)
+                edge (e);
+        applyFader (L, R, numSamples, bm.gain, bm.pan);
+        busMeters[(size_t) b].add (L, R, numSamples);
+        for (auto& e : r.edges[(size_t) b])
+            if (! e.pre)
+                edge (e);
+    }
+    master.addFrom (0, 0, masterIn, 0, 0, numSamples);
+    master.addFrom (1, 0, masterIn, 1, 0, numSamples);
+}
+
+void Engine::setMix (int strip, double gain, double pan, bool on)
 {
     if (! juce::isPositiveAndBelow (strip, kStrips))
         return;
     const juce::SpinLock::ScopedLockType sl (lock);
-    mix[(size_t) strip] = { juce::jlimit (0.0, 4.0, gain), juce::jlimit (-1.0, 1.0, pan), juce::jlimit (0.0, 1.0, reverb), on };
+    mix[(size_t) strip] = { juce::jlimit (0.0, 4.0, gain), juce::jlimit (-1.0, 1.0, pan), on };
     // A neutral strip does not need to be counted; one with a mix does (its plugin may come later).
-    if (gain != 1.0 || pan != 0.0 || reverb != 0.0 || ! on)
+    if (gain != 1.0 || pan != 0.0 || ! on)
         touch (strip);
+}
+
+void Engine::setBusMix (int bus, double gain, double pan, bool on)
+{
+    if (! juce::isPositiveAndBelow (bus, kBuses))
+        return;
+    const juce::SpinLock::ScopedLockType sl (lock);
+    busMix[(size_t) bus] = { juce::jlimit (0.0, 4.0, gain), juce::jlimit (-1.0, 1.0, pan), on };
+}
+
+void Engine::setRouting (std::vector<std::pair<int, Route>> stripRoutes, std::vector<std::pair<int, Route>> busRoutes, std::vector<int> order, int instrumentReverb)
+{
+    routingConfig = { std::move (stripRoutes), std::move (busRoutes), std::move (order), instrumentReverb };
+    hasRouting = true;
+    for (const auto& [s, route] : routingConfig.strips)
+        if (juce::isPositiveAndBelow (s, kStrips) && (route.out >= 0 || ! route.sends.empty()))
+            touch (s);
+    rebuildRouting();
+}
+
+void Engine::rebuildRouting()
+{
+    if (! hasRouting)
+        return;
+    auto next = std::make_shared<Routing>();
+    const auto& cfg = routingConfig;
+    auto validBus = [] (int b) { return juce::isPositiveAndBelow (b, kBuses); };
+    std::vector<bool> inOrder ((size_t) kBuses, false);
+    for (int b : cfg.order)
+        if (validBus (b) && ! inOrder[(size_t) b])
+        {
+            inOrder[(size_t) b] = true;
+            next->order.push_back (b);
+        }
+    // Only buses that are processed can be fed; anything else goes to the master.
+    auto clean = [&] (Route route) {
+        if (! (validBus (route.out) && inOrder[(size_t) route.out]))
+            route.out = -1;
+        std::vector<Route::Send> kept;
+        for (const auto& send : route.sends)
+            if (validBus (send.bus) && inOrder[(size_t) send.bus])
+                kept.push_back ({ send.bus, juce::jlimit (0.0f, 1.0f, send.level), send.pre });
+        route.sends = std::move (kept);
+        return route;
+    };
+    int most = -1;
+    for (int b : next->order)
+        most = juce::jmax (most, b);
+    next->busesInUse = most + 1;
+    for (const auto& [s, route] : cfg.strips)
+        if (juce::isPositiveAndBelow (s, kStrips))
+            next->strips[(size_t) s] = clean (route);
+    for (const auto& [b, route] : cfg.buses)
+        if (validBus (b))
+            next->buses[(size_t) b] = clean (route);
+    next->instrumentReverb = validBus (cfg.instrumentReverb) && inOrder[(size_t) cfg.instrumentReverb] ? cfg.instrumentReverb : -1;
+
+    // Compensation: every input of a bus (and of the master) arrives with the slowest of them.
+    const int t0 = maxLatency.load();
+    std::vector<int> arrive ((size_t) kBuses, t0), leave ((size_t) kBuses, t0), latency ((size_t) kBuses, 0);
+    int masterArrive = t0;
+    for (int b : next->order)
+    {
+        latency[(size_t) b] = chainLatency (kBusChain + b);
+        leave[(size_t) b] = arrive[(size_t) b] + latency[(size_t) b];
+        const auto& route = next->buses[(size_t) b];
+        auto reach = [&] (int to) {
+            if (to < 0)
+                masterArrive = juce::jmax (masterArrive, leave[(size_t) b]);
+            else
+                arrive[(size_t) to] = juce::jmax (arrive[(size_t) to], leave[(size_t) b]);
+        };
+        reach (route.out);
+        for (const auto& send : route.sends)
+            reach (send.bus);
+    }
+    // A bus whose input changed after it was reached (a send from a later bus) would break the
+    // order; Four Hands sends a topological order, so `arrive` is final here.
+    for (int b : next->order)
+    {
+        next->busInDelay[(size_t) b] = arrive[(size_t) b] - t0;
+        if (next->busInDelay[(size_t) b] > 0)
+            next->busInLines[(size_t) b].setSize (next->busInDelay[(size_t) b]);
+        const auto& route = next->buses[(size_t) b];
+        auto add = [&] (int to, float level, bool pre) {
+            Edge e;
+            e.to = to;
+            e.level = level;
+            e.pre = pre;
+            e.delay = (to < 0 ? masterArrive : arrive[(size_t) to]) - leave[(size_t) b];
+            if (e.delay > 0)
+                e.line.setSize (e.delay);
+            next->edges[(size_t) b].push_back (std::move (e));
+        };
+        add (route.out, 1.0f, false);
+        for (const auto& send : route.sends)
+            add (send.bus, send.level, send.pre);
+    }
+    next->masterInDelay = masterArrive - t0;
+    if (next->masterInDelay > 0)
+        next->masterInLine.setSize (next->masterInDelay);
+    routedLatency = latency;
+    routedCompensation = t0;
+
+    auto old = routing;
+    {
+        const juce::SpinLock::ScopedLockType sl (lock);
+        // Delay lines that keep their delay keep what they hold (no click when nothing moved).
+        if (old != nullptr)
+        {
+            for (int b : next->order)
+            {
+                if (old->busInDelay[(size_t) b] == next->busInDelay[(size_t) b] && old->busInLines[(size_t) b].size() >= next->busInLines[(size_t) b].size())
+                    std::swap (old->busInLines[(size_t) b], next->busInLines[(size_t) b]);
+                auto& was = old->edges[(size_t) b];
+                auto& now = next->edges[(size_t) b];
+                for (size_t i = 0; i < now.size() && i < was.size(); ++i)
+                    if (was[i].to == now[i].to && was[i].delay == now[i].delay && was[i].pre == now[i].pre)
+                        std::swap (was[i].line, now[i].line);
+            }
+            if (old->masterInDelay == next->masterInDelay)
+                std::swap (old->masterInLine, next->masterInLine);
+        }
+        routing = next;
+    }
+    // `old` (and its lines) is released here, out of the audio lock.
+}
+
+int Engine::busDelay (int bus)
+{
+    const juce::SpinLock::ScopedLockType sl (lock);
+    return routing != nullptr && juce::isPositiveAndBelow (bus, kBuses) ? routing->busInDelay[(size_t) bus] : 0;
+}
+
+std::vector<Engine::Level> Engine::takeBusMeters (bool sinceReset)
+{
+    const juce::SpinLock::ScopedLockType sl (lock);
+    const int n = routing != nullptr ? routing->busesInUse : 0;
+    std::vector<Level> out ((size_t) n);
+    for (size_t i = 0; i < out.size(); ++i)
+    {
+        auto& m = busMeters[i];
+        if (sinceReset)
+            out[i] = { m.totalPeak, m.totalCount > 0 ? std::sqrt (m.totalSum / (double) m.totalCount) : 0.0, m.clips };
+        else
+        {
+            out[i] = { m.peak, m.count > 0 ? std::sqrt (m.sum / (double) m.count) : 0.0, m.clips };
+            m.peak = 0;
+            m.sum = 0;
+            m.count = 0;
+        }
+    }
+    return out;
 }
 
 std::vector<Engine::Level> Engine::takeMeters (bool sinceReset)
@@ -677,6 +967,8 @@ void Engine::resetLevels()
 {
     const juce::SpinLock::ScopedLockType sl (lock);
     for (auto& m : meters)
+        m = {};
+    for (auto& m : busMeters)
         m = {};
 }
 
@@ -743,7 +1035,7 @@ std::vector<std::pair<juce::String, juce::String>> Engine::setChain (int strip, 
 {
     std::vector<std::pair<juce::String, juce::String>> problems;
     const int index = strip < 0 ? kMasterChain : strip;
-    if (index > kMasterChain)
+    if (index >= kBusChain + kBuses)
     {
         problems.push_back ({ "", "Invalid strip" });
         return problems;
@@ -838,6 +1130,9 @@ std::vector<std::pair<juce::String, juce::String>> Engine::setChain (int strip, 
         chains[(size_t) index] = next->inserts.empty() ? nullptr : next;
         maxLatency.store (most);
     }
+    // Parte D: a bus's latency, or the tracks', moves the compensation of the buses.
+    if (hasRouting)
+        rebuildRouting();
     // What left the chain is released here, out of the audio lock (its window first).
     return problems;
 }
@@ -867,7 +1162,7 @@ void Engine::timerTick()
 int Engine::chainLatency (int strip) const
 {
     const int index = strip < 0 ? kMasterChain : strip;
-    if (index > kMasterChain || chains[(size_t) index] == nullptr)
+    if (index >= kBusChain + kBuses || chains[(size_t) index] == nullptr)
         return 0;
     return chains[(size_t) index]->latency;
 }
