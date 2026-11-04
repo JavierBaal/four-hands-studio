@@ -15,6 +15,7 @@ import { TopBar } from "./components/TopBar.js";
 import { ActionsCtx, activeTrack, notesByTrack, useApp, useSize, useSong, useView } from "./context.js";
 import { Mixer } from "./components/Mixer.js";
 import { Console } from "./components/Console.js";
+import { EffectWindow } from "./components/EffectWindow.js";
 import { KeyGuide } from "./components/KeyGuide.js";
 import { Notice } from "./components/SoundsHelp.js";
 import { Settings } from "./components/Settings.js";
@@ -487,6 +488,7 @@ export function App({ audio, onEditor }: AppProps) {
       {overlayMenus.menu && <ContextMenu {...overlayMenus.menu} onClose={() => editor.closeMenus()} />}
       {overlayMenus.quantizeDialog && <QuantizeDialog editor={editor} {...overlayMenus.quantizeDialog} />}
       <Mixer />
+      <EffectWindow audio={audio} />
       <Settings audio={audio} />
       <Notice />
     </div>

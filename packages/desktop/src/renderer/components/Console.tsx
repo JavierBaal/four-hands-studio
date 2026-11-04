@@ -294,7 +294,7 @@ function FxChain({ audio, target, inserts, narrow }: { audio: AudioLayer; target
             title={title}
             onPointerDown={(e) => e.stopPropagation()}
             onClick={() => actions.selectEffect(x.id)}
-            onDoubleClick={() => (x.kind === "plugin" ? void audio.showInsert(x.id) : actions.say(t("fxEditorLater")))}
+            onDoubleClick={() => actions.openEffectWindow(x.id)}
             onContextMenu={(e) => {
               e.preventDefault();
               actions.selectEffect(x.id);

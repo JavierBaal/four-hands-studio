@@ -3,7 +3,7 @@
  * sections, chords and annotations. Every action is one command list (one undo step) with its
  * sentence in the history. Also holds which field is being typed into (one at a time).
  */
-import { EFFECT_NAME_MAX, type InsertSpec, OWN_EFFECTS, OWN_KINDS, findInsert, insertName, kindName } from "@fourhands/core";
+import { EFFECT_NAME_MAX, type InsertSpec, OWN_EFFECTS, OWN_KINDS, findInsert, insertName, kindName, paramDefs } from "@fourhands/core";
 import {
   type CommandData,
   type KeySignature,
@@ -95,6 +95,9 @@ export class SongActions {
    * there: a track's chain or the Master's (null: the active track).
    */
   soundsMode: "instruments" | "effects" = "instruments";
+  /** F2.2 parte C2: the window of an own effect that is open (one at a time), and where it was left. */
+  effectWindow: { id: string } | null = null;
+  effectWindowPos: { left: number; top: number } | null = null;
   fxTarget: string | null = null;
   private noticeTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -535,7 +538,7 @@ export class SongActions {
     const name = insertName(found.insert, this.lang);
     this.editor.openMenu(x, y, [
       { label: name, header: true },
-      ...(found.insert.kind === "plugin" ? [{ label: t("fxOpen"), run: close(() => void this.audio?.showInsert(id)) }] : []),
+      { label: t("fxOpen"), run: close(() => this.openEffectWindow(id)) },
       { label: found.insert.bypass ? t("fxEnable") : t("fxBypass"), run: close(() => this.setEffectBypass(id, !found.insert.bypass)) },
       { label: t("fxRename"), run: close(() => this.type({ kind: "effectName", id })) },
       ...(found.insert.name ? [{ label: t("fxRenameBack", { name: kindName(found.insert, this.lang) }), run: close(() => this.renameEffect(id, "")) }] : []),
@@ -571,6 +574,40 @@ export class SongActions {
     if (found.target === target && (index === found.index || index === found.index + 1)) return;
     const at = found.target === target && index > found.index ? index - 1 : index;
     void this.run(this.h("hEffectMove", { effect: insertName(found.insert, this.lang), where: this.chainLabel(target) }), [{ type: "moveInsert", id, index: at, target }]);
+  }
+
+  /** Double click on an own effect: its window (a plugin opens its own, from the engine). */
+  openEffectWindow(id: string): void {
+    const found = findInsert(this.song, id);
+    if (!found) return;
+    if (found.insert.kind === "plugin") {
+      void this.audio?.showInsert(id);
+      return;
+    }
+    this.effectWindow = { id };
+    this.changed();
+  }
+
+  closeEffectWindow(): void {
+    if (!this.effectWindow) return;
+    this.effectWindow = null;
+    this.changed();
+  }
+
+  /** While a control moves: only the sound changes. */
+  previewEffectParams(id: string, params: Record<string, number>): void {
+    this.audio?.previewInsert(id, params);
+  }
+
+  /** On release (or a typed value): the song, one undo step. */
+  setEffectParams(id: string, params: Record<string, number>): void {
+    const found = findInsert(this.song, id);
+    if (!found || found.insert.kind === "plugin") return;
+    const changed = Object.entries(params).filter(([k, v]) => (found.insert.params?.[k] ?? NaN) !== v);
+    if (!changed.length) return;
+    const defs = paramDefs(found.insert.kind);
+    const what = changed.length === 1 ? (defs.find((d) => d.id === changed[0]![0])?.name ?? changed[0]![0]) : "";
+    void this.run(this.h(changed.length === 1 ? "hEffectParam" : "hEffectParams", { effect: insertName(found.insert, this.lang), param: what }), [{ type: "updateInsert", id, changes: { params: Object.fromEntries(changed) } }]);
   }
 
   /** The user's own name for an effect; "" goes back to what it is (Fran, 04/11/2026). */
