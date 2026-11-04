@@ -999,11 +999,14 @@ void Engine::renderOffline (juce::AudioBuffer<float>& out)
 
 void Engine::runChain (Chain& chain, float* L, float* R, int n)
 {
+    // The song's tempo, for the delay's note values (120 until Four Hands sends the transport).
+    const double bpm = transport.info.getBpm().orFallback (120.0);
     for (auto& x : chain.inserts)
     {
         const bool off = x->bypass.load();
         if (x->own != nullptr)
         {
+            x->own->setTempo (bpm);
             x->own->process (L, R, n, off);
             continue;
         }

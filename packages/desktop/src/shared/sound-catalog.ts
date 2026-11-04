@@ -206,7 +206,7 @@ export const EFFECT_CATEGORY_NAMES: Record<EffectCategory, [es: string, en: stri
 export const ownEffectKey = (kind: string) => `fx:${kind}`;
 
 /** Four Hands' own effects. */
-export type OwnKind = "eq" | "compressor" | "limiter" | "reverb";
+export type OwnKind = "eq" | "compressor" | "limiter" | "reverb" | "delay";
 
 export interface EffectItem {
   key: string;
@@ -251,6 +251,8 @@ export function buildEffectCatalog(input: { lang: Lang; plugins: EnginePlugin[];
     ["limiter", "dynamics"],
     // F2.2 parte D: the song's GS reverb, as an effect (on the «Reverb» bus by default).
     ["reverb", "reverb"],
+    // Fran, 04/11/2026: the delay, synced to the song's tempo.
+    ["delay", "delay"],
   ];
   const items: EffectItem[] = own.map(([kind, category]) => ({ key: ownEffectKey(kind), name: input.ownNames[kind], source: input.ownLabel, origin: "builtin", category, target: { kind } }));
   const hidden = new Set(input.prefs.hidden);

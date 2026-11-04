@@ -253,6 +253,51 @@ int selfTest (const juce::String& folder)
                 return 30;
             }
         }
+        // The delay (Fran, 04/11/2026): a quarter note at 120 BPM is 24000 samples; at 100 BPM, 28800;
+        // 100 ms without sync, 4800. In ping-pong the first repeat is on the left, the next on the right.
+        {
+            auto echoes = [] (std::vector<std::pair<juce::String, double>> params, double bpm) {
+                const auto fx = fh::makeOwnEffect ("delay");
+                fx->prepare (48000.0, 512);
+                for (const auto& [k, v] : params)
+                    fx->setParam (k, v);
+                std::vector<float> l (72000, 0.0f), r (72000, 0.0f);
+                l[0] = r[0] = 1.0f;
+                for (int i = 0; i < 72000; i += 512)
+                {
+                    fx->setTempo (bpm);
+                    fx->process (l.data() + i, r.data() + i, juce::jmin (512, 72000 - i), false);
+                }
+                return std::make_pair (l, r);
+            };
+            auto peakAt = [] (const std::vector<float>& x, int from, int to) {
+                int at = from;
+                for (int i = from; i < to; ++i)
+                    if (std::abs (x[(size_t) i]) > std::abs (x[(size_t) at]))
+                        at = i;
+                return std::make_pair (at, std::abs (x[(size_t) at]));
+            };
+            const auto [l120, r120] = echoes ({}, 120.0);
+            const auto first = peakAt (l120, 1000, 36000), second = peakAt (l120, 36000, 60000);
+            const auto [l100, r100] = echoes ({}, 100.0);
+            const auto slower = peakAt (l100, 1000, 36000);
+            const auto [lms, rms100] = echoes ({ { "sync", 0 }, { "time", 100 } }, 120.0);
+            const auto fast = peakAt (lms, 100, 9000);
+            const auto [lpp, rpp] = echoes ({ { "pingPong", 1 } }, 120.0);
+            const auto ppFirstL = peakAt (lpp, 1000, 36000), ppFirstR = peakAt (rpp, 1000, 36000), ppSecondR = peakAt (rpp, 36000, 60000);
+            std::cout << "delay: 1/4 at 120 BPM " << first.first << " (" << first.second << "), next " << second.first << " (" << second.second << "), at 100 BPM " << slower.first
+                      << ", 100 ms " << fast.first << ", ping-pong left " << ppFirstL.second << " right " << ppFirstR.second << " then right " << ppSecondR.first << std::endl;
+            if (std::abs (first.first - 24000) > 3 || std::abs (second.first - 48000) > 6 || second.second >= first.second || std::abs (slower.first - 28800) > 3 || std::abs (fast.first - 4800) > 3)
+            {
+                std::cout << "FAIL the delay's time" << std::endl;
+                return 34;
+            }
+            if (ppFirstR.second > ppFirstL.second * 0.01f || std::abs (ppSecondR.first - 48000) > 6)
+            {
+                std::cout << "FAIL the delay's ping-pong" << std::endl;
+                return 35;
+            }
+        }
         auto rms = [&] (double stripGain) {
             engine.setMix (0, stripGain, 0.0);
             const auto b = [&] {

@@ -15,7 +15,7 @@
 import { z } from "zod";
 
 /** Bumped whenever a tool, its parameters or its meaning changes. The app refuses other bridges. */
-export const TOOLS_VERSION = 21;
+export const TOOLS_VERSION = 22;
 
 /**
  * Track colours by name (H3.2). The app's palette (desktop/src/shared/track-colors.ts) has the same
@@ -604,7 +604,7 @@ export const TOOLS: readonly ToolDefinition[] = [
     description:
       "Make a bus: a channel with its own effects, fader and output, fed by tracks (their output) or by sends. " +
       "A subgroup: give the tracks that go into it ('tracks') and add effects with add_effect on the bus (e.g. a compressor for all the strings). " +
-      "A return for sends: put a 'reverb' or a delay plugin on it and send to it with set_mix ('Voz send Delay 20'); 'reverb: true' adds Four Hands' reverb. " +
+      "A return for sends: put a 'reverb' or a 'delay' on it and send to it with set_mix ('Voz send Delay 20'); 'reverb: true' or 'delay: true' adds Four Hands' own. " +
       "'to' chains it into another bus (Voces → Mix bus); by default it goes to the Master. A new song has no buses: look at the overview first and reuse a bus that does the job. One undo step.",
     inputSchema: {
       intervention_id: INTERVENTION,
@@ -612,6 +612,7 @@ export const TOOLS: readonly ToolDefinition[] = [
       tracks: z.array(z.string()).optional().describe("Tracks whose sound goes into it (their output), by id or name"),
       to: z.string().optional().describe("Another bus it goes into; the Master if left out"),
       reverb: z.boolean().optional().describe("Put Four Hands' reverb on it, all wet (a reverb return)"),
+      delay: z.boolean().optional().describe("Put Four Hands' delay on it, all wet, a quarter note at the song's tempo (a delay return)"),
       color: z.string().optional().describe("A palette colour name, as for tracks"),
     },
     annotations: write,
@@ -635,14 +636,15 @@ export const TOOLS: readonly ToolDefinition[] = [
     description:
       "Put an effect on a track's or bus's chain (after its sound, before its fader) or on the Master ('master'). " +
       "Four Hands' own: 'eq' (low and high cut, low and high shelf, two bells), 'compressor', 'limiter' (5 ms look-ahead; the engine keeps the other tracks in time), " +
-      "'reverb' (the song's GS reverb: mix, time, tone, pre-delay; all wet on a bus, lower its mix on a track). " +
+      "'reverb' (the song's GS reverb: mix, time, tone, pre-delay; all wet on a bus, lower its mix on a track), " +
+      "'delay' (repeats synced to the song's tempo: 'Note: 1/8 dotted', '1/4 triplet'…, or 'Sync: off' and 'Time: 300 ms'; feedback, mix, low and high cut on the repeats, ping-pong). " +
       "Or a plugin effect by its name, as list_instruments lists the user's plugins (e.g. 'Pro-Q 3', 'Valhalla VintageVerb'). " +
       "It starts neutral (an EQ flat, a compressor at -18 dB 3:1): shape it with set_effect. Prefer fixing the arrangement when that is the cause; " +
       "use effects for what only they can do. You cannot hear the result: measure with get_levels and let the user listen (B compares with and without).",
     inputSchema: {
       intervention_id: INTERVENTION,
       track: z.string().describe("Track or bus id or name, or 'master'"),
-      effect: z.string().describe("'eq', 'compressor', 'limiter', 'reverb', or a plugin effect's name"),
+      effect: z.string().describe("'eq', 'compressor', 'limiter', 'reverb', 'delay', or a plugin effect's name"),
       position: z.number().int().min(1).optional().describe("Place in the chain, 1 = first; the end if left out"),
       settings: z.string().optional().describe("Optional, as in set_effect: one per line, 'name: value'"),
       name: z.string().max(60).optional().describe("Optional: a name for it in the user's language, when there are several alike (e.g. 'EQ graves')"),

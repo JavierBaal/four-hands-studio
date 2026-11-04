@@ -57,7 +57,7 @@ const note = z.object({
 // F2.2 parte C: insert effects. Own effects keep their parameters; a plugin, only which it is.
 const insert = z.object({
   id: z.string().regex(/^x\d+$/),
-  kind: z.enum(["eq", "compressor", "limiter", "reverb", "plugin"]),
+  kind: z.enum(["eq", "compressor", "limiter", "reverb", "delay", "plugin"]),
   name: z.string().min(1).max(60).optional(),
   bypass: z.literal(true).optional(),
   params: z.record(z.string().max(40), z.number()).optional(),

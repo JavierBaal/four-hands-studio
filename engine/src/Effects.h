@@ -30,9 +30,11 @@ public:
     virtual int latency() const { return 0; }
     /** How much it is reducing now, in dB (compressor and limiter), for the meters later. */
     virtual float reduction() const { return 0.0f; }
+    /** The song's tempo now (the delay's note values follow it). Audio thread, before process. */
+    virtual void setTempo (double /*bpm*/) {}
 };
 
-/** "eq", "compressor" or "limiter"; null for anything else. */
+/** "eq", "compressor", "limiter", "reverb" or "delay"; null for anything else. */
 std::unique_ptr<OwnEffect> makeOwnEffect (const juce::String& kind);
 
 /** A link of a chain: an own effect or a plugin, with its id in the song and whether it is off. */

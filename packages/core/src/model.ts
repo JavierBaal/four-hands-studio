@@ -188,7 +188,7 @@ export interface Bus {
 }
 
 /** An insert effect (F2.2 parte C): one of Four Hands' own, or a plugin (VST3). */
-export type InsertKind = "eq" | "compressor" | "limiter" | "reverb" | "plugin";
+export type InsertKind = "eq" | "compressor" | "limiter" | "reverb" | "delay" | "plugin";
 
 export interface Insert {
   /** "x12": never reused in the song. */

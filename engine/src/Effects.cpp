@@ -336,6 +336,108 @@ private:
     std::unique_ptr<gs::Reverb> reverb;
     std::vector<float> mono, wetL, wetR;
 };
+
+// --- Delay (Fran, 04/11/2026) -----------------------------------------------------------------------
+
+/** Quarter notes of each note value, in the order of the song's `note` parameter (core NOTE_VALUES). */
+constexpr double kNoteBeats[] = { 0.125, 1.0 / 6, 0.25, 0.375, 1.0 / 3, 0.5, 0.75, 2.0 / 3, 1.0, 1.5, 2.0, 3.0, 4.0 };
+
+/**
+ * A stereo delay. Its time is a note value at the song's tempo (sync) or milliseconds; the repeats
+ * go through a low and a high cut (they darken, as on tape) and, in ping-pong, from side to side.
+ * The time glides when it changes (a tempo change, a new value), without clicks.
+ */
+class Delay final : public OwnEffect
+{
+public:
+    static constexpr double kMaxSeconds = 4.0;
+
+    void prepare (double r, int) override
+    {
+        rate = r;
+        size = (int) std::ceil (kMaxSeconds * rate) + 4;
+        for (auto& b : line)
+            b.assign ((size_t) size, 0.0f);
+        write = 0;
+        current = -1;
+        lpL = lpR = hpL = hpR = hpInL = hpInR = 0;
+        p.dirty.store (true);
+    }
+    bool setParam (const juce::String& id, double v) override { return p.set (id, v); }
+    void setTempo (double b) override { bpm.store (b > 0 ? b : 120.0); }
+    void process (float* l, float* r, int n, bool bypass) override
+    {
+        if (size == 0)
+            return;
+        if (p.dirty.exchange (false))
+        {
+            feedback = juce::jlimit (0.0, 0.95, p[3] / 100.0);
+            mix = juce::jlimit (0.0, 1.0, p[4] / 100.0);
+            // One-pole filters in the feedback loop.
+            hpCoeff = std::exp (-2.0 * kPi * juce::jlimit (20.0, 2000.0, p[5]) / rate);
+            lpCoeff = std::exp (-2.0 * kPi * juce::jlimit (1000.0, 20000.0, p[6]) / rate);
+            pingPong = p[7] >= 0.5;
+        }
+        const bool sync = p[0] >= 0.5;
+        const int noteIndex = juce::jlimit (0, (int) std::size (kNoteBeats) - 1, (int) std::lround (p[1]));
+        const double seconds = sync ? kNoteBeats[noteIndex] * 60.0 / bpm.load() : juce::jlimit (1.0, 2000.0, p[2]) / 1000.0;
+        const double target = juce::jlimit (1.0, (double) size - 3, seconds * rate);
+        if (current < 0)
+            current = target;
+        // About 50 ms to glide to a new time.
+        const double glide = 1.0 - std::exp (-1.0 / (0.05 * rate));
+        for (int i = 0; i < n; ++i)
+        {
+            current += (target - current) * glide;
+            const double readPos = write - current;
+            const double rp = readPos < 0 ? readPos + size : readPos;
+            const int i0 = (int) rp;
+            const double frac = rp - i0;
+            const int i1 = (i0 + 1) % size;
+            const double dl = line[0][(size_t) i0] + (line[0][(size_t) i1] - line[0][(size_t) i0]) * frac;
+            const double dr = line[1][(size_t) i0] + (line[1][(size_t) i1] - line[1][(size_t) i0]) * frac;
+            // The repeats, darkened: high-pass, then low-pass.
+            const double fl = filter (dl, hpInL, hpL, lpL);
+            const double fr = filter (dr, hpInR, hpR, lpR);
+            const double inL = l[i], inR = r[i];
+            if (pingPong)
+            {
+                // The sound starts on the left; each repeat crosses to the other side.
+                line[0][(size_t) write] = (float) ((inL + inR) * 0.5 + fr * feedback);
+                line[1][(size_t) write] = (float) (fl * feedback);
+            }
+            else
+            {
+                line[0][(size_t) write] = (float) (inL + fl * feedback);
+                line[1][(size_t) write] = (float) (inR + fr * feedback);
+            }
+            write = (write + 1) % size;
+            if (bypass)
+                continue;
+            // Every repeat goes through the cuts, the first one too.
+            l[i] = (float) (inL * (1.0 - mix) + fl * mix);
+            r[i] = (float) (inR * (1.0 - mix) + fr * mix);
+        }
+    }
+
+private:
+    double filter (double x, double& hpIn, double& hp, double& lp) const
+    {
+        // High-pass (one pole): what changes; low-pass (one pole): smooths the top.
+        hp = hpCoeff * (hp + x - hpIn);
+        hpIn = x;
+        lp = hp + (lp - hp) * lpCoeff;
+        return lp;
+    }
+
+    Params<8> p { { "sync", "note", "time", "feedback", "mix", "lowCut", "highCut", "pingPong" }, { 1.0, 8.0, 375.0, 35.0, 100.0, 150.0, 6000.0, 0.0 } };
+    std::atomic<double> bpm { 120.0 };
+    double rate = 48000, feedback = 0.35, mix = 1, hpCoeff = 0, lpCoeff = 0, current = -1;
+    bool pingPong = false;
+    std::array<std::vector<float>, 2> line;
+    int size = 0, write = 0;
+    double lpL = 0, lpR = 0, hpL = 0, hpR = 0, hpInL = 0, hpInR = 0;
+};
 } // namespace
 
 std::unique_ptr<OwnEffect> makeOwnEffect (const juce::String& kind)
@@ -348,6 +450,8 @@ std::unique_ptr<OwnEffect> makeOwnEffect (const juce::String& kind)
         return std::make_unique<Limiter>();
     if (kind == "reverb")
         return std::make_unique<ReverbFx>();
+    if (kind == "delay")
+        return std::make_unique<Delay>();
     return nullptr;
 }
 

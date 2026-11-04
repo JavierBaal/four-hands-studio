@@ -18,7 +18,7 @@
  */
 import type { EngineLevels, EngineLoad } from "../../shared/mix.js";
 import { levelsText } from "./texts.js";
-import { type ChainTarget, type Insert, type InsertKind, type InsertSpec, OWN_EFFECTS, addInsert, chainOf, findInsert, insertName, moveInsert, paramDefs, paramText, removeInsert, updateInsert } from "@fourhands/core";
+import { type ChainTarget, type Insert, type InsertKind, type InsertSpec, OWN_EFFECTS, addInsert, chainOf, findInsert, insertName, moveInsert, paramDefs, paramText, removeInsert, updateInsert, parseParamValue, NOTE_VALUES } from "@fourhands/core";
 import { TRACK_PALETTE, trackColorByName, trackColorId } from "../../shared/track-colors.js";
 import {
   type Authorship,
@@ -1436,11 +1436,13 @@ export class AiDesk {
       const to = toText && !/^(master|máster)$/i.test(toText.trim()) ? this.bus(toText) : undefined;
       const tracks = this.tracks(args) ?? [];
       const reverbOn = args.reverb === true;
+      const delayOn = args.delay === true;
       let id = "";
       this.write(iv, (tx) => {
         id = addBus(tx, { name, ...(colorText === undefined ? {} : { color: colorIndex(colorText) }), ...(to ? { bus: to } : {}) });
         for (const t of tracks) setOutput(tx, t, id);
         if (reverbOn) addInsert(tx, id, { kind: "reverb" });
+        if (delayOn) addInsert(tx, id, { kind: "delay" });
       });
       for (const t of tracks) iv.trackIds.add(t);
       iv.other.push(`bus ${name}`);
@@ -1849,7 +1851,7 @@ export class AiDesk {
   /** 'eq', 'compressor', 'limiter' (also in Spanish), or a plugin effect by name. */
   private effectSpec(text: string): InsertSpec {
     const key = fold(text);
-    const own: Record<string, Exclude<InsertKind, "plugin">> = { eq: "eq", ecualizador: "eq", equalizer: "eq", compressor: "compressor", compresor: "compressor", limiter: "limiter", limitador: "limiter", reverb: "reverb", reverberacion: "reverb" };
+    const own: Record<string, Exclude<InsertKind, "plugin">> = { eq: "eq", ecualizador: "eq", equalizer: "eq", compressor: "compressor", compresor: "compressor", limiter: "limiter", limitador: "limiter", reverb: "reverb", reverberacion: "reverb", delay: "delay", eco: "delay" };
     if (own[key]) return { kind: own[key] };
     const list = (this.options.plugins?.() ?? []).filter((p) => !p.instrument);
     const found = list.find((p) => fold(p.name) === key) ?? list.find((p) => fold(p.name).startsWith(key));
@@ -1880,8 +1882,14 @@ export class AiDesk {
         params[def.id] = onOff(value, n) ? 1 : 0;
         continue;
       }
-      const v = readValue(value, def.unit);
-      if (v === null) throw new MusicError(`Line ${n}: '${value}' is not a value for ${def.name} (${paramText(def, def.min)} to ${paramText(def, def.max)})`);
+      // The delay's note value: "1/8 dotted", "1/4 triplet", "1/16".
+      const v = def.unit === "note" ? parseParamValue(def, value) : def.unit === "%" ? readValue(value.replace(/\s*%$/, ""), def.unit) : readValue(value, def.unit);
+      if (v === null)
+        throw new MusicError(
+          def.unit === "note"
+            ? `Line ${n}: '${value}' is not a note value. Use one of: ${NOTE_VALUES.map((x) => x.en).join(", ")}`
+            : `Line ${n}: '${value}' is not a value for ${def.name} (${paramText(def, def.min)} to ${paramText(def, def.max)})`,
+        );
       if (v < def.min - 1e-9 || v > def.max + 1e-9) throw new MusicError(`Line ${n}: ${def.name} goes from ${paramText(def, def.min)} to ${paramText(def, def.max)}`);
       params[def.id] = v;
     }
