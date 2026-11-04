@@ -219,6 +219,7 @@ juce::String Engine::load (int slot, const juce::PluginDescription& description)
     if (instance == nullptr)
         return error.isNotEmpty() ? error : "The plugin could not be created";
     instance->enableAllBuses();
+    instance->setPlayHead (&transport);
     instance->prepareToPlay (sampleRate, blockSize);
     windows[(size_t) slot].reset();
     {
@@ -452,6 +453,9 @@ void Engine::process (float* const* outputs, int numOutputs, int numSamples)
     for (size_t i = 1; i < soundsEvents.size(); ++i)
         for (size_t j = i; j > 0 && soundsEvents[j - 1].offset > soundsEvents[j].offset; --j)
             std::swap (soundsEvents[j - 1], soundsEvents[j]);
+    // Where the song is, for the plugins of this block (F2.2, 04/11/2026).
+    applyTransport (start, numSamples);
+
     if (late > 0)
     {
         const juce::SpinLock::ScopedLockType st (statsLock);
@@ -572,6 +576,51 @@ void Engine::process (float* const* outputs, int numOutputs, int numSamples)
                 juce::FloatVectorOperations::copy (outputs[c], master.getReadPointer (c), numSamples);
         }
     position.store (end);
+}
+
+void Engine::scheduleTransport (double delaySeconds, const TransportPoint& point)
+{
+    const juce::SpinLock::ScopedLockType sl (lock);
+    const auto at = position.load() + (juce::int64) std::llround (juce::jmax (0.0, delaySeconds) * sampleRate);
+    pendingTransport.push_back ({ at, point });
+}
+
+void Engine::applyTransport (juce::int64 start, int numSamples)
+{
+    // Points due in this block set where the song is at its first sample (a point a few samples
+    // into the block is moved back by that much at its tempo; a late one, forward).
+    const auto end = start + numSamples;
+    for (auto it = pendingTransport.begin(); it != pendingTransport.end();)
+    {
+        if (it->first >= end)
+        {
+            ++it;
+            continue;
+        }
+        current = it->second;
+        if (current.playing)
+            current.ppq -= (double) (it->first - start) / sampleRate * current.bpm / 60.0;
+        it = pendingTransport.erase (it);
+    }
+    auto& info = transport.info;
+    info.setIsPlaying (current.playing);
+    info.setIsRecording (false);
+    info.setBpm (current.bpm);
+    info.setTimeSignature (juce::AudioPlayHead::TimeSignature { current.num, current.den });
+    info.setPpqPosition (current.ppq);
+    info.setPpqPositionOfLastBarStart (current.bar);
+    const double seconds = current.ppq * 60.0 / juce::jmax (1.0, current.bpm);
+    info.setTimeInSeconds (seconds);
+    info.setTimeInSamples ((juce::int64) std::llround (seconds * sampleRate));
+    info.setIsLooping (false);
+    // The next block starts this much further on.
+    if (current.playing)
+    {
+        current.ppq += (double) numSamples / sampleRate * current.bpm / 60.0;
+        const double barLength = current.num * 4.0 / juce::jmax (1, current.den);
+        while (current.ppq >= current.bar + barLength)
+            current.bar += barLength;
+    }
 }
 
 void Engine::Meter::add (const float* L, const float* R, int n)
@@ -738,6 +787,7 @@ std::vector<std::pair<juce::String, juce::String>> Engine::setChain (int strip, 
                     continue;
                 }
                 x->plugin->enableAllBuses();
+                x->plugin->setPlayHead (&transport);
                 x->plugin->prepareToPlay (sampleRate, blockSize);
             }
             else

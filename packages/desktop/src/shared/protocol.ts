@@ -229,6 +229,7 @@ export const CH = {
   engineShowInsert: "fh:engine-show-insert",
   engineSetParam: "fh:engine-set-param",
   engineReductions: "fh:engine-reductions",
+  engineTransport: "fh:engine-transport",
   builtinSounds: "fh:builtin-sounds",
   folders: "fh:folders",
   openFolder: "fh:open-folder",

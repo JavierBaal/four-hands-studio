@@ -31,6 +31,18 @@ constexpr int kSoundsSlot = kSlots;
 constexpr int kAllSlots = kSlots + 1;
 
 
+/**
+ * Where the song is, for the hosted plugins (Fran, 04/11/2026: Ozone's assistant listens only while
+ * the host plays; synced delays and arpeggiators follow the tempo). Four Hands sends points with the
+ * notes; between them the engine moves on at their tempo. Read by plugins on the audio thread.
+ */
+class Transport final : public juce::AudioPlayHead
+{
+public:
+    juce::Optional<PositionInfo> getPosition() const override { return info; }
+    PositionInfo info;
+};
+
 class Engine : public juce::AudioIODeviceCallback, private juce::ChangeListener, private juce::Timer
 {
 public:
@@ -160,6 +172,14 @@ public:
     /** All notes off and pedal up in every slot, now. */
     void panic();
 
+    /** F2.2 (04/11/2026): a transport point, `delaySeconds` from now, like the notes. */
+    struct TransportPoint { bool playing = false; double ppq = 0, bpm = 120; int num = 4, den = 4; double bar = 0; };
+    void scheduleTransport (double delaySeconds, const TransportPoint& point);
+    /** What the plugins read now (tests). */
+    juce::AudioPlayHead::PositionInfo transportNow() const { return transport.info; }
+    /** Does the plugin in this slot read the engine's transport? (tests) */
+    bool pluginHasTransport (int slot) const { return slot >= 0 && slot < kSlots && slots[(size_t) slot] != nullptr && slots[(size_t) slot]->getPlayHead() == &transport; }
+
     // -------------------------------------------------------------------------
     // Offline (tests): renders into `out` as the device would, without a device.
 
@@ -245,6 +265,12 @@ private:
 
     juce::SpinLock statsLock;
     Stats stats;
+
+    // The plugins' transport, and the points still to come.
+    Transport transport;
+    std::vector<std::pair<juce::int64, TransportPoint>> pendingTransport;
+    TransportPoint current;
+    void applyTransport (juce::int64 start, int numSamples);
 
     // Insert effects: one chain per strip and the master's; delay lines for compensation.
     std::array<std::shared_ptr<Chain>, (size_t) kStrips + 1> chains;

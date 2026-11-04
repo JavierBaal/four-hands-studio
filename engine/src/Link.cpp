@@ -201,6 +201,24 @@ juce::var Link::handle (const juce::var& m, Connection& from)
         return {};
     }
 
+    if (type == "transport")
+    {
+        // F2.2 (04/11/2026): [{ delay, playing, ppq, bpm, num, den, bar }], with the notes. No reply.
+        if (auto* points = m["points"].getArray())
+            for (const auto& p : *points)
+            {
+                Engine::TransportPoint t;
+                t.playing = (bool) p["playing"];
+                t.ppq = (double) p["ppq"];
+                t.bpm = juce::jlimit (10.0, 1000.0, (double) p["bpm"]);
+                t.num = juce::jmax (1, (int) p["num"]);
+                t.den = juce::jmax (1, (int) p["den"]);
+                t.bar = (double) p["bar"];
+                engine.scheduleTransport ((double) p["delay"], t);
+            }
+        return {};
+    }
+
     if (type == "panic")
     {
         engine.panic();

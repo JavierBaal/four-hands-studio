@@ -6,9 +6,9 @@
  * Without a SoundFont (the browser harness) everything runs silently on the same clock, so the
  * transport can still be tested.
  */
-import { PPQ, type Song, barTicks, beatTicks, bpmAt, secondsBetween, songEnd, tickAfter } from "@fourhands/core";
+import { PPQ, type Song, barAt, barStart, barTicks, beatTicks, bpmAt, secondsBetween, songEnd, tickAfter } from "@fourhands/core";
 import type { SynthEvent } from "../shared/messages.js";
-import type { SoundOut } from "./router.js";
+import type { SoundOut, TransportAt } from "./router.js";
 import { type LoopRange, METRONOME_CHANNEL, type SoundResolver, type StripResolver, clickEvents, curveResetEvents, curveStateEvents, noteEvents, setupEvents, windowPieces } from "./schedule.js";
 
 const LOOKAHEAD = 0.2;
@@ -69,6 +69,8 @@ export class Player {
   private anchorSong = 0;
   private anchorTime = 0;
   private timer: ReturnType<typeof setInterval> | null = null;
+  /** The next piece starts somewhere new (playback start, loop back): the plugins get a point there. */
+  private transportJump = false;
   /**
    * How far ahead the notes go out. Longer while the window is hidden (minimised): a second safety
    * net if the system still slows its timers down (Fran, 03/11/2026: stutters after Alt+Tab).
@@ -118,6 +120,12 @@ export class Player {
   setup(): void {
     if (!this.engine) return;
     for (const ev of setupEvents(this.song(), this.soundFor, this.stripOf, this.metronomeStrip())) this.engine.now(ev);
+    // Stopped, the plugins still get the song's tempo and where the cursor is (synced LFOs, delays).
+    if (!this.playing) {
+      const song = this.song();
+      const tick = Math.max(0, song.context.cursor);
+      this.engine.transport?.([{ ...this.transportAt(song, tick, this.now()), playing: false }]);
+    }
     this.setupDone = true;
   }
 
@@ -144,6 +152,7 @@ export class Player {
     this.playing = true;
     this.onStart?.();
     this.needCurveState = true;
+    this.transportJump = true;
     this.schedule();
     this.timer = setInterval(() => this.schedule(), TICK_MS);
     this.changed();
@@ -153,6 +162,9 @@ export class Player {
     if (!this.playing) return;
     this.stopTimer();
     this.playing = false;
+    // The plugins hear it stop where it stopped.
+    const tick = Math.max(0, Math.round(this.position() ?? 0));
+    this.engine?.transport?.([{ ...this.transportAt(this.song(), tick, this.now()), playing: false }]);
     this.engine?.panic();
     if (this.engine) for (const ev of curveResetEvents(this.song(), this.stripOf)) this.engine.now(ev);
     this.held.clear();
@@ -163,6 +175,12 @@ export class Player {
   private stopTimer(): void {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
+  }
+
+  /** The transport at a song tick, heard at `time`. */
+  private transportAt(song: Song, tick: number, time: number): TransportAt {
+    const bar = barStart(song.meter, barAt(song.meter, tick));
+    return { time, playing: true, ppq: tick / PPQ, bpm: bpmAt(song, tick), num: song.meter.numerator, den: song.meter.denominator, bar: bar / PPQ };
   }
 
   /** Linear ticks since playback started (negative during the count-in). */
@@ -255,6 +273,7 @@ export class Player {
     const horizon = this.linearAt(this.now() + this.lookahead);
     if (horizon <= this.done) return;
     const events: { time: number; ev: SynthEvent }[] = [];
+    const transport: TransportAt[] = [];
     const at = (linear: number) => this.timeAt(linear);
 
     // Count-in: clicks only, before the song starts (linear ticks from -countIn to 0).
@@ -281,13 +300,26 @@ export class Player {
           this.needCurveState = false;
         }
         for (const e of noteEvents(song, piece.from, piece.to, this.loop?.end, this.stripOf)) events.push({ time: at(base + e.tick), ev: e.ev });
+        // The plugins' transport (F2.2, 04/11/2026): where the piece starts (playback start, loop
+        // back) and every quarter note in it, so a plugin knows it plays, at which tempo and where.
+        let firstBeat = Math.ceil(piece.from / PPQ) * PPQ;
+        if (this.transportJump && piece.to > piece.from) {
+          transport.push(this.transportAt(song, piece.from, at(base + piece.from)));
+          this.transportJump = false;
+          if (firstBeat === piece.from) firstBeat += PPQ;
+        }
+        for (let tick = firstBeat; tick < piece.to; tick += PPQ) transport.push(this.transportAt(song, tick, at(base + tick)));
         if (this.metronome) for (const e of clickEvents(song, piece.from, piece.to, this.metronomeStrip())) events.push({ time: at(base + e.tick), ev: e.ev });
         this.doneSong = this.loop && piece.to >= this.loop.end ? this.loop.start : piece.to;
-        if (this.loop && piece.to >= this.loop.end) this.needCurveState = true;
+        if (this.loop && piece.to >= this.loop.end) {
+          this.needCurveState = true;
+          this.transportJump = true;
+        }
       }
       this.done = horizon;
     }
     this.engine?.sched(events);
+    if (transport.length) this.engine?.transport?.(transport);
     // Move the anchor up to the scheduled point: what comes next is measured from there.
     if (this.done > this.anchorLinear) {
       const time = this.timeAt(this.done);

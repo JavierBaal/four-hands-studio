@@ -525,7 +525,12 @@ export class AudioLayer {
 
   private enginePort(): EnginePort | null {
     if (this.engineStatus.state !== "ready") return null;
-    return { midi: (events) => this.bridge.engineMidi(events), panic: () => this.bridge.enginePanic(), latency: () => this.engineStatus.latency ?? 0 };
+    return {
+      midi: (events) => this.bridge.engineMidi(events),
+      transport: (points) => this.bridge.engineTransport(points),
+      panic: () => this.bridge.enginePanic(),
+      latency: () => this.engineStatus.latency ?? 0,
+    };
   }
 
   /** Each plugin track has its plugin loaded in its slot (the slot is the track's strip, A2). */
