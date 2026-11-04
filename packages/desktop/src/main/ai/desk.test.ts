@@ -962,6 +962,16 @@ describe("insert effects for the AI (F2.2 parte C)", () => {
     ok("end_intervention", { intervention_id: id });
   });
 
+  it("names effects, and the overview says the name with what it is (Fran, 04/11/2026)", async () => {
+    const id = begin("Tres EQ");
+    ok("add_effect", { intervention_id: id, track: "t1", effect: "eq", name: "EQ graves" });
+    ok("add_effect", { intervention_id: id, track: "t1", effect: "eq" });
+    const r = await desk.callAsync("c1", "set_effect", { intervention_id: id, effect: "x2", settings: "Name: EQ medios\nHigh-mid gain: -2 dB" });
+    expect(r.ok && r.text).toMatch(/"EQ medios" \(EQ, high-mid gain −2.0 dB\)/);
+    expect(ok("get_song_overview")).toMatch(/effects: x1 "EQ graves" \(EQ, neutral\) → x2 "EQ medios"/);
+    ok("end_intervention", { intervention_id: id });
+  });
+
   it("lists an own effect's parameters with their ranges", async () => {
     const id = begin("Compresor");
     ok("add_effect", { intervention_id: id, track: "t2", effect: "compressor" });

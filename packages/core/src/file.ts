@@ -57,6 +57,7 @@ const note = z.object({
 const insert = z.object({
   id: z.string().regex(/^x\d+$/),
   kind: z.enum(["eq", "compressor", "limiter", "plugin"]),
+  name: z.string().min(1).max(60).optional(),
   bypass: z.literal(true).optional(),
   params: z.record(z.string().max(40), z.number()).optional(),
   plugin: z.object({ id: z.string().min(1).max(2000), name: z.string().min(1).max(200) }).optional(),

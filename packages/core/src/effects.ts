@@ -198,8 +198,13 @@ function cleanParams(kind: InsertKind, params: Record<string, number>): Record<s
   return out;
 }
 
+/** A name the user gives an effect: at most this long. */
+export const EFFECT_NAME_MAX = 60;
+
 export interface InsertChanges {
   bypass?: boolean;
+  /** The user's own name; "" goes back to the effect's name. */
+  name?: string;
   /** Own effects only: the parameters that change (clamped to their range). */
   params?: Record<string, number>;
   /**
@@ -213,6 +218,12 @@ export function updateInsert(tx: Transaction, id: string, changes: InsertChanges
   const found = findInsert(tx.song, id);
   check(!!found, `Unknown effect: ${id}`);
   const next: Insert = { ...found.insert };
+  if (changes.name !== undefined) {
+    const name = changes.name.trim();
+    check(name.length <= EFFECT_NAME_MAX, `An effect's name has at most ${EFFECT_NAME_MAX} characters`);
+    if (name && name !== kindName(next)) next.name = name;
+    else delete next.name;
+  }
   if (changes.bypass !== undefined) {
     if (changes.bypass) next.bypass = true;
     else delete next.bypass;
@@ -240,9 +251,14 @@ export function updateInsert(tx: Transaction, id: string, changes: InsertChanges
   writeChain(tx, found.target, chain);
 }
 
-/** "EQ", "Compresor", or the plugin's name. */
-export function insertName(insert: Insert, lang: "es" | "en" = "en"): string {
+/** What it is: "EQ", "Compresor", or the plugin's name. */
+export function kindName(insert: Pick<Insert, "kind" | "plugin">, lang: "es" | "en" = "en"): string {
   return insert.kind === "plugin" ? (insert.plugin?.name ?? "Plugin") : OWN_EFFECTS[insert.kind].name[lang];
+}
+
+/** What people call it: the user's name if it has one ("EQ graves"), else what it is. */
+export function insertName(insert: Insert, lang: "es" | "en" = "en"): string {
+  return insert.name ?? kindName(insert, lang);
 }
 
 /** Every effect id in the song, for the file's counters. */

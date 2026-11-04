@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { changesText } from "./changes.js";
 import { addTrack } from "./commands.js";
 import { SongDocument } from "./document.js";
-import { OWN_EFFECTS, addInsert, chainOf, defaultParams, findInsert, moveInsert, paramText, removeInsert, updateInsert } from "./effects.js";
+import { OWN_EFFECTS, addInsert, chainOf, defaultParams, findInsert, insertName, moveInsert, paramText, removeInsert, updateInsert } from "./effects.js";
 import { parseSongFile, serializeSong } from "./file.js";
 import { USER, ai, emptySong } from "./model.js";
 
@@ -76,6 +76,25 @@ describe("insert effects (F2.2 parte C)", () => {
     expect(() => d.transact({ actor: USER, label: "x" }, (tx) => updateInsert(tx, "x1", { params: { cutoff: 3 } }))).toThrow(/no parameter 'cutoff'/);
     expect(() => d.transact({ actor: USER, label: "x" }, (tx) => updateInsert(tx, "x9", { bypass: true }))).toThrow(/Unknown effect/);
     expect(() => d.transact({ actor: USER, label: "x" }, (tx) => addInsert(tx, "t9", { kind: "eq" }))).toThrow(/Unknown track/);
+  });
+
+  it("takes a name of the user's, and goes back to what it is with an empty one (Fran, 04/11/2026)", () => {
+    const d = doc();
+    d.transact({ actor: USER, label: "eq" }, (tx) => {
+      addInsert(tx, "t1", { kind: "eq" });
+      addInsert(tx, "t1", { kind: "eq" });
+    });
+    d.transact({ actor: USER, label: "nombre" }, (tx) => updateInsert(tx, "x1", { name: "  EQ graves " }));
+    expect(chainOf(d.song, "t1")[0]!.name).toBe("EQ graves");
+    expect(insertName(chainOf(d.song, "t1")[0]!)).toBe("EQ graves");
+    expect(insertName(chainOf(d.song, "t1")[1]!, "es")).toBe("EQ");
+    d.transact({ actor: USER, label: "sin nombre" }, (tx) => updateInsert(tx, "x1", { name: "" }));
+    expect("name" in chainOf(d.song, "t1")[0]!).toBe(false);
+    d.undo(USER);
+    expect(chainOf(d.song, "t1")[0]!.name).toBe("EQ graves");
+    expect(() => d.transact({ actor: USER, label: "x" }, (tx) => updateInsert(tx, "x1", { name: "a".repeat(61) }))).toThrow(/at most 60/);
+    const back = parseSongFile(serializeSong({ song: d.song, history: [], proposals: [] }));
+    expect(back.song.tracks.t1!.inserts![0]!.name).toBe("EQ graves");
   });
 
   it("keeps only which plugin it is for a VST3 effect, whose parameters live in the engine", () => {

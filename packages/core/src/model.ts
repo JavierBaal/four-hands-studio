@@ -161,6 +161,8 @@ export interface Insert {
   /** "x12": never reused in the song. */
   id: string;
   kind: InsertKind;
+  /** The user's own name for it ("EQ graves"), Fran 04/11/2026. Absent: the effect's name. */
+  name?: string;
   /** Off: the sound goes through untouched. Absent: on. */
   bypass?: boolean;
   /** Own effects: every parameter, by id (effects.ts OWN_EFFECTS). */

@@ -1407,10 +1407,11 @@ export class AiDesk {
       const settings = this.str(args, "settings", false);
       if (spec.kind === "plugin" && settings) throw new MusicError("A plugin effect's settings go with set_effect once it is added (read them with list_effect_parameters)");
       const own = spec.kind !== "plugin" && settings ? this.ownSettings(spec.kind, settings) : null;
+      const givenName = this.str(args, "name", false) ?? own?.name;
       let id = "";
       this.write(iv, (tx) => {
         id = addInsert(tx, target, own ? { kind: spec.kind as Exclude<InsertKind, "plugin">, params: own.params } : spec, position === undefined ? undefined : position - 1);
-        if (own?.bypass !== undefined) updateInsert(tx, id, { bypass: own.bypass });
+        if (own?.bypass !== undefined || givenName !== undefined) updateInsert(tx, id, { ...(own?.bypass === undefined ? {} : { bypass: own.bypass }), ...(givenName === undefined ? {} : { name: givenName }) });
       });
       if (target !== "master") iv.trackIds.add(target);
       iv.other.push(`effects of ${this.chainName(target)}`);
@@ -1650,7 +1651,7 @@ export class AiDesk {
       const text = this.str(args, "settings")!;
       if (x.kind !== "plugin") {
         const own = this.ownSettings(x.kind, text);
-        this.write(iv, (tx) => updateInsert(tx, x.id, { params: own.params, ...(own.bypass === undefined ? {} : { bypass: own.bypass }) }));
+        this.write(iv, (tx) => updateInsert(tx, x.id, { params: own.params, ...(own.bypass === undefined ? {} : { bypass: own.bypass }), ...(own.name === undefined ? {} : { name: own.name }) }));
         iv.other.push(`effects of ${this.chainName(found.target)}`);
         this.emit();
         return `${x.id} ${effectText(findInsert(this.song, x.id)!.insert)}\n${this.rev()}`;
@@ -1659,11 +1660,16 @@ export class AiDesk {
       const params = await this.options.effectParams?.(x.id);
       if (!params) throw new MusicError("The audio engine is not running or has not loaded this plugin yet: ask the user to play the song once, then try again");
       let bypass: boolean | undefined;
+      let rename: string | undefined;
       const wanted: Array<{ p: EffectParam; text: string }> = [];
       for (const { n, text: line } of lines(text)) {
         const [name, value] = splitSetting(line, n);
         if (fold(name) === "bypass") {
           bypass = onOff(value, n);
+          continue;
+        }
+        if (fold(name) === "name" || fold(name) === "nombre") {
+          rename = value.replace(/^["'«]|["'»]$/g, "");
           continue;
         }
         const key = fold(name);
@@ -1680,12 +1686,13 @@ export class AiDesk {
         after.push(`${p.name}: ${r.text}`);
       }
       // In the song too, so it is undone in one step and kept with the song.
-      if (Object.keys(changes).length || bypass !== undefined) {
-        this.write(iv, (tx) => updateInsert(tx, x.id, { ...(Object.keys(changes).length ? { pluginParams: changes } : {}), ...(bypass === undefined ? {} : { bypass }) }));
+      if (Object.keys(changes).length || bypass !== undefined || rename !== undefined) {
+        this.write(iv, (tx) => updateInsert(tx, x.id, { ...(Object.keys(changes).length ? { pluginParams: changes } : {}), ...(bypass === undefined ? {} : { bypass }), ...(rename === undefined ? {} : { name: rename }) }));
         iv.other.push(`effects of ${this.chainName(found.target)}`);
         this.emit();
       }
       if (bypass !== undefined) after.push(`bypass: ${bypass ? "on" : "off"}`);
+      if (rename !== undefined) after.push(rename ? `name: "${rename}"` : "name removed");
       return `${x.id} ${insertName(x)}: ${after.join(" · ") || "nothing changed"}\n${this.rev()}`;
     },
   };
@@ -1717,15 +1724,20 @@ export class AiDesk {
   }
 
   /** Lines 'Threshold: -24 dB' for an own effect: its parameters (and bypass). */
-  private ownSettings(kind: Exclude<InsertKind, "plugin">, text: string): { params: Record<string, number>; bypass?: boolean } {
+  private ownSettings(kind: Exclude<InsertKind, "plugin">, text: string): { params: Record<string, number>; bypass?: boolean; name?: string } {
     const defs = paramDefs(kind);
     const params: Record<string, number> = {};
     let bypass: boolean | undefined;
+    let rename: string | undefined;
     for (const { n, text: line } of lines(text)) {
       const [name, value] = splitSetting(line, n);
       const key = fold(name);
       if (key === "bypass") {
         bypass = onOff(value, n);
+        continue;
+      }
+      if (key === "name" || key === "nombre") {
+        rename = value.replace(/^["'«]|["'»]$/g, "");
         continue;
       }
       const def = defs.find((d) => fold(d.name) === key || fold(d.id) === key) ?? defs.find((d) => fold(d.name).startsWith(key));
@@ -1739,7 +1751,7 @@ export class AiDesk {
       if (v < def.min - 1e-9 || v > def.max + 1e-9) throw new MusicError(`Line ${n}: ${def.name} goes from ${paramText(def, def.min)} to ${paramText(def, def.max)}`);
       params[def.id] = v;
     }
-    return bypass === undefined ? { params } : { params, bypass };
+    return { params, ...(bypass === undefined ? {} : { bypass }), ...(rename === undefined ? {} : { name: rename }) };
   }
 
   dispose(): void {

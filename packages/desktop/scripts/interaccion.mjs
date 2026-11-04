@@ -1333,6 +1333,16 @@ check("double click on a plugin effect opens its window", await page.evaluate((i
 await fxStrip.locator(".cslot[data-fx]").nth(1).dragTo(fxStrip.locator(".cslot[data-fx]").nth(0));
 await settle();
 check("dragging a slot reorders the chain", (await song()).tracks[fxTrack].inserts.map((x) => x.kind).join() === "compressor,eq,plugin", (await song()).tracks[fxTrack].inserts.map((x) => x.kind).join());
+// Down (Fran, 04/11/2026): the first one onto the lower half of the second goes after it.
+{
+  const second = fxStrip.locator(".cslot[data-fx]").nth(1);
+  const box = await second.boundingBox();
+  await fxStrip.locator(".cslot[data-fx]").nth(0).dragTo(second, { targetPosition: { x: box.width / 2, y: box.height - 3 } });
+  await settle();
+  check("dragging a slot down onto the next one puts it after it", (await song()).tracks[fxTrack].inserts.map((x) => x.kind).join() === "eq,compressor,plugin", (await song()).tracks[fxTrack].inserts.map((x) => x.kind).join());
+  await page.keyboard.press("Control+z");
+  await settle();
+}
 // To another strip.
 const fxOther = (await song()).trackOrder[1];
 await fxStrip.locator(".cslot[data-fx]").nth(0).dragTo(page.locator(`.cstrip[data-track="${fxOther}"] button.cslot.add`));
@@ -1346,6 +1356,19 @@ await fxStrip.locator(".cslot[data-fx]").nth(1).click({ button: "right" });
 await menuItem("Anular").click();
 await settle();
 check("«Anular» bypasses the effect and the slot shows it", (await song()).tracks[fxTrack].inserts[1].bypass === true && (await fxStrip.locator(".cslot.byp").count()) === 1);
+// A name of the user's (Fran, 04/11/2026).
+await fxStrip.locator(".cslot[data-fx]").nth(0).click({ button: "right" });
+await menuItem("Cambiar nombre").click();
+await page.keyboard.press("Control+a");
+await page.keyboard.type("Compresor voces");
+await page.keyboard.press("Enter");
+await settle();
+check("«Cambiar nombre» gives the effect the user's name, shown in its slot", (await song()).tracks[fxTrack].inserts[0].name === "Compresor voces" && /Compresor voces/.test(await fxStrip.locator(".cslot[data-fx]").nth(0).innerText()));
+check("its tooltip still says what it is", /Compresor voces · Compresor/.test(await fxStrip.locator(".cslot[data-fx]").nth(0).getAttribute("title")));
+await fxStrip.locator(".cslot[data-fx]").nth(0).click({ button: "right" });
+await menuItem("Volver a llamarlo Compresor").click();
+await settle();
+check("and it can go back to its own name", !("name" in (await song()).tracks[fxTrack].inserts[0]));
 // Supr removes the selected effect, not notes.
 const notesBefore = Object.keys((await song()).notes).length;
 await fxStrip.locator(".cslot[data-fx]").nth(0).click();

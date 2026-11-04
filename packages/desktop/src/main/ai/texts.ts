@@ -3,7 +3,7 @@
  * as compact text in English. Pure functions of the song, so they are tested without the app.
  * Notes themselves are formatted by the core (compact.ts).
  */
-import { type Insert, insertName, paramDefs, paramText } from "@fourhands/core";
+import { type Insert, insertName, kindName, paramDefs, paramText } from "@fourhands/core";
 import { type EngineLevels, type EngineLoad, levelsReport } from "../../shared/mix.js";
 import { trackColorId } from "../../shared/track-colors.js";
 import {
@@ -332,6 +332,8 @@ export function effectText(x: Insert): string {
     .map((d) => `${d.name.toLowerCase()} ${paramText(d, x.params?.[d.id] ?? d.default)}`);
   const ai = x.kind === "plugin" && x.pluginParams ? Object.keys(x.pluginParams).length : 0;
   const extras = [...changed, ...(ai ? [`${ai} parameter(s) set by an AI`] : []), ...(x.bypass ? ["bypassed"] : [])];
+  // A name of the user's goes first, with what it is ("EQ graves" is an EQ).
+  if (x.name) return `"${x.name}" (${[kindName(x), ...(extras.length ? extras : x.kind === "plugin" ? [] : ["neutral"])].join(", ")})`;
   return `${insertName(x)}${extras.length ? ` (${extras.join(", ")})` : x.kind === "plugin" ? "" : " (neutral)"}`;
 }
 

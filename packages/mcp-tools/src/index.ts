@@ -613,6 +613,7 @@ export const TOOLS: readonly ToolDefinition[] = [
       effect: z.string().describe("'eq', 'compressor', 'limiter', or a plugin effect's name"),
       position: z.number().int().min(1).optional().describe("Place in the chain, 1 = first; the end if left out"),
       settings: z.string().optional().describe("Optional, as in set_effect: one per line, 'name: value'"),
+      name: z.string().max(60).optional().describe("Optional: a name for it in the user's language, when there are several alike (e.g. 'EQ graves')"),
     },
     annotations: write,
   },
@@ -623,7 +624,8 @@ export const TOOLS: readonly ToolDefinition[] = [
       "Change an effect's parameters, one per line, 'name: value', in one undo step. " +
       "Own effects: names as list_effect_parameters gives them, values with or without units ('Threshold: -24 dB', 'Ratio: 4', 'Attack: 5 ms', 'Low cut: on', 'Low cut freq: 90 Hz', 'High-mid gain: -3 dB', 'High-mid Q: 2'). " +
       "Plugin effects: the plugin's own parameter names and its value texts ('Output Gain: -3 dB'); read them first with list_effect_parameters. " +
-      "'Bypass: on' or 'off' for any effect. Say what you changed and why; the user hears it and can undo it.",
+      "'Bypass: on' or 'off' for any effect, and 'Name: EQ graves' to name it (an empty name goes back to what it is). " +
+      "The user names effects too (three EQs: 'EQ graves', 'EQ medios'…): use their names when you talk about them. Say what you changed and why; the user hears it and can undo it.",
     inputSchema: {
       intervention_id: INTERVENTION,
       effect: z.string().describe("The effect's id, e.g. 'x3'"),

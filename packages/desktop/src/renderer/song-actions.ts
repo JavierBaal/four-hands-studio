@@ -3,7 +3,7 @@
  * sections, chords and annotations. Every action is one command list (one undo step) with its
  * sentence in the history. Also holds which field is being typed into (one at a time).
  */
-import { type InsertSpec, OWN_EFFECTS, OWN_KINDS, findInsert, insertName } from "@fourhands/core";
+import { EFFECT_NAME_MAX, type InsertSpec, OWN_EFFECTS, OWN_KINDS, findInsert, insertName, kindName } from "@fourhands/core";
 import {
   type CommandData,
   type KeySignature,
@@ -54,7 +54,8 @@ export type Typing =
   | { kind: "chord"; tick: number }
   | { kind: "annotation"; id: string | null; tick: number }
   /** A tempo change typed on the Tempo ruler (H4); `editing` is the tick of the change being rewritten. */
-  | { kind: "tempoChange"; tick: number; editing: number | null };
+  | { kind: "tempoChange"; tick: number; editing: number | null }
+  | { kind: "effectName"; id: string };
 
 /** What the palette gives: an instrument of the default bank, or a preset of an installed bank. */
 export type SoundChoice = { kind: "default"; item: PaletteItem } | { kind: "bank"; bank: SoundBankInfo; preset: BankPreset };
@@ -484,6 +485,8 @@ export class SongActions {
       { label: name, header: true },
       ...(found.insert.kind === "plugin" ? [{ label: t("fxOpen"), run: close(() => void this.audio?.showInsert(id)) }] : []),
       { label: found.insert.bypass ? t("fxEnable") : t("fxBypass"), run: close(() => this.setEffectBypass(id, !found.insert.bypass)) },
+      { label: t("fxRename"), run: close(() => this.type({ kind: "effectName", id })) },
+      ...(found.insert.name ? [{ label: t("fxRenameBack", { name: kindName(found.insert, this.lang) }), run: close(() => this.renameEffect(id, "")) }] : []),
       { separator: true },
       { label: t("fxRemove"), shortcut: "Supr", run: close(() => this.removeEffect(id)) },
     ]);
@@ -516,6 +519,15 @@ export class SongActions {
     if (found.target === target && (index === found.index || index === found.index + 1)) return;
     const at = found.target === target && index > found.index ? index - 1 : index;
     void this.run(this.h("hEffectMove", { effect: insertName(found.insert, this.lang), where: this.chainLabel(target) }), [{ type: "moveInsert", id, index: at, target }]);
+  }
+
+  /** The user's own name for an effect; "" goes back to what it is (Fran, 04/11/2026). */
+  renameEffect(id: string, text: string): void {
+    const found = findInsert(this.song, id);
+    if (!found) return;
+    const name = text.trim().slice(0, EFFECT_NAME_MAX);
+    if ((found.insert.name ?? "") === name || (!found.insert.name && name === kindName(found.insert, this.lang))) return;
+    void this.run(this.h(name ? "hEffectRename" : "hEffectRenameBack", { effect: insertName(found.insert, this.lang), name: name || kindName(found.insert, this.lang) }), [{ type: "updateInsert", id, changes: { name } }]);
   }
 
   setEffectBypass(id: string, bypass: boolean): void {

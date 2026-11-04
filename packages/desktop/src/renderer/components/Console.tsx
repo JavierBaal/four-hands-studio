@@ -11,7 +11,7 @@
  * and D: their places are there, empty, so the console does not change shape later (Fran, 03/11/2026).
  */
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { type Insert, type Track, insertName } from "@fourhands/core";
+import { type Insert, type Track, insertName, kindName } from "@fourhands/core";
 import { dbToVolume, formatDb, formatPan, parseDb, volumeToDb } from "../../shared/mix.js";
 import { SILENT_METER, type MeterState, fracToDb, meterFrac, stepMeter } from "../../shared/meters.js";
 import type { AudioLayer } from "../audio-layer.js";
@@ -238,13 +238,20 @@ function FxChain({ audio, target, inserts, narrow }: { audio: AudioLayer; target
     if (!e.dataTransfer.types.includes(FX_DRAG)) return;
     e.preventDefault();
     setOver(null);
-    actions.moveEffect(e.dataTransfer.getData(FX_DRAG), index, target);
+    actions.moveEffect(e.dataTransfer.getData(FX_DRAG), at(index, e), target);
+  };
+  // Over a slot, the upper half drops before it and the lower half after it (Fran, 04/11/2026:
+  // dragging down onto the next slot did nothing, as «before it» was where it already was).
+  const at = (index: number, e: React.DragEvent) => {
+    if (index >= inserts.length) return inserts.length;
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    return e.clientY > r.top + r.height / 2 ? index + 1 : index;
   };
   const dragOver = (index: number) => (e: React.DragEvent) => {
     if (!e.dataTransfer.types.includes(FX_DRAG)) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
-    setOver(index);
+    setOver(at(index, e));
   };
   return (
     <div className="cfx" onDragLeave={() => setOver(null)}>
@@ -252,7 +259,21 @@ function FxChain({ audio, target, inserts, narrow }: { audio: AudioLayer; target
         const problem = audio.insertProblems.get(x.id);
         const name = insertName(x, lang);
         const cls = `cslot${x.bypass ? " byp" : ""}${problem ? " bad" : ""}${actions.selectedEffect === x.id ? " sel" : ""}${over === i ? " dropbefore" : ""}`;
-        const title = problem ? t("fxFailed", { name, error: problem }) : x.kind === "plugin" ? t("fxPluginTitle", { name }) : t("fxOwnTitle", { name });
+        // A name of the user's says what the effect is in the tooltip ("EQ graves · EQ").
+        const label = x.name ? `${name} · ${kindName(x, lang)}` : name;
+        const title = problem ? t("fxFailed", { name: label, error: problem }) : x.kind === "plugin" ? t("fxPluginTitle", { name: label }) : t("fxOwnTitle", { name: label });
+        if (actions.typing?.kind === "effectName" && actions.typing.id === x.id)
+          return (
+            <InlineEdit
+              key={x.id}
+              className="cslot ctype"
+              value={name}
+              maxLength={60}
+              title={t("fxRenameHint")}
+              onCommit={(v) => (actions.renameEffect(x.id, v), actions.type(null))}
+              onCancel={() => actions.type(null)}
+            />
+          );
         return (
           <div
             key={x.id}

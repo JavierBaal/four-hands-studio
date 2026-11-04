@@ -218,6 +218,7 @@ function chainChanges(before: readonly Insert[], after: readonly Insert[]): stri
       continue;
     }
     const d: string[] = [];
+    if ((was.name ?? "") !== (x.name ?? "")) d.push(x.name ? `renamed "${x.name}"` : "name removed");
     if (!!was.bypass !== !!x.bypass) d.push(x.bypass ? "bypassed" : "on");
     for (const def of paramDefs(x.kind)) {
       const a = was.params?.[def.id] ?? def.default;
