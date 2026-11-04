@@ -429,6 +429,10 @@ int renderSong (const juce::String& bankPath, const juce::String& midiPath, cons
     // FH_RENDER_STRIP=n (A2): MIDI channel c plays on strip n + c instead of on its own channel (tests:
     // the strip must not change the sound).
     const int stripBase = juce::SystemStats::getEnvironmentVariable ("FH_RENDER_STRIP", "-1").getIntValue();
+    // FH_RENDER_ROUTED=1: with Four Hands' routing and no buses (a new song since parte D): it must
+    // sound as without routing (tests: the bank's own reverb stays).
+    if (juce::SystemStats::getEnvironmentVariable ("FH_RENDER_ROUTED", "0") == "1")
+        engine.setRouting ({}, {}, {}, -1);
     if (send > 0)
     {
         // Parte D: every strip sends to bus 0, which has the Reverb, as Four Hands' «Reverb» bus.

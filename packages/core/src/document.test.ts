@@ -1,4 +1,3 @@
-import { reverbLevel, withDefaultBuses } from "./buses.js";
 import { describe, expect, it } from "vitest";
 import { addNotes, addSection, addTrack, deleteNotes, nextChannel, moveNotes, removeTrack, setChord, setCurve, setSongProperties, updateNotes, updateTrack } from "./commands.js";
 import { CommandError, type Patch, SongDocument } from "./document.js";
@@ -359,33 +358,6 @@ describe("track output through a plugin (fase 2, prueba S2)", () => {
     const back = parseSongFile(serializeSong({ song: doc.song, history: doc.history, proposals: [], pluginStates }));
     expect(back.pluginStates).toEqual(pluginStates);
     expect(() => serializeSong({ song: doc.song, history: doc.history, proposals: [], pluginStates: { [t]: { id: kontakt.id, data: "not base64!" } } })).toThrow(/invalid song/);
-  });
-});
-
-describe("track reverb (H4): now its send to the «Reverb» bus (F2.2 parte D)", () => {
-  it("is 0 by default, changes, goes back to no send at 0, undoes and rejects bad values", () => {
-    const doc = new SongDocument(withDefaultBuses(emptySong("Prueba")), { now: () => 1000 });
-    const t = doc.transact({ actor: USER, label: "Nueva pista" }, (tx) => addTrack(tx, { name: "Piano" }));
-    const level = () => reverbLevel(doc.song, doc.song.tracks[t]!);
-    expect(level()).toBe(0);
-    doc.transact({ actor: USER, label: "lejos" }, (tx) => updateTrack(tx, t, { reverb: 0.4 }));
-    expect(doc.song.tracks[t]!.sends).toEqual([{ bus: "b1", level: 0.4 }]);
-    const rev = doc.song.revision;
-    doc.transact({ actor: USER, label: "igual" }, (tx) => updateTrack(tx, t, { reverb: 0.4 }));
-    expect(doc.song.revision).toBe(rev);
-    doc.transact({ actor: USER, label: "seca" }, (tx) => updateTrack(tx, t, { reverb: 0 }));
-    expect("sends" in doc.song.tracks[t]!).toBe(false);
-    doc.undo(USER);
-    expect(level()).toBe(0.4);
-    doc.undo(USER);
-    expect("sends" in doc.song.tracks[t]!).toBe(false);
-    expect(() => doc.transact({ actor: USER, label: "x" }, (tx) => updateTrack(tx, t, { reverb: 1.5 }))).toThrow(CommandError);
-  });
-
-  it("asks for a reverb bus when the song has none", () => {
-    const { doc, t } = docWithTrack();
-    expect(() => doc.transact({ actor: USER, label: "x" }, (tx) => updateTrack(tx, t, { reverb: 0.3 }))).toThrow(/no reverb bus/);
-    doc.transact({ actor: USER, label: "seca" }, (tx) => updateTrack(tx, t, { reverb: 0 }));
   });
 });
 

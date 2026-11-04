@@ -394,14 +394,8 @@ check("track reordered", s1.trackOrder.indexOf(added.id) === s1.trackOrder.lengt
 await page.locator(".thdr").first().click({ button: "right" });
 await menuItem("Mezcla…").click();
 check("mixer opens", (await page.locator(".qdialog[role=dialog]").count()) === 1);
-// H4: the reverb send is typed in its row and lands in the song in one undo step.
-const mixTrack = (await song()).trackOrder[0];
-await page.locator(".qdialog .mixtype").nth(2).click();
-await page.locator(".qdialog input.inline").fill("35");
-await page.keyboard.press("Enter");
-await settle();
-// Parte D: the reverb is the send to the «Reverb» bus (b1).
-check("mixer sets reverb", JSON.stringify((await song()).tracks[mixTrack].sends) === JSON.stringify([{ bus: "b1", level: 0.35 }]), JSON.stringify((await song()).tracks[mixTrack].sends));
+// Fran, 04/11/2026: no reverb row any more (reverb is a bus or an effect): volume and pan only.
+check("the mixer card has volume and pan, and no reverb", (await page.locator(".qdialog .mixtype").count()) === 2);
 await page.keyboard.press("Escape");
 check("mixer closes with Esc", (await page.locator(".qdialog[role=dialog]").count()) === 0);
 
@@ -1471,15 +1465,24 @@ await settle();
 check("a fader in the window changes its parameter (ratio)", (await song()).tracks[winTrack].inserts[1].params.ratio > 3, String((await song()).tracks[winTrack].inserts[1].params.ratio));
 await page.locator(".fxhead .ibtn").click();
 
-// F2.2 parte D (04/11/2026): buses and sends in the console.
+// F2.2 parte D (04/11/2026): buses and sends in the console. A song starts without buses; the user
+// makes a «Reverb» bus with Four Hands' reverb (b1).
 await page.evaluate(() => window.fhTest.view.set({ bottom: "mix", mixNarrow: false, mixMax: true }));
 await settle();
-// A track with no sends yet (the first one sends to the reverb since the mixer test).
+check("a song starts without buses: no divider", (await song()).buses === undefined && (await page.locator(".cdivider").count()) === 0);
+check("without buses the engine gets an empty routing", JSON.stringify((await page.evaluate(() => window.fhTest.ai.engine.routing))?.order) === "[]");
+await page.evaluate(async () => {
+  const r = window.fhTest.replica;
+  await r.run("x", [{ type: "addBus", spec: { name: "Reverb" } }]);
+  await r.run("x", [{ type: "addInsert", target: "b1", spec: { kind: "reverb" } }]);
+});
+await settle();
+// A track with no sends yet.
 const bTrack = await page.evaluate(() => { const s = window.fhTest.replica.song; return s.trackOrder.find((id) => !s.tracks[id].sends && !s.tracks[id].output); });
 const bStrip = page.locator(`.cstrip[data-track="${bTrack}"]`);
 check("the console has the «Buses» divider and the «Reverb» bus with its reverb", (await page.locator(".cdivider", { hasText: "Buses" }).count()) === 1 && (await page.locator('.cstrip.bus[data-bus="b1"] .cslot', { hasText: "Reverb" }).count()) === 1);
 let routing = await page.evaluate(() => window.fhTest.ai.engine.routing);
-check("the engine gets the routing: the Reverb bus, which also takes the instruments' own reverb", routing?.order?.length === 1 && routing.buses[0].out === -1 && routing.instrumentReverb === routing.order[0], JSON.stringify(routing));
+check("the engine gets the routing: the Reverb bus; the instruments' own reverb stays in the engine", routing?.order?.length === 1 && routing.buses[0].out === -1 && routing.instrumentReverb === -1, JSON.stringify(routing));
 await bStrip.locator("button.csend.add").click();
 await menuItem("Reverb").click();
 await settle();

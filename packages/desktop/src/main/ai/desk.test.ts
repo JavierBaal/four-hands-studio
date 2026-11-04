@@ -624,17 +624,14 @@ describe("H3.1: the mix and the track list", () => {
     expect(orderedTracks(session.song).map((t) => ({ v: t.volume, p: t.pan, m: t.mute }))).toEqual(before);
   });
 
-  it("set_mix and update_track set the reverb send, and the overview shows it (H4)", () => {
+  it("reverb is a bus and a send, not a track setting (Fran, 04/11/2026)", () => {
     const id = begin("Los violines más lejos");
-    const text = ok("set_mix", { intervention_id: id, mix: "t1 rev 35\nt2 vol 70 reverb 20" });
-    expect(text).toContain("t1 Organo · mix vol 80 pan C rev 35");
-    // Parte D: the reverb is the send to the «Reverb» bus (b1).
-    expect(session.song.tracks.t1!.sends).toEqual([{ bus: "b1", level: 0.35 }]);
+    expect(fail("set_mix", { intervention_id: id, mix: "t1 rev 35" })).toMatch(/write the track or bus first/);
+    ok("add_bus", { intervention_id: id, name: "Reverb", reverb: true });
+    const text = ok("set_mix", { intervention_id: id, mix: "t1 send Reverb 35\nt2 vol 70 send Reverb 20" });
+    expect(text).toContain("t1 Organo · mix vol 80 pan C send Reverb 35");
     expect(session.song.tracks.t2).toMatchObject({ volume: 0.7, sends: [{ bus: "b1", level: 0.2 }] });
-    expect(ok("update_track", { intervention_id: id, track: "t1", reverb: 0 })).toContain("reverb 0");
-    expect("sends" in session.song.tracks.t1!).toBe(false);
-    expect(fail("set_mix", { intervention_id: id, mix: "t1 rev 120" })).toMatch(/reverb goes from 0 \(dry\) to 100/);
-    expect(ok("get_song_overview")).toMatch(/t2 .*mix vol 70 pan C rev 20/);
+    expect(ok("get_song_overview")).toMatch(/t2 .*mix vol 70 pan C send Reverb 20/);
     ok("end_intervention", { intervention_id: id });
   });
 
@@ -923,13 +920,12 @@ describe("the master fader for the AI (F2.2 parte B)", () => {
 });
 
 describe("insert effects for the AI (F2.2 parte C)", () => {
-  // x1 is the «Reverb» bus's reverb, in every song since parte D: effects added here start at x2.
   it("adds an own effect with settings, shows it in the overview, and undoes it in one step", () => {
     const id = begin("Limpio el órgano");
     const text = ok("add_effect", { intervention_id: id, track: "t1", effect: "ecualizador", settings: "Low cut: on\nLow cut freq: 120 Hz\nHigh-mid gain: -3 dB" });
-    expect(text).toMatch(/Added x2 EQ \(low cut on, low cut freq 120 Hz, high-mid gain −3.0 dB\) to Organo \(t1\)/);
+    expect(text).toMatch(/Added x1 EQ \(low cut on, low cut freq 120 Hz, high-mid gain −3.0 dB\) to Organo \(t1\)/);
     expect(session.song.tracks.t1!.inserts![0]!.params!.lowCutFreq).toBe(120);
-    expect(ok("get_song_overview")).toMatch(/t1 .*effects: x2 EQ \(low cut on/);
+    expect(ok("get_song_overview")).toMatch(/t1 .*effects: x1 EQ \(low cut on/);
     ok("end_intervention", { intervention_id: id });
     session.handle({ type: "undo" });
     expect(session.song.tracks.t1!.inserts).toBeUndefined();
@@ -950,17 +946,17 @@ describe("insert effects for the AI (F2.2 parte C)", () => {
     ok("add_effect", { intervention_id: id, track: "master", effect: "limiter" });
     ok("add_effect", { intervention_id: id, track: "master", effect: "compresor", position: 1 });
     expect(session.song.masterInserts!.map((x) => x.kind)).toEqual(["compressor", "limiter"]);
-    expect(await aok("set_effect", { intervention_id: id, effect: "x2", settings: "Ceiling: -1.5 dB\nBypass: off" })).toMatch(/Limiter \(ceiling −1.5 dB\)/);
-    expect(await aok("set_effect", { intervention_id: id, effect: "x3", settings: "ratio 4:1\nattack 5 ms" })).toMatch(/ratio 4:1, attack 5.0 ms/);
-    ok("move_effect", { intervention_id: id, effect: "x3", position: 2 });
-    expect(session.song.masterInserts!.map((x) => x.id)).toEqual(["x2", "x3"]);
-    expect(ok("get_song_overview")).toMatch(/Master: vol 100 \(0 dB\) · effects: x2 Limiter/);
-    expect(await afail("set_effect", { intervention_id: id, effect: "x2", settings: "Ceiling: -30 dB" })).toMatch(/Ceiling goes from −12.0 dB to 0.0 dB/);
-    expect(await afail("set_effect", { intervention_id: id, effect: "x2", settings: "Drive: 3" })).toMatch(/has no 'Drive'/);
+    expect(await aok("set_effect", { intervention_id: id, effect: "x1", settings: "Ceiling: -1.5 dB\nBypass: off" })).toMatch(/Limiter \(ceiling −1.5 dB\)/);
+    expect(await aok("set_effect", { intervention_id: id, effect: "x2", settings: "ratio 4:1\nattack 5 ms" })).toMatch(/ratio 4:1, attack 5.0 ms/);
+    ok("move_effect", { intervention_id: id, effect: "x2", position: 2 });
+    expect(session.song.masterInserts!.map((x) => x.id)).toEqual(["x1", "x2"]);
+    expect(ok("get_song_overview")).toMatch(/Master: vol 100 \(0 dB\) · effects: x1 Limiter/);
+    expect(await afail("set_effect", { intervention_id: id, effect: "x1", settings: "Ceiling: -30 dB" })).toMatch(/Ceiling goes from −12.0 dB to 0.0 dB/);
+    expect(await afail("set_effect", { intervention_id: id, effect: "x1", settings: "Drive: 3" })).toMatch(/has no 'Drive'/);
     expect(fail("add_effect", { intervention_id: id, track: "t1", effect: "Valhalla" })).toMatch(/There is no effect 'Valhalla'/);
-    expect(fail("remove_effect", { intervention_id: id, effect: "x10" })).toMatch(/There is no effect x10/);
-    ok("remove_effect", { intervention_id: id, effect: "x3" });
-    expect(session.song.masterInserts!.map((x) => x.id)).toEqual(["x2"]);
+    expect(fail("remove_effect", { intervention_id: id, effect: "x9" })).toMatch(/There is no effect x9/);
+    ok("remove_effect", { intervention_id: id, effect: "x2" });
+    expect(session.song.masterInserts!.map((x) => x.id)).toEqual(["x1"]);
     ok("end_intervention", { intervention_id: id });
   });
 
@@ -968,18 +964,18 @@ describe("insert effects for the AI (F2.2 parte C)", () => {
     const id = begin("Tres EQ");
     ok("add_effect", { intervention_id: id, track: "t1", effect: "eq", name: "EQ graves" });
     ok("add_effect", { intervention_id: id, track: "t1", effect: "eq" });
-    const r = await desk.callAsync("c1", "set_effect", { intervention_id: id, effect: "x3", settings: "Name: EQ medios\nHigh-mid gain: -2 dB" });
+    const r = await desk.callAsync("c1", "set_effect", { intervention_id: id, effect: "x2", settings: "Name: EQ medios\nHigh-mid gain: -2 dB" });
     expect(r.ok && r.text).toMatch(/"EQ medios" \(EQ, high-mid gain −2.0 dB\)/);
-    expect(ok("get_song_overview")).toMatch(/effects: x2 "EQ graves" \(EQ, neutral\) → x3 "EQ medios"/);
+    expect(ok("get_song_overview")).toMatch(/effects: x1 "EQ graves" \(EQ, neutral\) → x2 "EQ medios"/);
     ok("end_intervention", { intervention_id: id });
   });
 
   it("lists an own effect's parameters with their ranges", async () => {
     const id = begin("Compresor");
     ok("add_effect", { intervention_id: id, track: "t2", effect: "compressor" });
-    const r = await desk.callAsync("c1", "list_effect_parameters", { effect: "x2" });
+    const r = await desk.callAsync("c1", "list_effect_parameters", { effect: "x1" });
     expect(r.ok && r.text).toMatch(/Threshold: −18.0 dB \(−60.0 dB to 0.0 dB\)/);
-    const s = await desk.callAsync("c1", "list_effect_parameters", { effect: "x2", search: "att" });
+    const s = await desk.callAsync("c1", "list_effect_parameters", { effect: "x1", search: "att" });
     expect(s.ok && s.text.split("\n").length).toBe(2);
     ok("end_intervention", { intervention_id: id });
   });
@@ -994,15 +990,15 @@ describe("insert effects for the AI (F2.2 parte C)", () => {
     (desk as unknown as { options: Record<string, unknown> }).options.effectParams = async () => params;
     (desk as unknown as { options: Record<string, unknown> }).options.setEffectParam = async (id: string, index: number, text: string) => (set.push([id, index, text]), { ok: true, text: "-1.0 dB", value: 0.9 });
     const id = begin("Ozone en el máster");
-    expect(ok("add_effect", { intervention_id: id, track: "master", effect: "ozone" })).toMatch(/Added x2 Ozone 11 to the Master/);
-    const list = await desk.callAsync("c1", "list_effect_parameters", { effect: "x2", search: "ceiling" });
+    expect(ok("add_effect", { intervention_id: id, track: "master", effect: "ozone" })).toMatch(/Added x1 Ozone 11 to the Master/);
+    const list = await desk.callAsync("c1", "list_effect_parameters", { effect: "x1", search: "ceiling" });
     expect(list.ok && list.text).toContain("Output Ceiling: -0.3 dB");
-    const r = await desk.callAsync("c1", "set_effect", { intervention_id: id, effect: "x2", settings: "Output Ceiling: -1 dB" });
+    const r = await desk.callAsync("c1", "set_effect", { intervention_id: id, effect: "x1", settings: "Output Ceiling: -1 dB" });
     expect(r.ok && r.text).toMatch(/Output Ceiling: -1.0 dB/);
-    expect(set).toEqual([["x2", 1, "-1 dB"]]);
+    expect(set).toEqual([["x1", 1, "-1 dB"]]);
     expect(session.song.masterInserts![0]!.pluginParams).toEqual({ "1": 0.9 });
     expect(session.song.masterInserts![0]!.pluginBase).toEqual({ "1": 0.97 });
-    const bad = await desk.callAsync("c1", "set_effect", { intervention_id: id, effect: "x2", settings: "Drive: 3" });
+    const bad = await desk.callAsync("c1", "set_effect", { intervention_id: id, effect: "x1", settings: "Drive: 3" });
     expect(!bad.ok && bad.error).toMatch(/has no parameter 'Drive'/);
     ok("end_intervention", { intervention_id: id });
     expect(ok("list_instruments")).toMatch(/Effect plugins on this computer[^\n]*\n  Ozone 11 · iZotope/);
@@ -1011,16 +1007,18 @@ describe("insert effects for the AI (F2.2 parte C)", () => {
   it("says when the engine cannot give a plugin's parameters", async () => {
     const id = begin("Ozone");
     ok("add_effect", { intervention_id: id, track: "t1", effect: "Ozone 11" });
-    const r = await desk.callAsync("c1", "list_effect_parameters", { effect: "x2" });
+    const r = await desk.callAsync("c1", "list_effect_parameters", { effect: "x1" });
     expect(!r.ok && r.error).toMatch(/engine is not running/);
     ok("end_intervention", { intervention_id: id });
   });
 });
 
 describe("buses for the AI (F2.2 parte D)", () => {
-  it("the overview shows the «Reverb» bus every song has, with what sends to it", () => {
+  it("a song starts without buses; the overview shows them with what goes into them", () => {
+    expect(ok("get_song_overview")).toMatch(/Buses: none yet/);
     const id = begin("Profundidad");
-    ok("set_mix", { intervention_id: id, mix: "t1 rev 30" });
+    ok("add_bus", { intervention_id: id, name: "Reverb", reverb: true });
+    ok("set_mix", { intervention_id: id, mix: "t1 send Reverb 30" });
     ok("end_intervention", { intervention_id: id });
     const text = ok("get_song_overview");
     expect(text).toMatch(/Buses \(/);
@@ -1030,16 +1028,16 @@ describe("buses for the AI (F2.2 parte D)", () => {
   it("add_bus makes a subgroup with its tracks, set_mix routes and sends, one undo step each", () => {
     const id = begin("Subgrupo de cuerdas");
     const made = ok("add_bus", { intervention_id: id, name: "Cuerdas", tracks: ["t3", "t4"] });
-    expect(made).toMatch(/^Bus b2 Cuerdas → Master\. Now going into it: Melodia \(cuerdas\), Contramelodia/);
-    expect(session.song.tracks.t3!.bus).toBe("b2");
+    expect(made).toMatch(/^Bus b1 Cuerdas → Master\. Now going into it: Melodia \(cuerdas\), Contramelodia/);
+    expect(session.song.tracks.t3!.bus).toBe("b1");
     ok("add_bus", { intervention_id: id, name: "Mix bus" });
     ok("add_bus", { intervention_id: id, name: "Delay", reverb: true });
     const text = ok("set_mix", { intervention_id: id, mix: "Cuerdas vol 85 to Mix bus\nt1 send Delay 25 pre\nt2 to Mix bus send Delay 10" });
-    expect(text).toContain("b2 Cuerdas · mix vol 85 pan C → Mix bus");
+    expect(text).toContain("b1 Cuerdas · mix vol 85 pan C → Mix bus");
     expect(text).toContain("t1 Organo · mix vol 80 pan C send Delay 25 pre");
-    expect(session.song.buses!.b2!.bus).toBe("b3");
-    expect(session.song.tracks.t2).toMatchObject({ bus: "b3", sends: [{ bus: "b4", level: 0.1 }] });
-    expect(session.song.buses!.b4!.inserts![0]!.kind).toBe("reverb");
+    expect(session.song.buses!.b1!.bus).toBe("b2");
+    expect(session.song.tracks.t2).toMatchObject({ bus: "b2", sends: [{ bus: "b3", level: 0.1 }] });
+    expect(session.song.buses!.b3!.inserts![0]!.kind).toBe("reverb");
     // Loops and unknown buses are refused, and nothing is written.
     expect(fail("set_mix", { intervention_id: id, mix: "Mix bus to Cuerdas" })).toMatch(/loop/);
     expect(fail("set_mix", { intervention_id: id, mix: "t1 to Nada" })).toMatch(/There is no bus 'Nada'/);
@@ -1047,10 +1045,10 @@ describe("buses for the AI (F2.2 parte D)", () => {
     expect("sends" in session.song.tracks.t1!).toBe(false);
     expect("bus" in session.song.tracks.t2!).toBe(false);
     // Effects go on a bus by its name.
-    expect(ok("add_effect", { intervention_id: id, track: "Cuerdas", effect: "compressor" })).toMatch(/to the bus Cuerdas \(b2\)/);
+    expect(ok("add_effect", { intervention_id: id, track: "Cuerdas", effect: "compressor" })).toMatch(/to the bus Cuerdas \(b1\)/);
     ok("end_intervention", { intervention_id: id });
     session.handle({ type: "undo" });
-    expect(session.song.busOrder).toEqual(["b1"]);
+    expect(session.song.busOrder).toBeUndefined();
     expect("bus" in session.song.tracks.t3!).toBe(false);
   });
 
@@ -1060,8 +1058,8 @@ describe("buses for the AI (F2.2 parte D)", () => {
     ok("add_bus", { intervention_id: id, name: "Voces", tracks: ["t1"], to: "Mix bus" });
     ok("set_mix", { intervention_id: id, mix: "t2 send Voces 40" });
     const text = ok("remove_bus", { intervention_id: id, bus: "Voces" });
-    expect(text).toMatch(/Removed the bus Voces \(b3\)\. Organo went through it and now go to Mix bus\. The sends of Piano ostinato to it are gone\./);
-    expect(session.song.tracks.t1!.bus).toBe("b2");
+    expect(text).toMatch(/Removed the bus Voces \(b2\)\. Organo went through it and now go to Mix bus\. The sends of Piano ostinato to it are gone\./);
+    expect(session.song.tracks.t1!.bus).toBe("b1");
     expect(fail("remove_bus", { intervention_id: id, bus: "Voces" })).toMatch(/There is no bus/);
     ok("end_intervention", { intervention_id: id });
   });

@@ -5,7 +5,7 @@
  * Volume is CC7 (`round(volume × 127)`), and the General MIDI curve for CC7 is
  * 40 · log10(cc / 127) dB, so 0.8 (CC 102) is −3.8 dB and 1 is 0 dB. Values above 0 dB do not exist.
  */
-import { type Song, type Track, busList, processingOrder, reverbBus } from "@fourhands/core";
+import { type Song, type Track, busList, processingOrder } from "@fourhands/core";
 import type { Lang } from "./i18n.js";
 
 /** Lowest dB that still means a sound (CC7 = 1). Below it, silence. */
@@ -161,7 +161,11 @@ export interface EngineRouting {
   buses: Array<EngineRoute & { bus: number }>;
   /** The buses in processing order: each after every bus that feeds it. */
   order: number[];
-  /** The bus that gets what a built-in instrument sends to reverb by itself (its SoundFont's setting). */
+  /**
+   * The bus that gets what a built-in instrument sends to reverb by itself (its SoundFont's
+   * setting). Always -1 (Fran, 04/11/2026): that reverb is part of the sound and stays in the
+   * engine, as before parte D, whatever buses the song has.
+   */
   instrumentReverb: number;
 }
 
@@ -182,8 +186,7 @@ export function engineRouting(song: Song, stripOf: (track: Track) => number, bus
     if (r.out >= 0 || r.sends.length) strips.push({ ch: stripOf(t), ...r });
   }
   const buses = busList(song).map((b) => ({ bus: busIndex(b.id), ...route(b) }));
-  const reverb = reverbBus(song);
-  return { strips, buses, order: processingOrder(song).map(busIndex), instrumentReverb: reverb ? busIndex(reverb.id) : -1 };
+  return { strips, buses, order: processingOrder(song).map(busIndex), instrumentReverb: -1 };
 }
 
 /** What the engine measured on each strip (linear), as `levels` gives it. */

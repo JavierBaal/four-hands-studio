@@ -355,12 +355,11 @@ export class Player {
     this.onLive?.("off", { pitch, velocity: 0, tick: this.liveTick() });
   }
 
-  /** Volume, pan and reverb heard at once while a fader moves, before the song has the new value (H3.2). */
-  previewMix(to: Target | number, volume: number, pan: number, reverb?: number): void {
+  /** Volume and pan heard at once while a fader moves, before the song has the new value (H3.2). */
+  previewMix(to: Target | number, volume: number, pan: number): void {
     const { ch, strip } = target(to);
     this.engine?.now({ kind: "cc", ch, cc: 7, value: Math.round(Math.max(0, Math.min(1, volume)) * 127), strip });
     this.engine?.now({ kind: "cc", ch, cc: 10, value: Math.round(64 + Math.max(-1, Math.min(1, pan)) * 63), strip });
-    if (reverb !== undefined) this.engine?.now({ kind: "cc", ch, cc: 91, value: Math.round(Math.max(0, Math.min(1, reverb)) * 127), strip });
   }
 
   liveCc(cc: number, value: number, to: Target | number): void {

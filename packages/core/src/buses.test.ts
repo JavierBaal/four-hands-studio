@@ -20,8 +20,11 @@ function doc() {
 }
 
 describe("buses and sends (F2.2 parte D, Fran 04/11/2026)", () => {
-  it("every song the app makes starts with the «Reverb» bus and Four Hands' reverb on it", () => {
+  it("a new song starts without buses (Fran, 04/11/2026); the «Reverb» bus is only for songs from before", () => {
     const song = starterSong();
+    expect(song.buses).toBeUndefined();
+    expect(reverbBus(song)).toBeUndefined();
+    withDefaultBuses(song);
     expect(busList(song).map((b) => b.name)).toEqual(["Reverb"]);
     expect(song.buses!.b1!.inserts).toEqual([{ id: "x1", kind: "reverb", params: { mix: 100, time: 50, tone: 100, preDelay: 0 } }]);
     expect(reverbBus(song)?.id).toBe("b1");

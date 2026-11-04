@@ -712,15 +712,21 @@ void Engine::mixRouted (Routing& r, int inUse, int numSamples)
         for (const auto& send : route.sends)
             if (! send.pre && send.bus < nb)
                 addTo (send.bus, L, R, send.level);
-        // What a built-in instrument sends to reverb on its own (its SoundFont's setting; CC91 is 0
-        // now), after the fader, into both sides so the Reverb effect hears it as before.
+        // What a built-in instrument sends to reverb on its own (its SoundFont's setting: 264 of the
+        // 309 presets of MuseScore_General; CC91 is 0 now), after the fader. It is part of the
+        // sound (Fran, 04/11/2026): the GS reverb inside the engine, into the master, as always;
+        // or a bus, if Four Hands names one.
         if (r.instrumentReverb >= 0 && r.instrumentReverb < nb)
         {
             const auto g = (float) (p.gain / kLegacySendMatch);
             juce::FloatVectorOperations::addWithMultiply (busBuffers.getWritePointer (2 * r.instrumentReverb), sends.getReadPointer (ch), g, numSamples);
             juce::FloatVectorOperations::addWithMultiply (busBuffers.getWritePointer (2 * r.instrumentReverb + 1), sends.getReadPointer (ch), g, numSamples);
         }
+        else
+            juce::FloatVectorOperations::addWithMultiply (busIn.getWritePointer (0), sends.getReadPointer (ch), (float) p.gain, numSamples);
     }
+    if (r.instrumentReverb < 0 && busReverb != nullptr)
+        busReverb->process (busIn.getReadPointer (0), masterIn.getWritePointer (0), masterIn.getWritePointer (1), 0, numSamples);
 
     // What came from the strips waits for the slowest path into its bus, and into the master.
     for (int b : r.order)

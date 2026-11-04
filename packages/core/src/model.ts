@@ -5,7 +5,6 @@
  * is saved in `.fourhands` files, patched by commands and diffed for the window.
  * All times are integer ticks at PPQ (960 per quarter note); ticks never leave the core.
  */
-import { withDefaultBuses } from "./buses.js";
 import { PPQ } from "./time.js";
 
 /** Who decided something. An AI is always identified by its MCP client (e.g. "claude-ai"). */
@@ -124,7 +123,7 @@ export interface Track {
   pan: number;
   /**
    * Where its sound goes after its fader (F2.2 parte D): a bus id. Absent: the Master.
-   * (H4's per-track reverb is now a send to the «Reverb» bus: `sends`, buses.ts.)
+   * (H4's per-track reverb is gone, Fran 04/11/2026: reverb is a bus or an effect on the track.)
    */
   bus?: string;
   /** Sends to buses (F2.2 parte D), one per bus at most, in the order they were added. Absent: none. */
@@ -317,8 +316,9 @@ export interface Song {
   /** Insert effects on the Master, before its fader (F2.2 parte C). Absent: none. */
   masterInserts?: Insert[];
   /**
-   * Buses (F2.2 parte D) by id, and their order in the console. Every song the app makes or opens
-   * has them, with the «Reverb» bus (buses.ts, `withDefaultBuses`); absent only in bare test songs.
+   * Buses (F2.2 parte D) by id, and their order in the console. Absent: none yet. A song starts
+   * without buses (Fran, 04/11/2026); one from before them with reverb on its tracks opens with the
+   * «Reverb» bus (file.ts), so it sounds the same.
    */
   buses?: Record<string, Bus>;
   busOrder?: string[];
@@ -368,7 +368,7 @@ export function starterSong(title = "Sin título"): Song {
   song.trackOrder = ["t1"];
   song.counters.t = 2;
   song.context.activeTrackId = "t1";
-  return withDefaultBuses(song);
+  return song;
 }
 
 // ---------------------------------------------------------------------------

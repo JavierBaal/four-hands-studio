@@ -254,17 +254,16 @@ describe("plugin states (F2.1): what Kontakt had loaded comes back with the song
     let engineSays: Record<string, { id: string; data: string }> = {};
     const s = await SongSession.createNew(options({ collectPluginStates: async () => engineSays }));
     const t = s.snapshot().song.trackOrder[0]!;
-    // x1 is the «Reverb» bus's reverb, there from the start (F2.2 parte D).
     s.handle({ type: "run", label: "Pro-Q", commands: [{ type: "addInsert", target: t, spec: { kind: "plugin", plugin: proQ } }] });
-    engineSays = { x2: { id: proQ.id, data: b64("bands") } };
+    engineSays = { x1: { id: proQ.id, data: b64("bands") } };
     await s.saveNow();
     const file = s.fileState().path;
     const again = await SongSession.open(options(), file);
     const onDisk = parseSongFile(fs.readFileSync(file, "utf8"));
-    expect(Object.keys(onDisk.pluginStates ?? {})).toEqual(["x2"]);
-    expect(again.pluginState("x2", proQ.id)).toBe(b64("bands"));
+    expect(Object.keys(onDisk.pluginStates ?? {})).toEqual(["x1"]);
+    expect(again.pluginState("x1", proQ.id)).toBe(b64("bands"));
     // The effect goes: its state is not kept any more.
-    s.handle({ type: "run", label: "fuera", commands: [{ type: "removeInsert", id: "x2" }] });
+    s.handle({ type: "run", label: "fuera", commands: [{ type: "removeInsert", id: "x1" }] });
     engineSays = {};
     await s.saveNow();
     expect(parseSongFile(fs.readFileSync(file, "utf8")).pluginStates).toBeUndefined();

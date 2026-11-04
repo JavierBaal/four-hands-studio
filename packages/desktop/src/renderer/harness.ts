@@ -4,7 +4,7 @@
  *   window with capture 01 under the same conditions.
  * - otherwise: Dilatacion.mid imported, as the app opens it the first time.
  */
-import { PPQ, type Song, USER, ai, emptySong, importMidi, starterSong, withDefaultBuses } from "@fourhands/core";
+import { PPQ, type Song, USER, ai, emptySong, importMidi, starterSong } from "@fourhands/core";
 import type { AiState } from "../shared/protocol.js";
 
 interface Sketch {
@@ -69,8 +69,7 @@ export function songFromSketch(d: Sketch): Song {
     cursor: 22 * 4 * PPQ,
     visible: null,
   };
-  // Like every song the app makes (F2.2 parte D): the «Reverb» bus.
-  return withDefaultBuses(song);
+  return song;
 }
 
 export async function harnessSong(params: URLSearchParams): Promise<Song> {

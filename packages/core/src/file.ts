@@ -175,10 +175,16 @@ const fileSchema = z.object({
 
 /** Migrations from version N to N + 1, keyed by N. */
 const MIGRATIONS: Record<number, (data: Record<string, unknown>) => Record<string, unknown>> = {
-  // F2.2 parte D (04/11/2026): the «Reverb» bus, and each track's reverb (H4) becomes its send there.
+  // F2.2 parte D (04/11/2026): the per-track reverb (H4) is gone. A song that used it opens with the
+  // «Reverb» bus and each of those tracks sending to it, so it sounds the same; others, without buses.
   1: (data) => {
     const song = data.song as { counters?: Record<string, number>; tracks?: Record<string, Record<string, unknown>>; buses?: unknown } | undefined;
     if (!song || typeof song !== "object" || song.buses !== undefined) return data;
+    const used = Object.values(song.tracks ?? {}).some((t) => typeof t.reverb === "number" && t.reverb > 0);
+    if (!used) {
+      for (const t of Object.values(song.tracks ?? {})) delete t.reverb;
+      return data;
+    }
     song.counters = { x: 1, b: 1, ...(song.counters ?? {}) };
     // Effect ids must stay unique: start after the highest in use (the counter may be behind).
     const ids = JSON.stringify(song).match(/"id":"x(\d+)"/g) ?? [];

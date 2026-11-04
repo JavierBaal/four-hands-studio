@@ -152,13 +152,6 @@ export const SHOTS = [
     await page.locator(".thdr").nth(1).click({ button: "right", position: { x: 120, y: 12 } });
     await page.getByRole("menuitem", { name: /^Mezcla/ }).click();
   } },
-  // H4: reverb send in the mix card, at 35, and typing it.
-  { name: "reverb_tarjeta_mezcla", q: `?song=boceto&view=${sketchView(1440 - 288 - 72, 12)}`, act: async (page) => {
-    await page.evaluate(() => window.fhTest.replica.run("x", [{ type: "updateTrack", id: window.fhTest.replica.song.trackOrder[1], changes: { reverb: 0.35 } }]));
-    await page.waitForTimeout(200);
-    await page.locator(".thdr").nth(1).click({ button: "right", position: { x: 120, y: 12 } });
-    await page.getByRole("menuitem", { name: /^Mezcla/ }).click();
-  } },
   // H4: tempo and key changes. Bars 41–52 of the sketch: an accelerando, a jump, a ritardando, a fermata and a key change.
   { name: "tempo_reglas", q: `?song=boceto&view=${view({ startTick: 40 * BAR, pxPerTick: (1440 - 288 - 72) / 12 / BAR, scrollY: (127 - 86) * 15 })}`, act: tempoSong },
   { name: "tempo_escribir", q: `?song=boceto&view=${view({ startTick: 40 * BAR, pxPerTick: (1440 - 288 - 72) / 12 / BAR, scrollY: (127 - 86) * 15 })}`, act: async (page) => {
@@ -179,15 +172,6 @@ export const SHOTS = [
     await page.waitForTimeout(300);
     await page.locator(".topbar .fbtn").first().hover();
     await page.waitForTimeout(900);
-  } },
-  { name: "reverb_escribir", q: `?song=boceto&view=${sketchView(1440 - 288 - 72, 12)}`, act: async (page) => {
-    await page.locator(".thdr").nth(1).click({ button: "right", position: { x: 120, y: 12 } });
-    await page.getByRole("menuitem", { name: /^Mezcla/ }).click();
-    await page.locator(".qdialog .mixtype").nth(2).click();
-    await page.keyboard.type("40");
-  } },
-  { name: "reverb_menu_pista", q: `?song=boceto&view=${sketchView(1440 - 288 - 72, 12)}`, act: async (page) => {
-    await page.locator(".thdr").nth(1).click({ button: "right", position: { x: 120, y: 12 } });
   } },
   { name: "notas_en_carriles", q: `?song=boceto&view=${sketchView(1440 - 288 - 72, 12)}`, act: async (page) => {
     await page.evaluate((bar) => window.fhTest.replica.run("x", [
@@ -458,11 +442,13 @@ async function withBuses(page) {
     const { replica } = window.fhTest;
     const [t0, t1, t2, t3, t4] = replica.song.trackOrder;
     await replica.run("x", [
+      { type: "addBus", spec: { name: "Reverb", color: 4 } }, // b1
       { type: "addBus", spec: { name: "Cuerdas", color: 2 } }, // b2
       { type: "addBus", spec: { name: "Delay", color: 6 } }, // b3
       { type: "addBus", spec: { name: "Mix bus", color: 8 } }, // b4
     ]);
     await replica.run("x", [
+      { type: "addInsert", target: "b1", spec: { kind: "reverb" } },
       { type: "addInsert", target: "b2", spec: { kind: "eq" } },
       { type: "addInsert", target: "b2", spec: { kind: "compressor" } },
       { type: "addInsert", target: "b3", spec: { kind: "plugin", plugin: { id: "VST3-ValhallaDelay-1", name: "ValhallaDelay" } } },

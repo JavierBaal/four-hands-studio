@@ -116,7 +116,7 @@ export const TOOLS: readonly ToolDefinition[] = [
     title: "Song overview",
     description:
       "Read the overview of the song open in Four Hands Studio: title, tempo, meter, key, length, form (sections with bars), " +
-      "tracks (id, instrument, sound, mix: volume, pan, reverb and mute; range, note count, average velocity, share by author), " +
+      "tracks (id, instrument, sound, mix: volume, pan, mute, output and sends; range, note count, average velocity, share by author), " +
       "harmony per bar, annotations and current revision. " +
       "Small on purpose: call it first. Read-only.",
     inputSchema: {},
@@ -561,7 +561,7 @@ export const TOOLS: readonly ToolDefinition[] = [
     name: "update_track",
     title: "Change a track",
     description:
-      "Change a track's name, instrument, installed sound, volume (0-100), pan (-100 left to 100 right), reverb (0 dry to 100), mute or colour. " +
+      "Change a track's name, instrument, installed sound, volume (0-100), pan (-100 left to 100 right), mute or colour. Reverb is not a track setting: a bus with a reverb and a send to it (set_mix), or a 'reverb' effect on the track (add_effect). " +
       "sound: 'bank file / sound name', 'plugin / <name>' (a plugin from list_instruments), or 'default' to go back to the built-in sound. A track has one sound: a built-in one or a bank's replaces its plugin. " +
       "To balance several tracks at once, use set_mix. The current mix is in get_song_overview.",
     inputSchema: {
@@ -572,7 +572,6 @@ export const TOOLS: readonly ToolDefinition[] = [
       sound: z.string().optional(),
       volume: z.number().min(0).max(100).optional(),
       pan: z.number().min(-100).max(100).optional(),
-      reverb: z.number().min(0).max(100).optional().describe("Reverb send: 0 dry, more sounds further away"),
       mute: z.boolean().optional().describe("Silence the whole track (an arrangement decision)"),
       color: z.string().optional().describe(COLOR_HELP),
     },
@@ -582,13 +581,13 @@ export const TOOLS: readonly ToolDefinition[] = [
     name: "set_mix",
     title: "Balance the mix",
     description:
-      "Set volume, pan, reverb, mute and routing of several tracks and buses (and the master's volume) in one step, one per line: the track or bus (id or name), then any of " +
-      "'vol 70' (0-100), 'pan -30' (-100 left to 100 right; also 'pan L30', 'pan R20', 'pan C'), 'rev 30' (its send to the reverb bus, 0 dry to 100), 'mute' or 'unmute', " +
+      "Set volume, pan, mute, routing and sends of several tracks and buses (and the master's volume) in one step, one per line: the track or bus (id or name), then any of " +
+      "'vol 70' (0-100), 'pan -30' (-100 left to 100 right; also 'pan L30', 'pan R20', 'pan C'), 'mute' or 'unmute', " +
       "'to Voces' (where its sound goes after the fader: a bus, or 'to master'), 'send Delay 25' (a send to a bus, 0-100, after the fader; add 'pre' for before it), 'nosend Delay'. " +
-      "E.g. 't1 vol 65 pan -40', 'Violines vol 80 pan L25 rev 35', 'Bateria mute', 'Violín 1 to Cuerdas', 'Cuerdas vol 85 to Mix bus', 'Voz send Delay 20'. Read the current mix in get_song_overview first. " +
+      "E.g. 't1 vol 65 pan -40', 'Violines vol 80 pan L25 send Reverb 35', 'Bateria mute', 'Violín 1 to Cuerdas', 'Cuerdas vol 85 to Mix bus', 'Voz send Delay 20'. Read the current mix in get_song_overview first. " +
       "A line 'master vol 90' sets the master fader (0-100, 100 = 0 dB, the default): lower it only to take the whole mix down, not to fix one track. " +
-      "Reverb places a track in depth: more sounds further back. Keep bass, drums and fast or short parts drier, and remember " +
-      "tracks sounding in the user's DAW get the send too (as CC91), where their own reverb may already be on. " +
+      "Reverb places a track in depth: more send to a reverb bus sounds further back (no reverb bus yet: add_bus with reverb: true). Keep bass, drums and fast or short parts drier, and remember " +
+      "tracks sounding in the user's DAW get their send to the reverb bus as CC91, where their own reverb may already be on. " +
       "A bus groups tracks (subgroup: one fader and one chain of effects for all the strings) or takes sends (a reverb or delay shared by many). Buses chain (Voces → Mix bus → Master) and never loop. " +
       "You cannot hear the result: describe what you changed and why, and let the user listen. " +
       "Solo is the user's listening tool and is not available.",
@@ -606,7 +605,7 @@ export const TOOLS: readonly ToolDefinition[] = [
       "Make a bus: a channel with its own effects, fader and output, fed by tracks (their output) or by sends. " +
       "A subgroup: give the tracks that go into it ('tracks') and add effects with add_effect on the bus (e.g. a compressor for all the strings). " +
       "A return for sends: put a 'reverb' or a delay plugin on it and send to it with set_mix ('Voz send Delay 20'); 'reverb: true' adds Four Hands' reverb. " +
-      "'to' chains it into another bus (Voces → Mix bus); by default it goes to the Master. Every song already has the «Reverb» bus. One undo step.",
+      "'to' chains it into another bus (Voces → Mix bus); by default it goes to the Master. A new song has no buses: look at the overview first and reuse a bus that does the job. One undo step.",
     inputSchema: {
       intervention_id: INTERVENTION,
       name: z.string().min(1).max(60).describe("The bus's name in the user's language, e.g. 'Cuerdas', 'Delay'"),

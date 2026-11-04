@@ -106,7 +106,7 @@ describe("tool definitions", () => {
     expect(Object.keys(byName.set_mix?.inputSchema ?? {})).not.toContain("solo");
     expect(Object.keys(byName.update_track?.inputSchema ?? {})).not.toContain("solo");
     expect(byName.set_mix?.description).toMatch(/get_song_overview/);
-    expect(byName.get_song_overview?.description).toMatch(/volume, pan, reverb and mute/);
+    expect(byName.get_song_overview?.description).toMatch(/volume, pan, mute, output and sends/);
   });
 
   it("no tool composes", () => {

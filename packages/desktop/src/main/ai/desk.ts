@@ -18,7 +18,7 @@
  */
 import type { EngineLevels, EngineLoad } from "../../shared/mix.js";
 import { levelsText } from "./texts.js";
-import { type ChainTarget, type Insert, type InsertKind, type InsertSpec, OWN_EFFECTS, addInsert, chainOf, findInsert, insertName, moveInsert, paramDefs, paramText, removeInsert, updateInsert, reverbLevel } from "@fourhands/core";
+import { type ChainTarget, type Insert, type InsertKind, type InsertSpec, OWN_EFFECTS, addInsert, chainOf, findInsert, insertName, moveInsert, paramDefs, paramText, removeInsert, updateInsert } from "@fourhands/core";
 import { TRACK_PALETTE, trackColorByName, trackColorId } from "../../shared/track-colors.js";
 import {
   type Authorship,
@@ -92,7 +92,6 @@ import {
   busList,
   removeBus,
   setOutput,
-  setReverb,
   setSend,
   removeSend,
   updateBus,
@@ -215,7 +214,6 @@ function parseRevision(text: string | undefined): number | null {
 interface MixChanges {
   volume?: number;
   pan?: number;
-  reverb?: number;
   mute?: boolean;
   /** A bus, or null: the Master. */
   to?: string | null;
@@ -1363,15 +1361,13 @@ export class AiDesk {
       if (volume !== undefined) changes.volume = Math.max(0, Math.min(100, volume)) / 100;
       const pan = this.num(args, "pan");
       if (pan !== undefined) changes.pan = Math.max(-100, Math.min(100, pan)) / 100;
-      const reverb = this.num(args, "reverb");
-      if (reverb !== undefined) changes.reverb = Math.max(0, Math.min(100, reverb)) / 100;
       if (args.mute !== undefined) {
         if (typeof args.mute !== "boolean") throw new MusicError("'mute' is true or false");
         changes.mute = args.mute;
       }
       const colorText = this.str(args, "color", false);
       if (colorText !== undefined) changes.color = colorIndex(colorText);
-      if (Object.keys(changes).length === 0) throw new MusicError("Say what to change: name, instrument, sound, volume, pan, reverb, mute or color");
+      if (Object.keys(changes).length === 0) throw new MusicError("Say what to change: name, instrument, sound, volume, pan, mute or color");
       this.write(iv, (tx) => updateTrack(tx, trackId, changes));
       iv.trackIds.add(trackId);
       iv.other.push(`track ${this.song.tracks[trackId]!.name}`);
@@ -1410,13 +1406,10 @@ export class AiDesk {
       }
       this.write(iv, (tx) => {
         for (const c of changes) {
-          const { volume, pan, mute, reverb } = c.changes;
-          if (isBusId(c.id)) {
-            updateBus(tx, c.id, { ...(volume === undefined ? {} : { volume }), ...(pan === undefined ? {} : { pan }), ...(mute === undefined ? {} : { mute }) });
-            if (reverb !== undefined) setReverb(tx, c.id, reverb);
-          } else {
-            updateTrack(tx, c.id, { ...(volume === undefined ? {} : { volume }), ...(pan === undefined ? {} : { pan }), ...(mute === undefined ? {} : { mute }), ...(reverb === undefined ? {} : { reverb }) });
-          }
+          const { volume, pan, mute } = c.changes;
+          const mix = { ...(volume === undefined ? {} : { volume }), ...(pan === undefined ? {} : { pan }), ...(mute === undefined ? {} : { mute }) };
+          if (isBusId(c.id)) updateBus(tx, c.id, mix);
+          else updateTrack(tx, c.id, mix);
           if (c.changes.to !== undefined) setOutput(tx, c.id, c.changes.to);
           for (const x of c.changes.sends) setSend(tx, c.id, x.bus, { level: x.level, ...(x.pre === undefined ? {} : { pre: x.pre }) });
           for (const bus of c.changes.noSends) removeSend(tx, c.id, bus);
@@ -1659,21 +1652,21 @@ export class AiDesk {
   }
 
   /**
-   * "Violines vol 80 pan L25 rev 30 mute", "Voces to Mix bus send Delay 25 pre": the track or bus is
+   * "Violines vol 80 pan L25 mute", "Voces to Mix bus send Reverb 25 pre": the track or bus is
    * what comes before the first setting. Parte D: 'to <bus|master>', 'send <bus> <0-100> [pre|post]',
    * 'nosend <bus>'. (Solo is the user's listening tool, not the AI's.)
    */
   private mixLine(text: string): { id: string; changes: MixChanges } {
     const tokens = text.split(/\s+/).filter(Boolean);
     const changes: MixChanges = { sends: [], noSends: [] };
-    const KEY = /^(vol|volume|pan|rev|reverb|mute|unmute|to|send|nosend)$/i;
+    const KEY = /^(vol|volume|pan|mute|unmute|to|send|nosend)$/i;
     const value = (raw: string | undefined, what: string): string => {
       if (raw === undefined) throw new MusicError(`'${what}' needs a value`);
       return raw;
     };
     // Settings are pairs ("vol 70", "pan L30") or words ("mute"); scan for the first one.
     const first = tokens.findIndex((t) => KEY.test(t));
-    if (first <= 0) throw new MusicError("write the track or bus first, then 'vol', 'pan', 'rev', 'mute', 'to', 'send' or 'nosend'");
+    if (first <= 0) throw new MusicError("write the track or bus first, then 'vol', 'pan', 'mute', 'to', 'send' or 'nosend'");
     const id = this.channel(tokens.slice(0, first).join(" "));
     // A bus's name may have spaces ("Mix bus"): the words up to the next setting (or number, for 'send').
     const busName = (from: number, stopAtNumber: boolean): [string, number] => {
@@ -1698,10 +1691,6 @@ export class AiDesk {
         const v = m[1] ? 0 : m[2] ? (m[2] === "L" ? -1 : 1) * Number(m[3]) : Number(m[4]);
         if (Math.abs(v) > 100) throw new MusicError("pan goes from -100 (left) to 100 (right)");
         changes.pan = v / 100;
-      } else if (key === "rev" || key === "reverb") {
-        const v = Number(value(tokens[++i], key));
-        if (!(v >= 0 && v <= 100)) throw new MusicError("reverb goes from 0 (dry) to 100");
-        changes.reverb = v / 100;
       } else if (key === "to") {
         const [name, j] = busName(i + 1, false);
         changes.to = /^(master|máster)$/i.test(name) ? null : this.bus(name);
@@ -1723,7 +1712,7 @@ export class AiDesk {
         changes.noSends.push(this.bus(name));
         i = j - 1;
       } else {
-        throw new MusicError(`'${tokens[i]}' is not 'vol', 'pan', 'rev', 'mute', 'to', 'send' or 'nosend'`);
+        throw new MusicError(`'${tokens[i]}' is not 'vol', 'pan', 'mute', 'to', 'send' or 'nosend'`);
       }
     }
     if (Object.keys(changes).length === 2 && !changes.sends.length && !changes.noSends.length) throw new MusicError("nothing to change");
@@ -1959,6 +1948,6 @@ function describeTrack(song: Song, id: string): string {
   if (t.sound) parts.push(`sound "${t.sound.name}" from ${t.sound.bank}`);
   else if (t.program === null || t.channel === 9) parts.push("drums");
   else parts.push(`program ${t.program}`);
-  parts.push(`volume ${Math.round(t.volume * 100)}`, `pan ${Math.round(t.pan * 100)}`, `reverb ${Math.round(reverbLevel(song, t) * 100)}`, `color ${trackColorId(t.color)}`);
+  parts.push(`volume ${Math.round(t.volume * 100)}`, `pan ${Math.round(t.pan * 100)}`, `color ${trackColorId(t.color)}`);
   return parts.join(" · ");
 }

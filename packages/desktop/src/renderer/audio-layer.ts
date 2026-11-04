@@ -4,7 +4,7 @@
  * as one command at the end, so the whole take undoes in one step, and it is never quantized.
  */
 import { currentProposal, songWithProposal } from "./proposals.js";
-import { type Note, OWN_EFFECTS, type PedalSpan, type Song, type Track, PPQ, allInserts, audible, barAt, barStart, busList, orderedSections, reverbBus, reverbLevel } from "@fourhands/core";
+import { type Note, OWN_EFFECTS, type PedalSpan, type Song, type Track, PPQ, allInserts, audible, barAt, barStart, busList, orderedSections, reverbLevel } from "@fourhands/core";
 import type { Lang, Strings, Translate } from "../shared/i18n.js";
 import { Engine } from "../audio/engine.js";
 import { INITIAL_KEYBOARD, type KeyboardState, keyAction } from "../audio/keyboard.js";
@@ -1092,13 +1092,10 @@ export class AudioLayer {
   }
 
   /** A fader moving: hear it now; the song gets the value on release. */
-  previewMix(trackId: string, volume: number, pan: number, reverb?: number): void {
+  previewMix(trackId: string, volume: number, pan: number): void {
     const track = this.replica.song.tracks[trackId];
     if (!track) return;
-    this.player.previewMix({ ch: track.channel, strip: this.stripOf(track) }, volume, pan, reverb);
-    // Parte D: the reverb is the send to the «Reverb» bus: heard there while it moves.
-    const bus = reverbBus(this.heard());
-    if (reverb !== undefined && bus) this.previewSend(trackId, bus.id, reverb);
+    this.player.previewMix({ ch: track.channel, strip: this.stripOf(track) }, volume, pan);
     // The strip's fader is audio in the engine (parte D: the built-in sounds' too): move it there.
     if (track.output !== "external" && this.engineStatus.state === "ready") {
       const tracks = this.heardTracks().map((t) => (t.id === trackId ? { ...t, volume, pan } : t));

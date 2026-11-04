@@ -3,7 +3,7 @@
  * sections, chords and annotations. Every action is one command list (one undo step) with its
  * sentence in the history. Also holds which field is being typed into (one at a time).
  */
-import { BUS_NAME_MAX, EFFECT_NAME_MAX, type InsertSpec, OWN_EFFECTS, OWN_KINDS, busList, findInsert, insertName, kindName, paramDefs, reaches, reverbLevel } from "@fourhands/core";
+import { BUS_NAME_MAX, EFFECT_NAME_MAX, type InsertSpec, OWN_EFFECTS, OWN_KINDS, busList, findInsert, insertName, kindName, paramDefs, reaches } from "@fourhands/core";
 import {
   type CommandData,
   type KeySignature,
@@ -475,8 +475,8 @@ export class SongActions {
   }
 
   /** While a fader moves: only the sound changes (one undo step on release, with `setMix`). */
-  previewMix(id: string, volume: number, pan: number, reverb?: number): void {
-    this.audio?.previewMix(id, volume, pan, reverb);
+  previewMix(id: string, volume: number, pan: number): void {
+    this.audio?.previewMix(id, volume, pan);
   }
 
   /** A typed volume (dB) or pan (C, L30, R25). False if it cannot be read: the field stays open. */
@@ -490,16 +490,11 @@ export class SongActions {
     return true;
   }
 
-  /** Volume, pan and (H4) reverb send of a track in one undo step. Reverb left out: unchanged. */
-  setMix(id: string, volume: number, pan: number, reverb?: number): void {
+  /** Volume and pan of a track in one undo step. */
+  setMix(id: string, volume: number, pan: number): void {
     const track = this.song.tracks[id];
-    if (!track) return;
-    const was = reverbLevel(this.song, track);
-    const rev = reverb ?? was;
-    const revChanged = rev !== was;
-    if (track.volume === volume && track.pan === pan && !revChanged) return;
-    const onlyReverb = track.volume === volume && track.pan === pan;
-    void this.run(this.h(onlyReverb ? "hReverb" : "hMix", { name: track.name }), [{ type: "updateTrack", id, changes: revChanged ? { volume, pan, reverb: rev } : { volume, pan } }]);
+    if (!track || (track.volume === volume && track.pan === pan)) return;
+    void this.run(this.h("hMix", { name: track.name }), [{ type: "updateTrack", id, changes: { volume, pan } }]);
   }
 
   // -------------------------------------------------------------------------

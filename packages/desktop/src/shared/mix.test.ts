@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { dbToVolume, formatDb, formatPan, formatReverb, parseDb, parsePan, parseReverb, volumeToDb } from "./mix.js";
-import { SongDocument, USER, addBus, addTrack, audible, setOutput, setSend, starterSong, updateBus, updateTrack } from "@fourhands/core";
+import { SongDocument, USER, addBus, addTrack, audible, setOutput, setSend, starterSong, updateBus, updateTrack, withDefaultBuses } from "@fourhands/core";
 import { busChainKey, engineBuses, engineLoad, engineRouting, engineStrips, levelDb, levelsReport, masterGain, stripGain } from "./mix.js";
 import { trackColorByName, trackColorId, TRACK_PALETTE } from "./track-colors.js";
 import { TRACK_COLOR_COUNT } from "@fourhands/core";
@@ -153,7 +153,7 @@ describe("the levels the engine measured (F2.2)", () => {
 
 describe("buses in the engine (F2.2 parte D)", () => {
   function song() {
-    const doc = new SongDocument(starterSong("Buses"), { now: () => 0 });
+    const doc = new SongDocument(withDefaultBuses(starterSong("Buses")), { now: () => 0 });
     doc.transact({ actor: USER, label: "buses" }, (tx) => {
       addTrack(tx, { name: "Voz" }); // t2
       addTrack(tx, { name: "Fuera" }); // t3
@@ -183,9 +183,9 @@ describe("buses in the engine (F2.2 parte D)", () => {
       { bus: 0, out: -1, sends: [] },
       { bus: 1, out: 2, sends: [] },
     ]);
-    // Voces (1) before Mix bus (2); the reverb bus takes the instruments' own reverb.
+    // Voces (1) before Mix bus (2); the instruments' own reverb stays in the engine (no bus).
     expect(r.order.indexOf(1)).toBeLessThan(r.order.indexOf(2));
-    expect(r.instrumentReverb).toBe(0);
+    expect(r.instrumentReverb).toBe(-1);
   });
 
   it("gives the buses their faders, off when muted", () => {

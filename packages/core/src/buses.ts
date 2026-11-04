@@ -3,10 +3,10 @@
  *
  * A bus is a channel fed by tracks and by other buses: their output (`bus`: where the sound goes
  * after the fader) or their sends (a copy at a level, after the fader or before it). Buses chain
- * (Voces → Mix bus → Máster) and never loop. Every song has the «Reverb» bus from the start, with
- * Four Hands' own reverb as its effect: H4's per-track reverb is now a send to it, so songs from
- * before sound the same. Deleting a bus sends what went through it on to the next bus, or the
- * Master, and drops the sends to it (the window warns).
+ * (Voces → Mix bus → Máster) and never loop. Reverb is a bus with Four Hands' reverb (or a plugin)
+ * on it, or an effect on the track (Fran, 04/11/2026: no per-track reverb knob). A song from before
+ * that used H4's per-track reverb opens with the «Reverb» bus (file.ts). Deleting a bus sends what
+ * went through it on to the next bus, or the Master, and drops the sends to it (the window warns).
  */
 import { CommandError, type Transaction } from "./document.js";
 import { defaultParams } from "./effects.js";
@@ -61,8 +61,8 @@ export function reverbLevel(song: Song, source: Pick<Track, "sends">): number {
 }
 
 /**
- * Gives a song that has no buses the «Reverb» bus (a new song, an imported MIDI file, a file from
- * before parte D). In place, outside the history: it is where every song starts.
+ * Gives a song that has no buses the «Reverb» bus, with Four Hands' reverb (a file from before
+ * parte D whose tracks had reverb). In place, outside the history.
  */
 export function withDefaultBuses(song: Song): Song {
   if (song.buses) return song;
@@ -303,25 +303,6 @@ export function removeSend(tx: Transaction, sourceId: string, busId: string): vo
   const { item } = source(tx.song, sourceId);
   check(!!item.sends?.some((s) => s.bus === busId), `${item.name} has no send to ${tx.song.buses?.[busId]?.name ?? busId}`);
   writeSends(tx, sourceId, item.sends!.filter((s) => s.bus !== busId));
-}
-
-/**
- * H4's «reverb» of a track (0–1), as the AI and the old controls set it: its send to the reverb
- * bus. 0 removes the send.
- */
-export function setReverb(tx: Transaction, sourceId: string, level: number): void {
-  check(Number.isFinite(level) && level >= 0 && level <= 1, "Reverb must be between 0 and 1");
-  const { item } = source(tx.song, sourceId);
-  const bus = reverbBus(tx.song);
-  if (!bus) {
-    check(level === 0, `There is no reverb bus: add a bus with a Reverb on it, or send ${item.name} to another bus`);
-    return;
-  }
-  if (level === 0) {
-    if (item.sends?.some((s) => s.bus === bus.id)) removeSend(tx, sourceId, bus.id);
-    return;
-  }
-  setSend(tx, sourceId, bus.id, { level });
 }
 
 /**
