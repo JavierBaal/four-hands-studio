@@ -849,6 +849,10 @@ function registerIpc(): void {
       return false;
     }
   });
+  // F2.2 (04/11/2026): where the song is, for the plugins' transport.
+  ipcMain.on(CH.engineTransport, (_e, points: unknown) => {
+    if (Array.isArray(points) && points.length) engine?.send({ type: "transport", points });
+  });
   ipcMain.on(CH.engineMidi, (_e, events: EngineMidiEvent[]) => {
     if (Array.isArray(events) && events.length) engine?.send({ type: "midi", events });
   });

@@ -3,7 +3,7 @@
  * stand-in that runs the core directly, for the browser harness and the interface tests.
  */
 import type { EngineInsert, EngineLevels, EngineLoad, EngineStrip } from "../shared/mix.js";
-import { ENGINE_OFF, type EngineLoadResult, type EngineMidiEvent, type EnginePlugin, type EnginePluginList, type EngineScanProgress, type EngineSoundsResult, type EngineStatus, type PluginFolders } from "../shared/engine.js";
+import { ENGINE_OFF, type EngineLoadResult, type EngineMidiEvent, type EnginePlugin, type EngineTransportPoint, type EnginePluginList, type EngineScanProgress, type EngineSoundsResult, type EngineStatus, type PluginFolders } from "../shared/engine.js";
 import { NO_SOUND_PREFS, type SoundPrefs } from "../shared/sound-catalog.js";
 import { SongDocument, USER, runCommands, type Song } from "@fourhands/core";
 import { type AiApply, type AiState, type AiTone, DEFAULT_AI_APPLY, DEFAULT_AI_TONE, type FileState, type FolderKind, type Folders, type MenuAction, type ToolKind, NO_AI, type PatchMessage, type Reply, type Request, type SkillCardInfo, type SkillImportResult, type Snapshot, type SoundBankInfo, type ViewInfo, undoStateOf } from "../shared/protocol.js";
@@ -99,6 +99,8 @@ export interface Bridge {
   engineShowInsert(id: string): Promise<boolean>;
   /** A plugin effect's parameter (by index, normalised): the AI's values, and undoing them. */
   engineSetParam(id: string, index: number, value: number): void;
+  /** F2.2 (04/11/2026): the plugins' transport, with the notes. */
+  engineTransport(points: EngineTransportPoint[]): void;
   /** F2.2 parte C2: how many dB each of these compressors and limiters is reducing now. */
   engineReductions(ids: string[]): Promise<Record<string, number> | null>;
   /** F2.2: `reset` starts counting again; otherwise the strips' levels since then (null without engine). */
@@ -138,7 +140,7 @@ export function memoryBridge(
     /** Plugins of a pretend engine (interface tests); absent: the engine is "missing". */
     enginePlugins?: EnginePlugin[];
   } = {},
-): Bridge & { doc: SongDocument; setAi(state: AiState): void; closed: string[]; engine: { loaded: Map<number, string>; midi: EngineMidiEvent[]; shown: number[]; mix: EngineStrip[]; master?: number; meters?: EngineLevels; load?: EngineLoad; inserts: Map<number, EngineInsert[]>; shownInserts: string[]; failPlugin?: string; params: Array<[string, number, number]>; reduction?: number } } {
+): Bridge & { doc: SongDocument; setAi(state: AiState): void; closed: string[]; engine: { loaded: Map<number, string>; midi: EngineMidiEvent[]; shown: number[]; mix: EngineStrip[]; master?: number; meters?: EngineLevels; load?: EngineLoad; inserts: Map<number, EngineInsert[]>; shownInserts: string[]; failPlugin?: string; params: Array<[string, number, number]>; reduction?: number; transport: EngineTransportPoint[] } } {
   const now = options.now ?? Date.now;
   const doc = new SongDocument(song, { now });
   const patchListeners = new Set<(m: PatchMessage) => void>();
@@ -162,7 +164,7 @@ export function memoryBridge(
   let outPort: string | null = null;
   const fakePlugins = options.enginePlugins;
   const engineState: EngineStatus = fakePlugins ? { state: "ready", device: "Prueba · 48000 Hz", latency: 0.02, generation: 1 } : { ...ENGINE_OFF, state: "missing" };
-  const engine: { loaded: Map<number, string>; midi: EngineMidiEvent[]; shown: number[]; mix: EngineStrip[]; master?: number; meters?: EngineLevels; load?: EngineLoad; inserts: Map<number, EngineInsert[]>; shownInserts: string[]; failPlugin?: string; params: Array<[string, number, number]>; reduction?: number } = { loaded: new Map<number, string>(), midi: [], shown: [], mix: [], inserts: new Map(), shownInserts: [], params: [] };
+  const engine: { loaded: Map<number, string>; midi: EngineMidiEvent[]; shown: number[]; mix: EngineStrip[]; master?: number; meters?: EngineLevels; load?: EngineLoad; inserts: Map<number, EngineInsert[]>; shownInserts: string[]; failPlugin?: string; params: Array<[string, number, number]>; reduction?: number; transport: EngineTransportPoint[] } = { loaded: new Map<number, string>(), midi: [], shown: [], mix: [], inserts: new Map(), shownInserts: [], params: [], transport: [] };
   let pluginDirs: string[] = [];
   let soundPrefs: SoundPrefs = structuredClone(NO_SOUND_PREFS);
   const pluginState = (): PluginFolders => ({ system: ["C:\\Program Files\\Common Files\\VST3"], user: [...pluginDirs] });
@@ -290,6 +292,7 @@ export function memoryBridge(
       return { ok: true, errors };
     },
     engineSetParam: (id, index, value) => void engine.params.push([id, index, value]),
+    engineTransport: (points) => void engine.transport.push(...structuredClone(points)),
     engineReductions: async (ids) => (engine.reduction === undefined ? null : Object.fromEntries(ids.map((id) => [id, engine.reduction!]))),
     engineShowInsert: async (id) => {
       engine.shownInserts.push(id);

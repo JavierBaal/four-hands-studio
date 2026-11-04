@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SynthEvent } from "../shared/messages.js";
 import type { Engine } from "./engine.js";
 import { Player } from "./player.js";
+import type { TransportAt } from "./router.js";
 
 // 120 BPM: a quarter note is 0.5 s.
 function setup() {
@@ -18,11 +19,13 @@ function setup() {
   );
   const scheduled: { time: number; ev: SynthEvent }[] = [];
   const immediate: SynthEvent[] = [];
+  const transport: TransportAt[] = [];
   const engine = {
     ctx: { currentTime: 10 },
     now: (ev: SynthEvent) => immediate.push(ev),
     sched: (evs: { time: number; ev: SynthEvent }[]) => scheduled.push(...evs),
     panic: () => immediate.push({ kind: "panic" }),
+    transport: (points: TransportAt[]) => transport.push(...points),
   };
   const player = new Player(() => doc.song, engine as unknown as Engine);
   const advance = (seconds: number) => {
@@ -31,7 +34,7 @@ function setup() {
       vi.advanceTimersByTime(25);
     }
   };
-  return { doc, player, engine, scheduled, immediate, advance };
+  return { doc, player, engine, scheduled, immediate, advance, transport };
 }
 
 beforeEach(() => vi.useFakeTimers());
@@ -171,5 +174,35 @@ describe("Player", () => {
     expect(live[0]).toEqual(["on", 67, null]);
     expect(live[1]![2]).toBeGreaterThan(900);
     expect(live[1]![2]).toBeLessThan(1100);
+  });
+
+  it("tells the plugins where the song is: playing, every quarter note at its time and tempo, and stopped (F2.2)", () => {
+    const { doc, player, advance, transport } = setup();
+    player.play(960);
+    advance(1.2);
+    const playing = transport.filter((p) => p.playing);
+    // From beat 2 (where it started), then beats 3 and 4, half a second apart at 120 BPM.
+    expect(playing.slice(0, 3).map((p) => p.ppq)).toEqual([1, 2, 3]);
+    expect(Math.round((playing[1]!.time - playing[0]!.time) * 1000)).toBe(500);
+    expect(playing[0]!.bpm).toBe(120);
+    expect(playing[0]).toMatchObject({ num: 4, den: 4, bar: 0 });
+    player.stop();
+    expect(transport.at(-1)).toMatchObject({ playing: false });
+  });
+
+  it("starts again where the loop goes back (F2.2)", () => {
+    const { doc, player, advance, transport } = setup();
+    doc.setContext({ loop: { start: 0, end: 1920 } });
+    player.play(0);
+    advance(1.6);
+    // 0, 1, then back to 0 at the loop.
+    expect(transport.filter((p) => p.playing).slice(0, 3).map((p) => p.ppq)).toEqual([0, 1, 0]);
+  });
+
+  it("gives the song's tempo to the plugins while stopped too (F2.2)", () => {
+    const { doc, player, transport } = setup();
+    doc.transact({ actor: USER, label: "tempo" }, (tx) => setTempoChanges(tx, []));
+    player.setup();
+    expect(transport.at(-1)).toMatchObject({ playing: false, bpm: 120, ppq: 0 });
   });
 });

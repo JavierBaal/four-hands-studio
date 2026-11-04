@@ -5,15 +5,20 @@
  * and splits by track (A2: by the track's strip, `ev.strip`, or its channel without one). Program changes never go out (they would change the preset loaded in the
  * other program); notes, pedal, expression, modulation, volume, pan and reverb send do.
  */
-import { type EngineMidiEvent, SOUNDS_SLOT } from "../shared/engine.js";
+import { type EngineMidiEvent, type EngineTransportPoint, SOUNDS_SLOT } from "../shared/engine.js";
 import type { SynthEvent } from "../shared/messages.js";
 
 /** What the player plays through: the synth itself, or this router around it. */
+/** A transport point at an audio time (the player's clock), before the router turns it into a delay. */
+export type TransportAt = Omit<EngineTransportPoint, "delay"> & { time: number };
+
 export interface SoundOut {
   readonly ctx: { readonly currentTime: number };
   now(ev: SynthEvent, inputTime?: number, source?: "keyboard" | "midi"): void;
   sched(events: Array<{ time: number; ev: SynthEvent }>): void;
   panic(): void;
+  /** Where the song is, for the engine's plugins (F2.2, 04/11/2026). Optional: only the engine needs it. */
+  transport?(points: TransportAt[]): void;
 }
 
 /** A MIDI output port (Web MIDI's MIDIOutput has this shape). */
@@ -62,6 +67,8 @@ export function silenceBytes(ch: number): number[][] {
  */
 export interface EnginePort {
   midi(events: EngineMidiEvent[]): void;
+  /** The transport for the plugins; an engine without it ignores it. */
+  transport?(points: EngineTransportPoint[]): void;
   panic(): void;
   /** Seconds from the engine receiving a note to its speakers. */
   latency(): number;
@@ -188,6 +195,18 @@ export class SoundRouter implements SoundOut {
     }
     if (inside.length) this.options.inner.sched(inside);
     if (toEngine.length) engine?.midi(toEngine);
+  }
+
+  /**
+   * The transport goes to the engine with the same shift as the notes, so a plugin hears «playing at
+   * beat 9» exactly when the notes of beat 9 reach it.
+   */
+  transport(points: TransportAt[]): void {
+    const engine = this.options.engine?.() ?? this.options.builtin?.() ?? null;
+    if (!engine?.transport || points.length === 0) return;
+    const nowSec = this.ctx.currentTime;
+    const shift = (this.options.delayMs?.() ?? 0) / 1000 - engine.latency();
+    engine.transport(points.map(({ time, ...p }) => ({ ...p, delay: Math.max(0, time - nowSec + shift) })));
   }
 
   panic(): void {

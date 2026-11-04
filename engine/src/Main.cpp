@@ -210,6 +210,33 @@ int selfTest (const juce::String& folder)
             return 16;
         }
     }
+    // F2.2 (04/11/2026): the plugins read where the song is. Playing from beat 4 at 120 BPM, half
+    // a second later it is at beat 5; stopped, it says so.
+    {
+        if (! engine.pluginHasTransport (0))
+        {
+            std::cout << "FAIL the plugin does not read the engine's transport" << std::endl;
+            return 17;
+        }
+        engine.scheduleTransport (0.0, { true, 4.0, 120.0, 4, 4, 4.0 });
+        juce::AudioBuffer<float> b (2, 24000);
+        engine.renderOffline (b);
+        const auto now = engine.transportNow();
+        const double ppq = now.getPpqPosition().orFallback (-1);
+        std::cout << "transport: playing " << now.getIsPlaying() << ", ppq " << ppq << ", bpm " << now.getBpm().orFallback (0) << std::endl;
+        if (! now.getIsPlaying() || std::abs (ppq - 5.0) > 0.02 || std::abs (now.getBpm().orFallback (0) - 120.0) > 1e-9)
+        {
+            std::cout << "FAIL the transport" << std::endl;
+            return 18;
+        }
+        engine.scheduleTransport (0.0, { false, 5.0, 120.0, 4, 4, 4.0 });
+        engine.renderOffline (b);
+        if (engine.transportNow().getIsPlaying())
+        {
+            std::cout << "FAIL the transport does not stop" << std::endl;
+            return 19;
+        }
+    }
     // A2: a strip far past the 16 MIDI channels plays the same as the first one.
     engine.unload (0);
     if (const auto again = engine.load (300, chosen); again.isNotEmpty())

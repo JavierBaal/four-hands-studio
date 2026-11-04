@@ -58,6 +58,24 @@ export interface EngineMidiEvent {
   ch?: number;
 }
 
+/**
+ * F2.2 (Fran, 04/11/2026): where the song is, for the plugins (their transport: Ozone's assistant
+ * listens only while playing; synced delays and arpeggiators follow the tempo). Sent with the notes,
+ * `delay` seconds ahead, so each point lands on its sample; between points the engine moves on at
+ * `bpm`.
+ */
+export interface EngineTransportPoint {
+  delay: number;
+  playing: boolean;
+  /** Quarter notes from the start of the song. */
+  ppq: number;
+  bpm: number;
+  num: number;
+  den: number;
+  /** Where the bar that holds `ppq` starts, in quarter notes. */
+  bar: number;
+}
+
 /** What a load gives back: the plugin's name, or why it could not load. */
 export type EngineLoadResult = { ok: true; name: string } | { ok: false; error: string };
 
