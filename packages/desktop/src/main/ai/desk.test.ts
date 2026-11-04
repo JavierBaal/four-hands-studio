@@ -1093,3 +1093,12 @@ describe("Four Hands' delay for the AI (Fran, 04/11/2026)", () => {
     ok("end_intervention", { intervention_id: id });
   });
 });
+
+describe("analyze_mix for the AI (F2.3)", () => {
+  it("says to play first, and refuses targets and bars it cannot read", () => {
+    expect(ok("analyze_mix")).toMatch(/Nothing measured yet/);
+    expect(fail("analyze_mix", { target: "vinilo" })).toMatch(/Unknown target 'vinilo'/);
+    expect(fail("analyze_mix", { bars: "por ahí" })).toMatch(/is not bars/);
+    expect(fail("analyze_mix", { lufs: -2 })).toMatch(/lufs goes from -40 to -5/);
+  });
+});

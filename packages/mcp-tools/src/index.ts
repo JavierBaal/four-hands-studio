@@ -15,7 +15,7 @@
 import { z } from "zod";
 
 /** Bumped whenever a tool, its parameters or its meaning changes. The app refuses other bridges. */
-export const TOOLS_VERSION = 22;
+export const TOOLS_VERSION = 23;
 
 /**
  * Track colours by name (H3.2). The app's palette (desktop/src/shared/track-colors.ts) has the same
@@ -169,10 +169,28 @@ export const TOOLS: readonly ToolDefinition[] = [
     description:
       "The levels each track reached in the last playback, measured in the audio engine after its fader (F2.2): peak and average (RMS) in dBFS, " +
       "how many samples went over 0 dBFS (clipping), and the master's. Silent tracks are listed apart. " +
-      "It is a meter, not hearing: it says how loud, not which frequencies, nor whether two parts mask each other. Say so when you use it. " +
+      "It is a meter, not hearing: it says how loud, not which frequencies; for loudness against a target, tonal balance and masking, use analyze_mix. Say so when you use it. " +
       "It also says the audio engine's load and whether the audio was cut (too many plugins for the computer). " +
       "Use it before changing volumes with set_mix, and after the user plays, to check what a change did. Read-only.",
     inputSchema: {},
+    annotations: readOnly,
+  },
+  {
+    name: "analyze_mix",
+    title: "Measure the mix",
+    description:
+      "What the last playback sounded like, measured in the audio engine after every fader and read with the score (F2.3): the master's loudness (LUFS integrated, loudest 3 s, loudness range) " +
+      "and true peak against a target, its stereo width and phase, its tonal balance in seven bands against a balanced mix, the loudness of each section, " +
+      "how loud each track and bus is while it plays and where its energy is, and which parts fight in the same band, in which bars. " +
+      "Targets: 'streaming' (-14 LUFS, true peak -1), 'cinema' (-23 LUFS, -1; TV too), 'none' (balance only, the default), or the user's own with 'lufs' and 'true_peak'. " +
+      "'bars' narrows it to '37-44' or a section's name. It only knows what was played: ask the user to play the song (or the part) and stop, then call it; after a change, the same again. " +
+      "A meter, not ears: it does not hear timbre or taste. Fix from the score first when you can (an octave, a voicing, another instrument), then mix (set_mix, effects). Read-only.",
+    inputSchema: {
+      target: z.string().optional().describe("'streaming', 'cinema' or 'none' (default)"),
+      lufs: z.number().min(-40).max(-5).optional().describe("The user's own integrated loudness target, in LUFS"),
+      true_peak: z.number().min(-6).max(0).optional().describe("The user's own true peak ceiling, in dBTP"),
+      bars: z.string().optional().describe("Only these bars ('37-44') or this section ('Coro')"),
+    },
     annotations: readOnly,
   },
   {

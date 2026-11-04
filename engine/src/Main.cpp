@@ -597,7 +597,42 @@ int renderSong (const juce::String& bankPath, const juce::String& midiPath, cons
     }
     juce::AudioBuffer<float> out (2, (int) ((end + 3.0) * rate));
     out.clear();
-    engine.renderOffline (out);
+    // FH_RENDER_ANALYSIS=bpm (F2.3): the transport plays at that tempo and the AI's ear measures it;
+    // rendered in pieces not much faster than real time, so the analysis keeps up.
+    const auto analysisBpm = juce::SystemStats::getEnvironmentVariable ("FH_RENDER_ANALYSIS", "0").getDoubleValue();
+    if (analysisBpm > 0)
+    {
+        engine.resetLevels();
+        juce::Thread::sleep (100);
+        engine.scheduleTransport (0.0, { true, 0.0, analysisBpm, 4, 4, 0.0 });
+        for (int done = 0; done < out.getNumSamples(); done += 4800)
+        {
+            const int n = juce::jmin (4800, out.getNumSamples() - done);
+            juce::AudioBuffer<float> piece (out.getArrayOfWritePointers(), 2, done, n);
+            engine.renderOffline (piece);
+            juce::Thread::sleep (8);
+        }
+        juce::Thread::sleep (800);
+        for (const auto& r : engine.analysis())
+        {
+            std::array<double, fh::kBands> bands {};
+            int active = 0;
+            for (const auto& f : r.frames)
+                if (f.loudness > -50)
+                {
+                    ++active;
+                    for (int b = 0; b < fh::kBands; ++b)
+                        bands[(size_t) b] += std::pow (10.0, f.bands[(size_t) b] / 10.0);
+                }
+            std::cout << "analysis key " << r.key << ": " << r.integrated << " LUFS, range " << r.range << ", true peak " << 20 * std::log10 (juce::jmax (1e-9, r.truePeak)) << ", frames " << r.frames.size() << ", bands";
+            for (double b : bands)
+                std::cout << " " << (active ? std::round (10 * std::log10 (b / active + 1e-12) * 10) / 10 : -120.0);
+            std::cout << std::endl;
+        }
+        std::cout << "analysis gaps " << engine.analysisGaps() << std::endl;
+    }
+    else
+        engine.renderOffline (out);
     std::cout << "rms " << out.getRMSLevel (0, 0, out.getNumSamples()) << " peak " << out.getMagnitude (0, out.getNumSamples()) << std::endl;
 
     juce::File wav (wavPath);

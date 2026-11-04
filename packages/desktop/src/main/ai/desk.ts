@@ -18,6 +18,8 @@
  */
 import type { EngineLevels, EngineLoad } from "../../shared/mix.js";
 import { levelsText } from "./texts.js";
+import { type AnalysisContext, mixReport } from "./listen.js";
+import { type LoudnessTarget, TARGETS } from "../../shared/analysis.js";
 import { type ChainTarget, type Insert, type InsertKind, type InsertSpec, OWN_EFFECTS, addInsert, chainOf, findInsert, insertName, moveInsert, paramDefs, paramText, removeInsert, updateInsert, parseParamValue, NOTE_VALUES } from "@fourhands/core";
 import { TRACK_PALETTE, trackColorByName, trackColorId } from "../../shared/track-colors.js";
 import {
@@ -96,6 +98,7 @@ import {
   removeSend,
   updateBus,
   isBusId,
+  orderedSections,
 } from "@fourhands/core";
 import { NAMED_PROGRAMS, PALETTE } from "../../shared/instruments.js";
 import type { AiApply, AiClientInfo, AiMark, AiRecent, AiState, AiTone, AiWriting, PatchMessage, SoundBankInfo } from "../../shared/protocol.js";
@@ -130,6 +133,8 @@ export interface AiDeskOptions {
   /** F2.2: what the engine measured in the last playback (the window asks it when playback stops). */
   /** The last playback's levels, and the strip each track had then (A2). */
   levels?: () => { levels: EngineLevels; at: number; strips?: Record<string, number>; buses?: Record<string, number> } | null;
+  /** F2.3: what the engine heard in the last playback (analyze_mix). */
+  analysis?: () => AnalysisContext | null;
   /** F2.2 parte B: the engine's last load reading (for get_levels), null without engine. */
   load?: () => EngineLoad | null;
   /**
@@ -832,6 +837,23 @@ export class AiDesk {
         load: this.options.load?.() ?? null,
         buses: busList(song).flatMap((b) => (last?.buses?.[b.id] === undefined ? [] : [{ name: b.name, index: last.buses[b.id]! }])),
       });
+    },
+
+    // F2.3, the AI's ear (Fran, 04/11/2026).
+    analyze_mix: (_conn, args) => {
+      const song = this.options.session().snapshot().song;
+      const target = this.loudnessTarget(args);
+      const range = this.str(args, "bars", false);
+      let fromBar: number | undefined;
+      let toBar: number | undefined;
+      if (range) {
+        const section = orderedSections(song).find((s) => fold(s.name) === fold(range));
+        const m = /^(\d+)\s*(?:[-–]\s*(\d+))?$/.exec(range.trim());
+        if (section) [fromBar, toBar] = [section.startBar, section.endBar];
+        else if (m) [fromBar, toBar] = [Number(m[1]), Number(m[2] ?? m[1])];
+        else throw new MusicError(`'${range}' is not bars ('37-44') nor a section of the song`);
+      }
+      return mixReport(song, this.options.analysis?.() ?? null, { target, fromBar, toBar });
     },
 
     list_skills: () => skillsListText(this.skillList()),
@@ -1719,6 +1741,20 @@ export class AiDesk {
     }
     if (Object.keys(changes).length === 2 && !changes.sends.length && !changes.noSends.length) throw new MusicError("nothing to change");
     return { id, changes };
+  }
+
+  /** analyze_mix's target: one of serie, or the user's own (lufs, true_peak). */
+  private loudnessTarget(args: Record<string, unknown>): LoudnessTarget {
+    const name = fold(this.str(args, "target", false) ?? "none");
+    const key = /stream|spotify|youtube|apple/.test(name) ? "streaming" : /cine|cinema|film|tv|broadcast|ebu|r128/.test(name) ? "cinema" : name === "none" || name === "ninguno" || name === "" ? "none" : null;
+    const lufs = this.num(args, "lufs");
+    const truePeak = this.num(args, "true_peak");
+    if (key === null && lufs === undefined) throw new MusicError(`Unknown target '${this.str(args, "target", false)}': 'streaming', 'cinema' or 'none', or give 'lufs' (and 'true_peak') for the user's own`);
+    const base = TARGETS[key ?? "none"]!;
+    if (lufs === undefined && truePeak === undefined) return base;
+    if (lufs !== undefined && !(lufs <= -5 && lufs >= -40)) throw new MusicError("lufs goes from -40 to -5");
+    if (truePeak !== undefined && !(truePeak <= 0 && truePeak >= -6)) throw new MusicError("true_peak goes from -6 to 0 dBTP");
+    return { name: "the user's own", lufs: lufs ?? base.lufs ?? -14, truePeak: truePeak ?? base.truePeak ?? -1 };
   }
 
   /** A bus by id ("b2") or by name ("Voces", "voces", "Voc"). */
