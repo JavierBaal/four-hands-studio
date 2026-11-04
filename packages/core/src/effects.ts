@@ -265,3 +265,40 @@ export function insertName(insert: Insert, lang: "es" | "en" = "en"): string {
 export function allInsertIds(song: Song): string[] {
   return [...(song.masterInserts ?? []), ...Object.values(song.tracks).flatMap((t) => t.inserts ?? [])].map((x) => x.id);
 }
+
+/** A parameter's place on a fader, 0–1 (log for frequencies, Q and times), and back. */
+export function paramToUnit(def: ParamDef, value: number): number {
+  const v = Math.max(def.min, Math.min(def.max, value));
+  if (def.log && def.min > 0) return Math.log(v / def.min) / Math.log(def.max / def.min);
+  return (v - def.min) / (def.max - def.min);
+}
+
+export function unitToParam(def: ParamDef, unit: number): number {
+  const u = Math.max(0, Math.min(1, unit));
+  const v = def.log && def.min > 0 ? def.min * Math.pow(def.max / def.min, u) : def.min + u * (def.max - def.min);
+  // Readable steps: whole Hz under 1 kHz, tenths of dB, ms and ratios with one decimal.
+  if (def.unit === "on") return u >= 0.5 ? 1 : 0;
+  if (def.unit === "Hz") return v < 1000 ? Math.round(v) : Math.round(v / 10) * 10;
+  if (def.unit === "Q") return Math.round(v * 100) / 100;
+  return Math.round(v * 10) / 10;
+}
+
+/**
+ * A value people type: "-24", "-24 dB", "2,5 kHz", "4:1", "5 ms", "on". Null if it cannot be read
+ * or is out of range (the field stays open and says the range).
+ */
+export function parseParamValue(def: ParamDef, text: string): number | null {
+  const t = text.trim().toLowerCase().replace("−", "-").replace(",", ".");
+  if (def.unit === "on") {
+    if (["on", "si", "sí", "1", "true"].includes(t)) return 1;
+    if (["off", "no", "0", "false"].includes(t)) return 0;
+    return null;
+  }
+  const m = /^([-+]?\d+(?:\.\d+)?)\s*(khz|hz|db|ms|s|:1|q)?$/.exec(t);
+  if (!m) return null;
+  let v = Number(m[1]);
+  if (m[2] === "khz" || (def.unit === "Hz" && !m[2] && v > 0 && v < 20 && def.min >= 20)) v *= 1000;
+  if (m[2] === "s" && def.unit === "ms") v *= 1000;
+  if (!Number.isFinite(v) || v < def.min - 1e-9 || v > def.max + 1e-9) return null;
+  return v;
+}

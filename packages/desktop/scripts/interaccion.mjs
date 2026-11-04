@@ -1412,6 +1412,65 @@ check("«al Máster» sends the effects there", ((await song()).masterInserts?.l
 await page.getByRole("radio", { name: "Instrumentos" }).click();
 await page.evaluate(() => window.fhTest.view.set({ bottom: "editor" }));
 
+// F2.2 parte C2: the window of Four Hands' own effects.
+await page.evaluate(() => window.fhTest.view.set({ bottom: "mix" }));
+await settle();
+const winTrack = (await song()).trackOrder[3];
+await page.evaluate(async (t) => {
+  await window.fhTest.replica.run("x", [{ type: "addInsert", target: t, spec: { kind: "eq" } }, { type: "addInsert", target: t, spec: { kind: "compressor" } }]);
+}, winTrack);
+await settle();
+const [eqId, compId] = (await song()).tracks[winTrack].inserts.map((x) => x.id);
+await page.locator(`.cslot[data-fx="${eqId}"]`).dblclick();
+await settle();
+check("double click on an own effect opens its window", (await page.locator(".fxwin.eq").count()) === 1 && /EQ/.test(await page.locator(".fxtitle").innerText()));
+// Drag band 4 (high-mid) up: its gain rises, one undo step.
+{
+  const box = await page.locator(".fxcurve canvas").boundingBox();
+  const pt = await page.locator(".fxpt").nth(3).boundingBox();
+  await page.mouse.move(pt.x + pt.width / 2, pt.y + pt.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(pt.x + pt.width / 2, box.y + box.height * 0.25, { steps: 4 });
+  await page.mouse.up();
+  await settle();
+  const eq = (await song()).tracks[winTrack].inserts[0];
+  check("dragging an EQ point up raises that band's gain", eq.params.highMidGain > 3, String(eq.params.highMidGain));
+  const sent = await page.evaluate((id) => [...window.fhTest.ai.engine.inserts.values()].flat().find((x) => x.id === id)?.params.highMidGain, eqId);
+  check("the engine gets the new gain", sent === eq.params.highMidGain, String(sent));
+  await page.keyboard.press("Control+z");
+  await settle();
+  check("one undo puts the band back", (await song()).tracks[winTrack].inserts[0].params.highMidGain === 0);
+}
+// A typed value in a band.
+await page.locator(".fxband").nth(2).locator("button.fxval").first().click();
+await page.keyboard.press("Control+a");
+await page.keyboard.type("250");
+await page.keyboard.press("Enter");
+await settle();
+check("a frequency can be typed in its band", (await song()).tracks[winTrack].inserts[0].params.lowMidFreq === 250);
+// The AI changes it: the window follows.
+await page.evaluate(async (id) => window.fhTest.replica.run("x", [{ type: "updateInsert", id, changes: { params: { highGain: 4 } } }]), eqId);
+await settle();
+check("what changes in the song shows in the window at once", /\+4,0 dB/.test(await page.locator(".fxband").nth(4).innerText()));
+await page.locator(".fxhead .tgl").click();
+await settle();
+check("«Activo» in the header bypasses the effect", (await song()).tracks[winTrack].inserts[0].bypass === true && (await page.locator(".fxwin.byp").count()) === 1);
+await page.keyboard.press("Escape");
+await settle();
+check("Esc closes the window", (await page.locator(".fxwin").count()) === 0);
+// The compressor: its faders, and its reduction meter.
+await page.evaluate(() => (window.fhTest.ai.engine.reduction = 6));
+await page.locator(`.cslot[data-fx="${compId}"]`).dblclick();
+await settle();
+await page.waitForTimeout(200);
+check("the compressor's window shows how much it reduces", (await page.locator(".fxwin.compressor").count()) === 1 && /6,0/.test(await page.locator(".fxgrval").innerText()));
+await page.locator(".fxrow").nth(1).locator(".fader").focus();
+await page.keyboard.press("ArrowRight");
+await settle();
+check("a fader in the window changes its parameter (ratio)", (await song()).tracks[winTrack].inserts[1].params.ratio > 3, String((await song()).tracks[winTrack].inserts[1].params.ratio));
+await page.locator(".fxhead .ibtn").click();
+await page.evaluate(() => window.fhTest.view.set({ bottom: "editor" }));
+
 console.log(`${passed} passed, ${failures.length} failed`);
 for (const f of failures) console.log("FAIL", f);
 if (errors.length) console.log("page errors", errors);

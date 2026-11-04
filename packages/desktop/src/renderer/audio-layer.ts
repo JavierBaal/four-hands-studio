@@ -405,6 +405,34 @@ export class AudioLayer {
     for (const id of [...this.pluginParamsSent.keys()]) if (!seen.has(id)) this.pluginParamsSent.delete(id);
   }
 
+  /**
+   * F2.2 parte C2: an own effect's parameters while a control moves in its window: only the sound
+   * changes (the song changes on release, one undo step). The next sync sends the song's chain.
+   */
+  previewInsert(id: string, params: Record<string, number>, bypass?: boolean): void {
+    if (this.engineStatus.state !== "ready") return;
+    const song = this.heard();
+    const where: Array<[number, readonly import("@fourhands/core").Insert[]]> = [[-1, song.masterInserts ?? []]];
+    for (const tid of song.trackOrder) {
+      const t = song.tracks[tid];
+      if (t && t.output !== "external") where.push([this.stripOf(t), t.inserts ?? []]);
+    }
+    for (const [strip, chain] of where) {
+      if (!chain.some((x) => x.id === id)) continue;
+      const changed = chain.map((x) => (x.id === id ? { ...x, params: { ...(x.params ?? {}), ...params }, ...(bypass === undefined ? {} : { bypass }) } : x));
+      const sent = engineChain(changed);
+      this.chainsSent.set(strip, JSON.stringify(sent));
+      void this.bridge.engineInserts(strip, sent);
+      return;
+    }
+  }
+
+  /** How many dB the compressors and limiters with these ids are reducing now (null without engine). */
+  async reductions(ids: string[]): Promise<Record<string, number> | null> {
+    if (this.engineStatus.state !== "ready" || ids.length === 0) return null;
+    return this.bridge.engineReductions(ids);
+  }
+
   /** A plugin effect's own window, from the engine. */
   async showInsert(id: string): Promise<boolean> {
     const ok = await this.bridge.engineShowInsert(id);

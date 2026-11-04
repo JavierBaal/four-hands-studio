@@ -832,6 +832,16 @@ function registerIpc(): void {
     if (!engine || engine.current.state !== "ready") return;
     void engine.request({ type: "setParam", id: String(id), index: Number(index), value: Number(value) }).catch(() => {});
   });
+  // F2.2 parte C2: how much each compressor or limiter is reducing now (its window's meter).
+  ipcMain.handle(CH.engineReductions, async (_e, ids: unknown) => {
+    if (!engine || engine.current.state !== "ready" || !Array.isArray(ids)) return null;
+    try {
+      const reply = await engine.request({ type: "reductions", ids: ids.map(String) });
+      return (reply.values ?? {}) as Record<string, number>;
+    } catch {
+      return null;
+    }
+  });
   ipcMain.handle(CH.engineShowInsert, async (_e, id: unknown) => {
     try {
       return !!(await engineHost().request({ type: "showInsert", id: String(id) })).ok;

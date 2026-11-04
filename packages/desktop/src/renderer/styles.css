@@ -701,3 +701,46 @@ button.cfxcount { background: transparent; cursor: pointer; font-family: 'IBM Pl
 .sndmode { align-self: stretch; display: flex; }
 .sndmode .segb { flex: 1; }
 .sndfor .linkbtn { margin-left: auto; font-size: 12px; }
+/* Ventana de los efectos de Four Hands (F2.2 parte C2): flotante, se arrastra por la cabecera. */
+.fxwin { position: fixed; z-index: 40; background: var(--bg-card); border: 1px solid var(--line-control); border-radius: 12px; box-shadow: 0 18px 48px rgba(0,0,0,.45); display: flex; flex-direction: column; min-width: 420px; max-width: calc(100vw - 16px); }
+.fxhead { display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 12px; border-bottom: 1px solid var(--line); cursor: grab; user-select: none; }
+.fxhead:active { cursor: grabbing; }
+.fxtitle { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; }
+.fxtitle b { font-weight: 600; }
+.fxkind, .fxwhere { color: var(--text-2); }
+.fxhead .tgl { height: 28px; }
+.fxbody { padding: 12px; }
+.fxwin.byp .fxbody { opacity: .55; }
+.fxeq { display: flex; flex-direction: column; gap: 10px; width: 762px; }
+.fxcurve { position: relative; width: 760px; height: 210px; background: var(--bg-lane); border: 1px solid var(--line-soft); border-radius: 8px; overflow: hidden; }
+.fxcurve canvas { display: block; cursor: crosshair; }
+.fxpt { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%; background: var(--bg-control-on); border: 1.5px solid var(--text); color: var(--text); font-size: 10px; line-height: 15px; text-align: center; pointer-events: none; font-family: 'IBM Plex Mono', monospace; }
+.fxpt.off { background: transparent; border-style: dashed; border-color: var(--text-2); color: var(--text-2); }
+.fxpt.hot { background: var(--text); color: var(--bg-app); }
+.fxbands { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+.fxband { display: flex; flex-direction: column; gap: 3px; padding: 6px; border: 1px solid var(--line-soft); border-radius: 8px; background: var(--bg-app); min-width: 0; }
+.fxband.off .fxval { opacity: .5; }
+.fxbandhead { display: flex; align-items: center; gap: 5px; min-width: 0; }
+.fxbandn { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--text-2); }
+.fxbandname { font-size: 11px; color: var(--text-2); flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fxon { all: unset; font-size: 10px; padding: 0 5px; border: 1px solid var(--line-control); border-radius: 4px; color: var(--text-2); cursor: pointer; font-family: 'IBM Plex Mono', monospace; }
+.fxon.on { color: var(--text); background: var(--bg-control-on); border-color: var(--line-on); }
+.fxval { all: unset; font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; font-size: 11px; color: var(--text); padding: 1px 4px; border-radius: 4px; cursor: text; min-height: 16px; box-sizing: border-box; white-space: nowrap; }
+button.fxval:hover { background: var(--bg-control); }
+.fxval.dim { color: var(--text-2); cursor: default; }
+input.inline.fxval { width: 72px; background: var(--bg-control); border: 1px solid var(--line-on); }
+input.inline.fxval.bad { border-color: var(--clip); }
+.fxdyn { display: flex; gap: 14px; align-items: stretch; }
+.fxgraph { position: relative; width: 180px; height: 180px; background: var(--bg-lane); border: 1px solid var(--line-soft); border-radius: 8px; overflow: hidden; flex: none; }
+.fxaxes { position: absolute; inset: auto 6px 4px 6px; display: flex; justify-content: space-between; font-size: 10px; color: var(--text-2); pointer-events: none; }
+.fxgr { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 46px; flex: none; }
+.fxgrlbl { font-size: 10px; color: var(--text-2); }
+.fxgrbar { flex: 1; width: 10px; min-height: 120px; background: var(--bg-page); border-radius: 2px; position: relative; overflow: hidden; }
+.fxgrbar > div { position: absolute; top: 0; left: 0; right: 0; background: var(--clip); opacity: .85; }
+.fxgrval { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--text); }
+.fxrows { display: flex; flex-direction: column; gap: 8px; justify-content: center; min-width: 300px; flex: 1; }
+.fxrow { display: grid; grid-template-columns: 96px 1fr 76px; align-items: center; gap: 10px; }
+.fxlabel { font-size: 12px; color: var(--text-2); }
+.fader.fxfader { width: 100%; }
+.fxrow .fxval { justify-self: end; }
+.fxdyn.lim .fxgrbar { min-height: 96px; }

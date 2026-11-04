@@ -386,6 +386,30 @@ export const SHOTS = [
     });
     await consoleLevels(page);
   } },
+  // F2.2 parte C2 (04/11/2026): the window of Four Hands' own effects.
+  ...[
+    ["ventana_eq", { kind: "eq", params: { lowCut: 1, lowCutFreq: 90, lowGain: -2, lowMidFreq: 320, lowMidGain: -3.5, lowMidQ: 1.4, highMidFreq: 3200, highMidGain: 2.5, highMidQ: 0.8, highGain: 3, highFreq: 9000 } }, "EQ medios"],
+    ["ventana_compresor", { kind: "compressor", params: { threshold: -24, ratio: 4, attack: 8, release: 140, knee: 6, makeup: 4 } }, null],
+    ["ventana_limitador", { kind: "limiter", params: { gain: 4, ceiling: -1, release: 60 } }, null],
+  ].map(([name, spec, rename]) => ({
+    name,
+    q: `?song=boceto&view=${view({ bottom: "mix" })}`,
+    act: async (page) => {
+      const id = await page.evaluate(async ([spec, rename]) => {
+        const { replica, ai } = window.fhTest;
+        ai.engine.reduction = spec.kind === "eq" ? undefined : spec.kind === "compressor" ? 5.2 : 2.4;
+        const target = spec.kind === "limiter" ? "master" : replica.song.trackOrder[2];
+        await replica.run("x", [{ type: "addInsert", target, spec }]);
+        const chain = target === "master" ? replica.song.masterInserts : replica.song.tracks[target].inserts;
+        const id = chain.at(-1).id;
+        if (rename) await replica.run("x", [{ type: "updateInsert", id, changes: { name: rename } }]);
+        return id;
+      }, [spec, rename]);
+      await consoleLevels(page);
+      await page.locator(`.cslot[data-fx="${id}"]`).dblclick();
+      await page.waitForTimeout(500);
+    },
+  })),
   // The Mezcla / Editor button (Fran, 03/11/2026: at the start of the bar).
   { name: "boton_mezcla_editor", q: `?song=boceto&view=${sketchView(1440 - 288 - 72, 12)}` },
   { name: "boton_mezcla_consola", q: `?song=boceto&view=${view({ bottom: "mix" })}`, act: consoleLevels },
