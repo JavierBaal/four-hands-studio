@@ -317,11 +317,9 @@ juce::var Link::handle (const juce::var& m, Connection& from)
         if (auto* list = m["order"].getArray())
             for (const auto& b : *list)
                 order.push_back ((int) b);
+        // No reply, like "mix" (Four Hands sends it without waiting; a reply only filled its log).
         engine.setRouting (std::move (strips), std::move (buses), std::move (order), m.hasProperty ("instrumentReverb") ? (int) m["instrumentReverb"] : -1);
-        juce::Array<juce::var> delays;
-        for (int b : order)
-            delays.add (engine.busDelay (b));
-        return obj ({ { "type", "routed" }, { "delays", delays } });
+        return {};
     }
 
     if (type == "meters" || type == "levels")
