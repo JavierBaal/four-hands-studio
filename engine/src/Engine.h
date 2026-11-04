@@ -5,6 +5,7 @@
 // Four Hands keeps the song; the engine only makes sound.
 #pragma once
 
+#include "Analyzer.h"
 #include "Effects.h"
 #include "GsEffects.h"
 #include "SoundFontSynth.h"
@@ -141,6 +142,12 @@ public:
     struct Level { double peak = 0, rms = 0; juce::int64 clips = 0; };
     /** Since the last call (for the meters), or since `resetLevels` (for the AI, «last playback»). */
     std::vector<Level> takeMeters (bool sinceReset);
+    /**
+     * F2.3, the AI's ear: what every strip, bus (key kBusChain + n) and the master (kMasterChain)
+     * measured since resetLevels, while the song played.
+     */
+    std::vector<Analyzer::Result> analysis() { return analyzer.results(); }
+    int analysisGaps() const { return analyzer.gaps(); }
     /** The buses' levels (up to the highest in the routing), like the strips'. */
     std::vector<Level> takeBusMeters (bool sinceReset);
     /** Strips in use: one past the highest that has sounded, had a plugin or a mix. */
@@ -323,6 +330,10 @@ private:
     std::vector<int> routedLatency;
     int routedCompensation = -1;
     void rebuildRouting();
+    /** F2.3: what the song sounds like, measured off the audio thread. */
+    Analyzer analyzer { kStrips + 1 + kBuses, kStrips };
+    void ensureAnalysisTaps();
+    void analyse (int inUse, int numSamples);
     void mixLegacy (int inUse, int numSamples);
     void mixRouted (Routing& r, int inUse, int numSamples);
     struct BusMix { double gain = 1, pan = 0; bool on = true; };

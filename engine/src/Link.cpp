@@ -337,6 +337,50 @@ juce::var Link::handle (const juce::var& m, Connection& from)
         return obj ({ { "type", type }, { "channels", list }, { "master", level (levels.back()) }, { "buses", buses } });
     }
 
+    if (type == "analysis")
+    {
+        // F2.3: what the last playback measured. Per strip / bus / master: integrated loudness
+        // (LUFS), loudest short-term, loudness range, peak and true peak (dBFS), seconds, and a frame
+        // per second: [ppq, LUFS, seven bands in dB, peak dB] (+ [correlation, side share] on the master).
+        const auto round1 = [] (double v) { return std::round (v * 10.0) / 10.0; };
+        const auto db = [] (double linear) { return linear > 1e-9 ? 20.0 * std::log10 (linear) : -120.0; };
+        juce::Array<juce::var> strips, buses;
+        juce::var masterVar;
+        for (const auto& r : engine.analysis())
+        {
+            juce::Array<juce::var> frames;
+            const bool isMaster = r.key == Engine::kMasterChain;
+            for (const auto& f : r.frames)
+            {
+                juce::Array<juce::var> row { std::round (f.ppq * 1000.0) / 1000.0, round1 (f.loudness) };
+                for (float b : f.bands)
+                    row.add (round1 (b));
+                row.add (round1 (db (f.peak)));
+                if (isMaster)
+                {
+                    row.add (std::round (f.correlation * 100.0) / 100.0);
+                    row.add (std::round (f.side * 100.0) / 100.0);
+                }
+                frames.add (juce::var (row));
+            }
+            auto o = obj ({ { "integrated", round1 (r.integrated) }, { "shortMax", round1 (r.shortMax) }, { "range", round1 (r.range) },
+                            { "peak", round1 (db (r.peak)) }, { "truePeak", round1 (db (r.truePeak)) }, { "seconds", round1 (r.seconds) }, { "frames", frames } });
+            if (isMaster)
+                masterVar = o;
+            else if (r.key >= Engine::kBusChain)
+            {
+                o.getDynamicObject()->setProperty ("bus", r.key - Engine::kBusChain);
+                buses.add (o);
+            }
+            else
+            {
+                o.getDynamicObject()->setProperty ("strip", r.key);
+                strips.add (o);
+            }
+        }
+        return obj ({ { "type", "analysis" }, { "strips", strips }, { "buses", buses }, { "master", masterVar }, { "gaps", engine.analysisGaps() } });
+    }
+
     if (type == "resetLevels")
     {
         engine.resetLevels();
