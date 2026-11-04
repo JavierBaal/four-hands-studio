@@ -4,9 +4,10 @@
  * grouped by kind (notes per track, harmony, form, song, tracks, annotations). Pure: the app keeps
  * the earlier version and passes both.
  */
+import { busList } from "./buses.js";
 import { insertName, paramDefs, paramText } from "./effects.js";
 import type { HistoryEntry } from "./document.js";
-import { type Authorship, type Insert, type Note, type Song, bpm, orderedSections, orderedTracks } from "./model.js";
+import { type Authorship, type Insert, type Note, type Send, type Song, bpm, orderedSections, orderedTracks } from "./model.js";
 import { barHarmony, formatNote } from "./compact.js";
 import { barsOf, keyChangesText, keyText, songBars, tempoChangesText } from "./notation.js";
 
@@ -175,7 +176,7 @@ export function changesText(before: Song, after: Song, options: ChangesOptions):
     if (old.program !== t.program || old.sound?.name !== t.sound?.name) d.push(`sound ${t.sound ? `"${t.sound.name}"` : `program ${t.program}`}`);
     if (old.volume !== t.volume) d.push(`vol ${Math.round(old.volume * 100)} → ${Math.round(t.volume * 100)}`);
     if (old.pan !== t.pan) d.push(`pan ${Math.round(old.pan * 100)} → ${Math.round(t.pan * 100)}`);
-    if ((old.reverb ?? 0) !== (t.reverb ?? 0)) d.push(`rev ${Math.round((old.reverb ?? 0) * 100)} → ${Math.round((t.reverb ?? 0) * 100)}`);
+    d.push(...routeChanges(before, after, old, t));
     if (old.mute !== t.mute) d.push(t.mute ? "muted" : "unmuted");
     const fx = chainChanges(old.inserts ?? [], t.inserts ?? []);
     if (fx) d.push(`effects: ${fx}`);
@@ -189,6 +190,29 @@ export function changesText(before: Song, after: Song, options: ChangesOptions):
   const keptBefore = before.trackOrder.filter((id) => after.tracks[id]);
   if (kept.join() !== keptBefore.join()) trackLines.push(`  order: ${orderedTracks(after).map((t) => t.name).join(", ")}`);
   if (trackLines.length) lines.push("", "Tracks:", ...trackLines);
+
+  // Buses (F2.2 parte D).
+  const busLines: string[] = [];
+  const busesBefore = before.buses ?? {};
+  for (const b of busList(after)) {
+    const old = busesBefore[b.id];
+    if (!old) {
+      busLines.push(`  + ${b.name} (${b.id})`);
+      continue;
+    }
+    const d: string[] = [];
+    if (old.name !== b.name) d.push(`renamed from ${old.name}`);
+    if (old.volume !== b.volume) d.push(`vol ${Math.round(old.volume * 100)} → ${Math.round(b.volume * 100)}`);
+    if (old.pan !== b.pan) d.push(`pan ${Math.round(old.pan * 100)} → ${Math.round(b.pan * 100)}`);
+    if (!!old.mute !== !!b.mute) d.push(b.mute ? "muted" : "unmuted");
+    if (!!old.solo !== !!b.solo) d.push(b.solo ? "soloed" : "solo off");
+    d.push(...routeChanges(before, after, old, b));
+    const fx = chainChanges(old.inserts ?? [], b.inserts ?? []);
+    if (fx) d.push(`effects: ${fx}`);
+    if (d.length) busLines.push(`  ${b.name} (${b.id}): ${d.join(", ")}`);
+  }
+  for (const b of busList(before)) if (!after.buses?.[b.id]) busLines.push(`  - ${b.name} (${b.id})`);
+  if (busLines.length) lines.push("", "Buses:", ...busLines);
 
   // Annotations.
   const annLines: string[] = [];
@@ -205,6 +229,21 @@ export function changesText(before: Song, after: Song, options: ChangesOptions):
   return lines.join("\n");
 }
 
+
+/** "→ Voces", "send Reverb 30 → 45", "+ send Delay 20 pre", "− send Voces": where a channel's sound goes. */
+function routeChanges(before: Song, after: Song, old: { bus?: string; sends?: Send[] }, now: { bus?: string; sends?: Send[] }): string[] {
+  const name = (song: Song, id: string | undefined) => (id ? (song.buses?.[id]?.name ?? id) : "Master");
+  const d: string[] = [];
+  if ((old.bus ?? "") !== (now.bus ?? "")) d.push(`→ ${name(after, now.bus)}`);
+  const pct = (s: Send) => `${Math.round(s.level * 100)}${s.pre ? " pre" : ""}`;
+  for (const s of now.sends ?? []) {
+    const was = old.sends?.find((x) => x.bus === s.bus);
+    if (!was) d.push(`+ send ${name(after, s.bus)} ${pct(s)}`);
+    else if (pct(was) !== pct(s)) d.push(`send ${name(after, s.bus)} ${pct(was)} → ${pct(s)}`);
+  }
+  for (const s of old.sends ?? []) if (!now.sends?.some((x) => x.bus === s.bus)) d.push(`− send ${name(before, s.bus)}`);
+  return d;
+}
 
 /** "+ EQ (x3), Compressor (x4) threshold −18,0 dB → −24,0 dB, − Limiter (x5)": what changed in a chain. */
 function chainChanges(before: readonly Insert[], after: readonly Insert[]): string {

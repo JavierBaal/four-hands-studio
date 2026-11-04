@@ -5,6 +5,7 @@
  * is saved in `.fourhands` files, patched by commands and diffed for the window.
  * All times are integer ticks at PPQ (960 per quarter note); ticks never leave the core.
  */
+import { withDefaultBuses } from "./buses.js";
 import { PPQ } from "./time.js";
 
 /** Who decided something. An AI is always identified by its MCP client (e.g. "claude-ai"). */
@@ -122,10 +123,12 @@ export interface Track {
   /** -1 (left) to 1 (right). */
   pan: number;
   /**
-   * Reverb send (CC91), 0–1 (H4, Fran 15/10/2026: "los violines más lejos"). Absent: 0, the
-   * synthesizer's own default, so songs from before sound the same.
+   * Where its sound goes after its fader (F2.2 parte D): a bus id. Absent: the Master.
+   * (H4's per-track reverb is now a send to the «Reverb» bus: `sends`, buses.ts.)
    */
-  reverb?: number;
+  bus?: string;
+  /** Sends to buses (F2.2 parte D), one per bus at most, in the order they were added. Absent: none. */
+  sends?: Send[];
   mute: boolean;
   solo: boolean;
   /** Index in the track palette (DIRECCION_ARTISTICA.md, 2.7), 0 to TRACK_COLOR_COUNT - 1. */
@@ -153,9 +156,40 @@ export interface Track {
   sound?: TrackSound;
 }
 
-/** A preset of a sound bank installed by the user (a SoundFont file), by its file name. */
+/**
+ * A send to a bus (F2.2 parte D, Fran 04/11/2026): a copy of the sound at `level` (0–1, linear;
+ * 1 = as loud as the strip), after the fader unless `pre`.
+ */
+export interface Send {
+  bus: string;
+  level: number;
+  /** Before the fader: the fader does not change what goes to the bus. Absent: after. */
+  pre?: true;
+}
+
+/**
+ * A bus (F2.2 parte D): a channel fed by tracks (their output or their sends) and by other buses,
+ * with its own effects, fader and output. Buses chain (Voces → Mix bus → Máster), never in a loop.
+ */
+export interface Bus {
+  /** "b3": never reused in the song. */
+  id: string;
+  name: string;
+  /** Index in the track palette, like a track's. */
+  color: number;
+  /** The tracks' scale: 0–1, the CC7 curve, 1 = 0 dB. */
+  volume: number;
+  pan: number;
+  mute?: true;
+  solo?: true;
+  /** Where it goes: another bus. Absent: the Master. */
+  bus?: string;
+  sends?: Send[];
+  inserts?: Insert[];
+}
+
 /** An insert effect (F2.2 parte C): one of Four Hands' own, or a plugin (VST3). */
-export type InsertKind = "eq" | "compressor" | "limiter" | "plugin";
+export type InsertKind = "eq" | "compressor" | "limiter" | "reverb" | "plugin";
 
 export interface Insert {
   /** "x12": never reused in the song. */
@@ -250,7 +284,7 @@ export interface MidiFileSettings {
   releaseVelocity: number;
 }
 
-export type IdPrefix = "n" | "t" | "s" | "a" | "p" | "i" | "x";
+export type IdPrefix = "n" | "t" | "s" | "a" | "p" | "i" | "x" | "b";
 
 /** The song concept (ESTUDIO_SKILLS_COMPOSICION.md, 6.3): the intention and the limits, in words. */
 export interface SongConcept {
@@ -282,6 +316,12 @@ export interface Song {
   masterVolume?: number;
   /** Insert effects on the Master, before its fader (F2.2 parte C). Absent: none. */
   masterInserts?: Insert[];
+  /**
+   * Buses (F2.2 parte D) by id, and their order in the console. Every song the app makes or opens
+   * has them, with the «Reverb» bus (buses.ts, `withDefaultBuses`); absent only in bare test songs.
+   */
+  buses?: Record<string, Bus>;
+  busOrder?: string[];
   /** Current revision (`r1532`). Every transaction, undo and redo increases it. */
   revision: number;
   /** Next number per id prefix. Ids are never reused within a song (ARQUITECTURA.md, 4.3). */
@@ -307,7 +347,7 @@ export function emptySong(title = "Sin título"): Song {
     meter: { numerator: 4, denominator: 4 },
     key: { fifths: 0, mode: "major" },
     revision: 0,
-    counters: { n: 1, t: 1, s: 1, a: 1, p: 1, i: 1, x: 1 },
+    counters: { n: 1, t: 1, s: 1, a: 1, p: 1, i: 1, x: 1, b: 1 },
     trackOrder: [],
     tracks: {},
     notes: {},
@@ -328,7 +368,7 @@ export function starterSong(title = "Sin título"): Song {
   song.trackOrder = ["t1"];
   song.counters.t = 2;
   song.context.activeTrackId = "t1";
-  return song;
+  return withDefaultBuses(song);
 }
 
 // ---------------------------------------------------------------------------

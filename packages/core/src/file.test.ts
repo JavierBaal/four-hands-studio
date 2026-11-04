@@ -1,3 +1,5 @@
+import { addBus, setOutput, setSend } from "./buses.js";
+import { addInsert } from "./effects.js";
 import { describe, expect, it } from "vitest";
 import { addNotes, addTrack, setChord, updateNotes, updateTrack } from "./commands.js";
 import { SongDocument } from "./document.js";
@@ -49,13 +51,46 @@ describe(".fourhands", () => {
     expect(Object.values(again.song.notes).some((n) => n.pitch === 64)).toBe(true);
   });
 
-  it("keeps the reverb of a track and opens files without it", () => {
+  it("opens a song from before the buses with the «Reverb» bus and each track's reverb as its send (F2.2 parte D)", () => {
     const doc = sampleDoc();
-    doc.transact({ actor: USER, label: "Reverb" }, (tx) => updateTrack(tx, "t1", { reverb: 0.35 }));
-    const opened = parseSongFile(serializeSong({ song: doc.song, history: doc.history, proposals: [] }));
-    expect(opened.song.tracks.t1!.reverb).toBe(0.35);
-    const before = parseSongFile(serializeSong({ song: sampleDoc().song, history: [], proposals: [] }));
-    expect(before.song.tracks.t1!.reverb).toBeUndefined();
+    doc.transact({ actor: USER, label: "EQ" }, (tx) => addInsert(tx, "t1", { kind: "eq" }));
+    const old = JSON.parse(serializeSong({ song: doc.song, history: doc.history, proposals: [] }));
+    old.version = 1;
+    old.song.tracks.t1.reverb = 0.35;
+    delete old.song.counters.b;
+    delete old.song.buses;
+    delete old.song.busOrder;
+    old.song.counters.x = 1; // behind its effects: the new reverb must not take x1
+    const opened = parseSongFile(JSON.stringify(old));
+    expect(opened.song.busOrder).toEqual(["b1"]);
+    expect(opened.song.buses!.b1).toMatchObject({ name: "Reverb", volume: 1, pan: 0, inserts: [{ id: "x2", kind: "reverb" }] });
+    expect(opened.song.tracks.t1!.sends).toEqual([{ bus: "b1", level: 0.35 }]);
+    expect("reverb" in opened.song.tracks.t1!).toBe(false);
+    expect(opened.song.counters).toMatchObject({ b: 2, x: 3 });
+    // Saved again, it stays as it is (no second bus).
+    const again = parseSongFile(serializeSong(opened));
+    expect(again.song.busOrder).toEqual(["b1"]);
+  });
+
+  it("keeps buses, outputs and sends, and refuses loops and missing buses", () => {
+    const doc = sampleDoc();
+    doc.transact({ actor: USER, label: "buses" }, (tx) => {
+      const voces = addBus(tx, { name: "Voces" });
+      const mix = addBus(tx, { name: "Mix bus" });
+      setOutput(tx, voces, mix);
+      setOutput(tx, "t1", voces);
+      setSend(tx, "t1", mix, { level: 0.5, pre: true });
+    });
+    const text = serializeSong({ song: doc.song, history: doc.history, proposals: [] });
+    const opened = parseSongFile(text);
+    expect(opened.song.tracks.t1).toMatchObject({ bus: "b1", sends: [{ bus: "b2", level: 0.5, pre: true }] });
+    expect(opened.song.buses!.b1!.bus).toBe("b2");
+    const loop = JSON.parse(text);
+    loop.song.buses.b2.bus = "b1";
+    expect(() => parseSongFile(JSON.stringify(loop))).toThrow(/loop/);
+    const missing = JSON.parse(text);
+    missing.song.tracks.t1.bus = "b9";
+    expect(() => parseSongFile(JSON.stringify(missing))).toThrow(/missing bus/);
   });
 
   it("keeps the sound a track takes from a bank the user installed", () => {

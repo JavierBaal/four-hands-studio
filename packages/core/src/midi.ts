@@ -11,6 +11,7 @@
  */
 import midiFile from "midi-file";
 import type { MidiData, MidiEvent } from "midi-file";
+import { withDefaultBuses } from "./buses.js";
 import {
   type KeyChange,
   type Note,
@@ -356,6 +357,8 @@ export function importMidi(bytes: ArrayLike<number>, options: { title?: string }
 
   if (rounded) warnings.push(`Some times were rounded: the file uses ${tpb} ticks per quarter note.`);
   if (zeroLength > 0) warnings.push(`${zeroLength} zero-length notes were skipped.`);
+  // F2.2 parte D: an imported song starts with the «Reverb» bus, like a new one.
+  withDefaultBuses(song);
   return { song, warnings };
 }
 

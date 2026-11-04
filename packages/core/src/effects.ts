@@ -16,7 +16,7 @@ function check(ok: boolean, message: string): asserts ok {
   if (!ok) throw new EffectError(message);
 }
 
-export type ParamUnit = "Hz" | "dB" | "ms" | ":1" | "Q" | "on";
+export type ParamUnit = "Hz" | "dB" | "ms" | ":1" | "Q" | "on" | "%";
 
 /** One parameter of an own effect: its id, the name people read, its range and unit. */
 export interface ParamDef {
@@ -35,6 +35,7 @@ const hz = (id: string, name: string, min: number, max: number, d: number): Para
 const db = (id: string, name: string, min: number, max: number, d: number): ParamDef => ({ id, name, unit: "dB", min, max, default: d });
 const ms = (id: string, name: string, min: number, max: number, d: number): ParamDef => ({ id, name, unit: "ms", min, max, default: d, log: true });
 const on = (id: string, name: string, d: 0 | 1): ParamDef => ({ id, name, unit: "on", min: 0, max: 1, default: d });
+const pct = (id: string, name: string, d: number): ParamDef => ({ id, name, unit: "%", min: 0, max: 100, default: d });
 const q = (id: string, name: string, d: number): ParamDef => ({ id, name, unit: "Q", min: 0.3, max: 10, default: d, log: true });
 
 /** The own effects (ESTUDIO_FASE2_MOTOR.md, decisión 10): simple, and enough without paid plugins. */
@@ -75,6 +76,17 @@ export const OWN_EFFECTS: Record<Exclude<InsertKind, "plugin">, { name: { es: st
     // A short look-ahead (5 ms, fixed): the engine compensates it on the other tracks.
     params: [db("gain", "Input gain", 0, 24, 0), db("ceiling", "Ceiling", -12, 0, -1), ms("release", "Release", 1, 500, 50)],
   },
+  reverb: {
+    name: { es: "Reverb", en: "Reverb" },
+    // F2.2 parte D (Fran 04/11/2026): the GS reverb the built-in sounds had, now an effect like the
+    // others. Its defaults are that reverb exactly, all wet: it sits on the «Reverb» bus.
+    params: [
+      pct("mix", "Mix", 100),
+      pct("time", "Time", 50),
+      pct("tone", "Tone", 100),
+      { id: "preDelay", name: "Pre-delay", unit: "ms", min: 0, max: 200, default: 0 },
+    ],
+  },
 };
 
 export const OWN_KINDS = Object.keys(OWN_EFFECTS) as Array<Exclude<InsertKind, "plugin">>;
@@ -111,21 +123,28 @@ export function paramText(def: ParamDef, value: number, lang: "es" | "en" = "en"
       return dec(value, 2);
     case "on":
       return value >= 0.5 ? "on" : "off";
+    case "%":
+      return `${Math.round(value)} %`;
   }
 }
 
-/** Where a chain is: a track (its id) or the Master. */
+/** Where a chain is: a track or a bus (its id), or the Master. */
 export type ChainTarget = string | "master";
 
 export function chainOf(song: Song, target: ChainTarget): Insert[] {
   if (target === "master") return song.masterInserts ?? [];
+  if (/^b\d+$/.test(target)) {
+    const bus = song.buses?.[target];
+    check(!!bus, `Unknown bus: ${target}`);
+    return bus.inserts ?? [];
+  }
   const track = song.tracks[target];
   check(!!track, `Unknown track: ${target}`);
   return track.inserts ?? [];
 }
 
 function writeChain(tx: Transaction, target: ChainTarget, chain: Insert[]): void {
-  const path = target === "master" ? ["masterInserts"] : ["tracks", target, "inserts"];
+  const path = target === "master" ? ["masterInserts"] : /^b\d+$/.test(target) ? ["buses", target, "inserts"] : ["tracks", target, "inserts"];
   if (chain.length === 0) {
     if (chainOf(tx.song, target).length > 0) tx.remove(path);
   } else tx.set(path, chain);
@@ -133,7 +152,11 @@ function writeChain(tx: Transaction, target: ChainTarget, chain: Insert[]): void
 
 /** The effect with that id, and where it is. */
 export function findInsert(song: Song, id: string): { target: ChainTarget; index: number; insert: Insert } | null {
-  const chains: Array<[ChainTarget, Insert[]]> = [["master", song.masterInserts ?? []], ...song.trackOrder.map((t): [ChainTarget, Insert[]] => [t, song.tracks[t]?.inserts ?? []])];
+  const chains: Array<[ChainTarget, Insert[]]> = [
+    ["master", song.masterInserts ?? []],
+    ...song.trackOrder.map((t): [ChainTarget, Insert[]] => [t, song.tracks[t]?.inserts ?? []]),
+    ...(song.busOrder ?? []).map((b): [ChainTarget, Insert[]] => [b, song.buses?.[b]?.inserts ?? []]),
+  ];
   for (const [target, chain] of chains) {
     const index = chain.findIndex((x) => x.id === id);
     if (index >= 0) return { target, index, insert: chain[index]! };
@@ -263,7 +286,12 @@ export function insertName(insert: Insert, lang: "es" | "en" = "en"): string {
 
 /** Every effect id in the song, for the file's counters. */
 export function allInsertIds(song: Song): string[] {
-  return [...(song.masterInserts ?? []), ...Object.values(song.tracks).flatMap((t) => t.inserts ?? [])].map((x) => x.id);
+  return allInserts(song).map((x) => x.id);
+}
+
+/** Every effect in the song: the Master's, the tracks' and the buses'. */
+export function allInserts(song: Song): Insert[] {
+  return [...(song.masterInserts ?? []), ...Object.values(song.tracks).flatMap((t) => t.inserts ?? []), ...Object.values(song.buses ?? {}).flatMap((b) => b.inserts ?? [])];
 }
 
 /** A parameter's place on a fader, 0–1 (log for frequencies, Q and times), and back. */
@@ -280,6 +308,7 @@ export function unitToParam(def: ParamDef, unit: number): number {
   if (def.unit === "on") return u >= 0.5 ? 1 : 0;
   if (def.unit === "Hz") return v < 1000 ? Math.round(v) : Math.round(v / 10) * 10;
   if (def.unit === "Q") return Math.round(v * 100) / 100;
+  if (def.unit === "%") return Math.round(v);
   return Math.round(v * 10) / 10;
 }
 
@@ -294,7 +323,7 @@ export function parseParamValue(def: ParamDef, text: string): number | null {
     if (["off", "no", "0", "false"].includes(t)) return 0;
     return null;
   }
-  const m = /^([-+]?\d+(?:\.\d+)?)\s*(khz|hz|db|ms|s|:1|q)?$/.exec(t);
+  const m = /^([-+]?\d+(?:\.\d+)?)\s*(khz|hz|db|ms|s|:1|q|%)?$/.exec(t);
   if (!m) return null;
   let v = Number(m[1]);
   if (m[2] === "khz" || (def.unit === "Hz" && !m[2] && v > 0 && v < 20 && def.min >= 20)) v *= 1000;

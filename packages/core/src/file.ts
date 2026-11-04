@@ -4,14 +4,15 @@
  *
  * Pure: text in, text out. Autosave, temporary files and renaming are the app's job.
  */
-import { allInsertIds } from "./effects.js";
+import { busList, processingOrder, withDefaultBuses } from "./buses.js";
+import { allInsertIds, allInserts } from "./effects.js";
 import { z } from "zod";
 import type { HistoryEntry } from "./document.js";
 import { type IdPrefix, type Song, idNumber } from "./model.js";
 
 export const FILE_FORMAT = "fourhands";
 /** Bump when the shape changes, and add a migration from the previous version. */
-export const FILE_VERSION = 1;
+export const FILE_VERSION = 2;
 
 export class FourHandsFileError extends Error {
   override name = "FourHandsFileError";
@@ -56,13 +57,29 @@ const note = z.object({
 // F2.2 parte C: insert effects. Own effects keep their parameters; a plugin, only which it is.
 const insert = z.object({
   id: z.string().regex(/^x\d+$/),
-  kind: z.enum(["eq", "compressor", "limiter", "plugin"]),
+  kind: z.enum(["eq", "compressor", "limiter", "reverb", "plugin"]),
   name: z.string().min(1).max(60).optional(),
   bypass: z.literal(true).optional(),
   params: z.record(z.string().max(40), z.number()).optional(),
   plugin: z.object({ id: z.string().min(1).max(2000), name: z.string().min(1).max(200) }).optional(),
   pluginParams: z.record(z.string().regex(/^\d+$/), z.number().min(0).max(1)).optional(),
   pluginBase: z.record(z.string().regex(/^\d+$/), z.number().min(0).max(1)).optional(),
+});
+
+// F2.2 parte D: sends and buses.
+const send = z.object({ bus: z.string().regex(/^b\d+$/), level: z.number().min(0).max(1), pre: z.literal(true).optional() });
+
+const bus = z.object({
+  id: z.string().regex(/^b\d+$/),
+  name: z.string().min(1).max(60),
+  color: int.min(0),
+  volume: z.number().min(0).max(1),
+  pan: z.number().min(-1).max(1),
+  mute: z.literal(true).optional(),
+  solo: z.literal(true).optional(),
+  bus: z.string().regex(/^b\d+$/).optional(),
+  sends: z.array(send).max(32).optional(),
+  inserts: z.array(insert).max(64).optional(),
 });
 
 const track = z.object({
@@ -72,7 +89,8 @@ const track = z.object({
   channel: int.min(0).max(15),
   volume: z.number().min(0).max(1),
   pan: z.number().min(-1).max(1),
-  reverb: z.number().min(0).max(1).optional(),
+  bus: z.string().regex(/^b\d+$/).optional(),
+  sends: z.array(send).max(32).optional(),
   mute: z.boolean(),
   solo: z.boolean(),
   color: int.min(0),
@@ -111,9 +129,11 @@ const song = z.object({
   keyChanges: z.array(z.object({ tick: int.min(1), key: z.object({ fifths: int.min(-7).max(7), mode: z.enum(["major", "minor"]) }) })).optional(),
   masterVolume: z.number().min(0).max(1).optional(),
   masterInserts: z.array(insert).max(64).optional(),
+  buses: z.record(z.string(), bus).optional(),
+  busOrder: z.array(z.string()).optional(),
   revision: int.min(0),
   // `x` (effects) came with F2.2 parte C: songs from before start it at 1.
-  counters: z.object({ n: int.min(1), t: int.min(1), s: int.min(1), a: int.min(1), p: int.min(1), i: int.min(1), x: int.min(1).default(1) }),
+  counters: z.object({ n: int.min(1), t: int.min(1), s: int.min(1), a: int.min(1), p: int.min(1), i: int.min(1), x: int.min(1).default(1), b: int.min(1).default(1) }),
   trackOrder: z.array(z.string()),
   tracks: z.record(z.string(), track),
   notes: z.record(z.string(), note),
@@ -153,8 +173,26 @@ const fileSchema = z.object({
   pluginStates: z.record(z.string().regex(/^[tx]\d+$/), z.object({ id: z.string().min(1).max(2000), data: z.string().regex(/^[A-Za-z0-9+/=.]*$/).max(256 * 1024 * 1024) })).optional(),
 });
 
-/** Migrations from version N to N + 1, keyed by N. Empty while there is only version 1. */
-const MIGRATIONS: Record<number, (data: Record<string, unknown>) => Record<string, unknown>> = {};
+/** Migrations from version N to N + 1, keyed by N. */
+const MIGRATIONS: Record<number, (data: Record<string, unknown>) => Record<string, unknown>> = {
+  // F2.2 parte D (04/11/2026): the «Reverb» bus, and each track's reverb (H4) becomes its send there.
+  1: (data) => {
+    const song = data.song as { counters?: Record<string, number>; tracks?: Record<string, Record<string, unknown>>; buses?: unknown } | undefined;
+    if (!song || typeof song !== "object" || song.buses !== undefined) return data;
+    song.counters = { x: 1, b: 1, ...(song.counters ?? {}) };
+    // Effect ids must stay unique: start after the highest in use (the counter may be behind).
+    const ids = JSON.stringify(song).match(/"id":"x(\d+)"/g) ?? [];
+    for (const m of ids) song.counters.x = Math.max(song.counters.x!, Number(m.replace(/\D/g, "")) + 1);
+    withDefaultBuses(song as unknown as Song);
+    const busId = (song as unknown as Song).busOrder![0]!;
+    for (const t of Object.values(song.tracks ?? {})) {
+      const reverb = t.reverb;
+      delete t.reverb;
+      if (typeof reverb === "number" && reverb > 0) t.sends = [{ bus: busId, level: Math.min(1, reverb) }];
+    }
+    return data;
+  },
+};
 
 // ---------------------------------------------------------------------------
 // Write
@@ -262,9 +300,27 @@ function checkConsistency(s: Song): void {
   // Effects: every id once in the whole song, and the counter ahead of them.
   const effects = allInsertIds(s);
   if (new Set(effects).size !== effects.length) fail("The song is damaged: two effects share an id");
-  for (const x of [...(s.masterInserts ?? []), ...Object.values(s.tracks).flatMap((t) => t.inserts ?? [])]) {
+  for (const x of allInserts(s)) {
     if (x.kind === "plugin" ? !x.plugin : !!x.plugin) fail(`The song is damaged: effect ${x.id} does not match its kind`);
   }
   const maxEffect = Math.max(0, ...effects.map(idNumber));
   if (s.counters.x <= maxEffect) s.counters.x = maxEffect + 1;
+
+  // Buses: ids match their keys, the order lists them all, references exist, no loops.
+  if ((s.buses === undefined) !== (s.busOrder === undefined)) fail("The song is damaged: buses without their order");
+  const buses = s.buses ?? {};
+  for (const [key, b] of Object.entries(buses)) if (b.id !== key) fail(`The song is damaged at buses.${key}: id ${b.id}`);
+  const busOrder = new Set(s.busOrder ?? []);
+  if (busOrder.size !== (s.busOrder ?? []).length || busOrder.size !== Object.keys(buses).length || ![...busOrder].every((id) => id in buses)) {
+    fail("The song is damaged: the bus order does not match the buses");
+  }
+  for (const c of [...Object.values(s.tracks), ...Object.values(buses)]) {
+    if (c.bus !== undefined && !(c.bus in buses)) fail(`The song is damaged: ${c.id} goes to a missing bus`);
+    const to = (c.sends ?? []).map((x) => x.bus);
+    if (to.some((b) => !(b in buses))) fail(`The song is damaged: ${c.id} sends to a missing bus`);
+    if (new Set(to).size !== to.length) fail(`The song is damaged: ${c.id} sends twice to the same bus`);
+  }
+  if (processingOrder(s).length !== busList(s).length) fail("The song is damaged: its buses go round in a loop");
+  const maxBus = Math.max(0, ...Object.keys(buses).map(idNumber));
+  if (s.counters.b <= maxBus) s.counters.b = maxBus + 1;
 }

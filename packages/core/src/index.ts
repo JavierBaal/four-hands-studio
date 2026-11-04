@@ -4,6 +4,7 @@ export * from "./tempo.js";
 export * from "./document.js";
 export * from "./commands.js";
 export * from "./effects.js";
+export * from "./buses.js";
 export * from "./midi.js";
 export * from "./file.js";
 export * from "./compact.js";

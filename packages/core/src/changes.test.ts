@@ -43,7 +43,7 @@ describe("get_changes_since: what changed between two versions", () => {
     expect(text).toContain("tempo: 72 → 80 BPM");
     expect(text).toContain("+ Coda c. 53–56");
     expect(text).toContain("vol 80 → 50");
-    expect(text).toContain("rev 0 → 30");
+    expect(text).toContain("+ send Reverb 30");
     expect(text).toContain('+ "más aire" c. 1 (user)');
   });
 

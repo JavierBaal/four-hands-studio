@@ -8,6 +8,7 @@
  * - Changing only the velocity (or moving the note to another track) does not.
  * - Accepting a proposal does not either: it runs with the AI as author (`TransactionMeta.author`).
  */
+import { setReverb } from "./buses.js";
 import { CommandError, type Transaction } from "./document.js";
 import {
   type Annotation,
@@ -223,7 +224,7 @@ export function addTrack(tx: Transaction, spec: TrackSpec): string {
 }
 
 export type TrackChanges = Partial<Pick<Track, "name" | "program" | "channel" | "volume" | "pan" | "mute" | "solo" | "color">> & {
-  /** Reverb send 0–1; 0 removes the field (the default). */
+  /** H4's reverb, 0–1: the track's send to the reverb bus (F2.2 parte D); 0 removes the send. */
   reverb?: number;
   /** A preset of another sound bank, or null to go back to the default bank. */
   sound?: TrackSound | null;
@@ -248,10 +249,7 @@ export function updateTrack(tx: Transaction, id: string, changes: TrackChanges):
   if (changes.name !== undefined) check(changes.name.trim().length > 0, "A track needs a name");
   if (changes.color !== undefined) checkColor(changes.color);
   const { sound, output, reverb, plugin, ...rest } = changes;
-  if (reverb !== undefined && reverb !== (track.reverb ?? 0)) {
-    if (reverb === 0) tx.remove(["tracks", id, "reverb"]);
-    else tx.set(["tracks", id, "reverb"], reverb);
-  }
+  if (reverb !== undefined) setReverb(tx, id, reverb);
   if (plugin) {
     check(plugin.id.trim().length > 0 && plugin.name.trim().length > 0, "A plugin needs its id and name");
     if (JSON.stringify(track.plugin) !== JSON.stringify(plugin)) tx.set(["tracks", id, "plugin"], { id: plugin.id, name: plugin.name });
