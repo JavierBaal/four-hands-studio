@@ -263,7 +263,7 @@ export class AudioLayer {
 
   /** Every insert effect: Four Hands' own and the plugin effects (F2.2 parte C, the Sonidos tab). */
   effectCatalog(lang: Lang, ownLabel: string): EffectItem[] {
-    const names = { eq: OWN_EFFECTS.eq.name[lang], compressor: OWN_EFFECTS.compressor.name[lang], limiter: OWN_EFFECTS.limiter.name[lang] };
+    const names = { eq: OWN_EFFECTS.eq.name[lang], compressor: OWN_EFFECTS.compressor.name[lang], limiter: OWN_EFFECTS.limiter.name[lang], reverb: OWN_EFFECTS.reverb.name[lang] };
     return buildEffectCatalog({ lang, plugins: this.pluginList?.plugins ?? [], prefs: this.soundPrefs, ownLabel, ownNames: names });
   }
 
