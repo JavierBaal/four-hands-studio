@@ -400,7 +400,8 @@ await page.locator(".qdialog .mixtype").nth(2).click();
 await page.locator(".qdialog input.inline").fill("35");
 await page.keyboard.press("Enter");
 await settle();
-check("mixer sets reverb", (await song()).tracks[mixTrack].reverb === 0.35, (await song()).tracks[mixTrack].reverb);
+// Parte D: the reverb is the send to the «Reverb» bus (b1).
+check("mixer sets reverb", JSON.stringify((await song()).tracks[mixTrack].sends) === JSON.stringify([{ bus: "b1", level: 0.35 }]), JSON.stringify((await song()).tracks[mixTrack].sends));
 await page.keyboard.press("Escape");
 check("mixer closes with Esc", (await page.locator(".qdialog[role=dialog]").count()) === 0);
 
@@ -1469,7 +1470,84 @@ await page.keyboard.press("ArrowRight");
 await settle();
 check("a fader in the window changes its parameter (ratio)", (await song()).tracks[winTrack].inserts[1].params.ratio > 3, String((await song()).tracks[winTrack].inserts[1].params.ratio));
 await page.locator(".fxhead .ibtn").click();
-await page.evaluate(() => window.fhTest.view.set({ bottom: "editor" }));
+
+// F2.2 parte D (04/11/2026): buses and sends in the console.
+await page.evaluate(() => window.fhTest.view.set({ bottom: "mix", mixNarrow: false, mixMax: true }));
+await settle();
+// A track with no sends yet (the first one sends to the reverb since the mixer test).
+const bTrack = await page.evaluate(() => { const s = window.fhTest.replica.song; return s.trackOrder.find((id) => !s.tracks[id].sends && !s.tracks[id].output); });
+const bStrip = page.locator(`.cstrip[data-track="${bTrack}"]`);
+check("the console has the «Buses» divider and the «Reverb» bus with its reverb", (await page.locator(".cdivider", { hasText: "Buses" }).count()) === 1 && (await page.locator('.cstrip.bus[data-bus="b1"] .cslot', { hasText: "Reverb" }).count()) === 1);
+let routing = await page.evaluate(() => window.fhTest.ai.engine.routing);
+check("the engine gets the routing: the Reverb bus, which also takes the instruments' own reverb", routing?.order?.length === 1 && routing.buses[0].out === -1 && routing.instrumentReverb === routing.order[0], JSON.stringify(routing));
+await bStrip.locator("button.csend.add").click();
+await menuItem("Reverb").click();
+await settle();
+check("«+ envío» › Reverb sends the track to the Reverb bus at half", JSON.stringify((await song()).tracks[bTrack].sends) === JSON.stringify([{ bus: "b1", level: 0.5 }]), JSON.stringify((await song()).tracks[bTrack].sends));
+routing = await page.evaluate(() => window.fhTest.ai.engine.routing);
+check("and the engine gets the send", routing.strips.some((r) => r.sends.length === 1 && r.sends[0].level === 0.5 && !r.sends[0].pre), JSON.stringify(routing.strips));
+const sendBar = bStrip.locator('.csend[data-send="b1"]');
+const sbb = await sendBar.boundingBox();
+await page.mouse.move(sbb.x + sbb.width / 2, sbb.y + sbb.height / 2);
+await page.mouse.down();
+await page.mouse.move(sbb.x + sbb.width * 0.25, sbb.y + sbb.height / 2, { steps: 4 });
+await page.mouse.up();
+await settle();
+const lowered = (await song()).tracks[bTrack].sends[0].level;
+check("dragging the send to the left lowers it", lowered < 0.5 && lowered > 0.1, String(lowered));
+await page.keyboard.press("Control+z");
+await settle();
+check("one undo puts the send back", (await song()).tracks[bTrack].sends[0].level === 0.5);
+await sendBar.click({ button: "right" });
+await menuItem("Antes del fader").click();
+await settle();
+check("right click › Antes del fader makes it pre-fader", (await song()).tracks[bTrack].sends[0].pre === true && (await page.locator('.csend.pre[data-send="b1"]').count()) === 1);
+// The output: a new bus for the track, named in place.
+await bStrip.locator("button.cout").click();
+await menuItem("Nuevo bus…").click();
+await settle();
+check("the output › Nuevo bus… makes a bus and sends the track into it", (await song()).tracks[bTrack].bus === "b2" && (await song()).buses.b2 !== undefined);
+await page.keyboard.press("Control+a");
+await page.keyboard.type("Voces");
+await page.keyboard.press("Enter");
+await settle();
+check("the new bus's name is typed in place", (await song()).buses.b2.name === "Voces" && /→ Voces/.test(await bStrip.locator("button.cout").innerText()));
+check("a bus with tracks going in says it is a subgroup", /Subgrupo/.test(await page.locator('.cstrip.bus[data-bus="b2"] .cinst').innerText()));
+await page.locator('.cstrip.bus[data-bus="b2"] .cvfader').focus();
+await page.keyboard.press("ArrowDown");
+await settle();
+const vBus = (await song()).buses.b2.volume;
+const vSent = await page.evaluate(() => window.fhTest.ai.engine.buses.find((b) => b.id === "b2"));
+check("the bus's fader writes its volume and the engine gets the gain", vBus < 1 && vSent && Math.abs(vSent.gain - Math.pow(10, (40 * Math.log10(Math.round(vBus * 127) / 127)) / 20)) < 1e-9, JSON.stringify(vSent));
+await page.locator('.cstrip.bus[data-bus="b2"] .msb', { hasText: "S" }).click();
+await settle();
+const soloOn = await page.evaluate(() => window.fhTest.ai.engine.mix.filter((m) => m.on !== false && m.track).map((m) => m.track));
+check("S on a bus keeps on only what goes into it", JSON.stringify(soloOn) === JSON.stringify([bTrack]), JSON.stringify(soloOn));
+await page.locator('.cstrip.bus[data-bus="b2"] .msb', { hasText: "S" }).click();
+await settle();
+// A bus cannot go into one that already goes into it.
+await page.locator('.cstrip.bus[data-bus="b1"] button.cout').click();
+await menuItem("Voces").click();
+await settle();
+await page.locator('.cstrip.bus[data-bus="b2"] button.cout').click();
+check("a bus's output menu leaves out the buses that would loop", (await page.locator(".menu [role=menuitem]", { hasText: "Reverb" }).count()) === 0);
+await page.keyboard.press("Escape");
+await page.keyboard.press("Control+z");
+await settle();
+// Supr deletes the selected bus: the track goes back to the Master, with a notice.
+await page.locator('.cstrip.bus[data-bus="b2"] .cname').click();
+await page.keyboard.press("Delete");
+await settle();
+check("Supr deletes the selected bus and its track goes back to the Master", (await song()).buses.b2 === undefined && (await song()).tracks[bTrack].bus === undefined);
+check("a notice says where its tracks went", /Voces.*Máster/.test(await page.locator(".notice").first().innerText().catch(() => "")), await page.locator(".notice").first().innerText().catch(() => "none"));
+await page.keyboard.press("Control+z");
+await settle();
+check("one undo brings the bus back, with its track", (await song()).buses.b2?.name === "Voces" && (await song()).tracks[bTrack].bus === "b2");
+await page.getByRole("button", { name: "Añadir bus" }).click();
+await settle();
+check("«Añadir bus» adds a bus after the others", JSON.stringify((await song()).busOrder) === JSON.stringify(["b1", "b2", "b3"]));
+await page.keyboard.press("Escape");
+await page.evaluate(() => window.fhTest.view.set({ bottom: "editor", mixMax: false }));
 
 console.log(`${passed} passed, ${failures.length} failed`);
 for (const f of failures) console.log("FAIL", f);

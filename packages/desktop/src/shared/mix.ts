@@ -5,6 +5,7 @@
  * Volume is CC7 (`round(volume × 127)`), and the General MIDI curve for CC7 is
  * 40 · log10(cc / 127) dB, so 0.8 (CC 102) is −3.8 dB and 1 is 0 dB. Values above 0 dB do not exist.
  */
+import { type Song, type Track, busList, processingOrder, reverbBus } from "@fourhands/core";
 import type { Lang } from "./i18n.js";
 
 /** Lowest dB that still means a sound (CC7 = 1). Below it, silence. */
@@ -79,20 +80,20 @@ export function parseReverb(text: string): number | null {
 }
 
 /**
- * F2.2 (03/11/2026): the engine's strip for a track. A plugin track gets its fader as audio, with
- * the dB the window shows (the same curve as CC7, so nothing jumps), its balance and its post-fader
- * send to the Reverb bus; plugins no longer get CC7, CC10 or CC91. The built-in sounds keep those
- * as MIDI inside their synth (they sound exactly as before), so their strip stays neutral.
+ * F2.2 (03/11/2026): the engine's strip for a track: its fader as audio, with the dB the window
+ * shows (the same curve as CC7, so nothing jumps). Plugins get no CC7, CC10 or CC91; a plugin's
+ * balance is the strip's. Parte D (04/11/2026): the built-in sounds' volume is the strip's too (their
+ * synth gets CC7 at 127, so a send before the fader works for them as well); their pan stays CC10
+ * in the synth, per voice, as always. What a track sends to buses goes in the routing.
  */
 export interface EngineStrip {
   /** The strip (A2: the track's, from shared/strips.ts). */
   ch: number;
   gain: number;
   pan: number;
-  reverb: number;
   /**
-   * F2.2 parte B: false when the track is muted, or another is soloed. The engine silences the strip
-   * after its sound, so a plugin's own tail and the reverb send stop at once. Absent: on.
+   * F2.2 parte B: false when the track is muted, or a solo elsewhere leaves it out. The engine
+   * silences the strip after its sound, so a plugin's own tail and its sends stop at once. Absent: on.
    */
   on?: boolean;
   /** Whose strip it is: the main process keeps the map for the levels and the plugins' state. */
@@ -104,22 +105,21 @@ export function stripGain(volume: number): number {
   return db === -Infinity ? 0 : Math.pow(10, db / 20);
 }
 
+type StripTrack = { id?: string; channel: number; strip?: number; output?: string | undefined; volume: number; pan: number; mute?: boolean; solo?: boolean };
+
 /**
- * Every track's strip (neutral for the built-in sounds and outside tracks), and `reset` strips back
- * to neutral (they belonged to tracks that are gone, or to the metronome).
+ * Every track's strip (neutral for the outside tracks), and `reset` strips back to neutral (they
+ * belonged to tracks that are gone, or to the metronome). `audible`: who sounds with buses in the
+ * song (core `audible`, Studio One's solo); without it, solo wins over mute among the tracks.
  */
-export function engineStrips(
-  tracks: ReadonlyArray<{ id?: string; channel: number; strip?: number; output?: string | undefined; volume: number; pan: number; reverb?: number | undefined; mute?: boolean; solo?: boolean }>,
-  reset: Iterable<number> = [],
-): EngineStrip[] {
+export function engineStrips(tracks: ReadonlyArray<StripTrack>, reset: Iterable<number> = [], audible?: ReadonlySet<string>): EngineStrip[] {
   const out = new Map<number, EngineStrip>();
-  for (const ch of reset) out.set(ch, { ch, gain: 1, pan: 0, reverb: 0 });
-  // Solo wins over mute; with no solo, every track not muted (as the player decides, audibleTracks).
+  for (const ch of reset) out.set(ch, { ch, gain: 1, pan: 0 });
   const anySolo = tracks.some((t) => t.solo);
   for (const t of tracks) {
     const ch = t.strip ?? t.channel;
-    const strip: EngineStrip = t.output === "plugin" ? { ch, gain: stripGain(t.volume), pan: t.pan, reverb: t.reverb ?? 0 } : { ch, gain: 1, pan: 0, reverb: 0 };
-    const on = anySolo ? !!t.solo : !t.mute;
+    const strip: EngineStrip = t.output === "external" ? { ch, gain: 1, pan: 0 } : { ch, gain: stripGain(t.volume), pan: t.output === "plugin" ? t.pan : 0 };
+    const on = audible && t.id !== undefined ? audible.has(t.id) : anySolo ? !!t.solo : !t.mute;
     if (!on) strip.on = false;
     if (t.id !== undefined) strip.track = t.id;
     out.set(ch, strip);
@@ -127,10 +127,71 @@ export function engineStrips(
   return [...out.values()];
 }
 
+/** A bus's fader, balance and on/off, as the engine gets it (F2.2 parte D). */
+export interface EngineBusMix {
+  bus: number;
+  gain: number;
+  pan: number;
+  on?: boolean;
+  /** Whose it is, for the main process (levels for the AI). */
+  id?: string;
+}
+
+export function engineBuses(song: Song, busIndex: (id: string) => number, audible: ReadonlySet<string>): EngineBusMix[] {
+  return busList(song).map((b) => {
+    const mix: EngineBusMix = { bus: busIndex(b.id), gain: stripGain(b.volume), pan: b.pan, id: b.id };
+    if (!audible.has(b.id)) mix.on = false;
+    return mix;
+  });
+}
+
+/** The `strip` of a bus's chain for `engineInserts` (-1 is the Master): -2 - n. */
+export function busChainKey(index: number): number {
+  return -2 - index;
+}
+
+/** Where a strip or bus goes, as the engine gets it: `out` -1 is the master. */
+export interface EngineRoute {
+  out: number;
+  sends: Array<{ bus: number; level: number; pre: boolean }>;
+}
+
+export interface EngineRouting {
+  strips: Array<EngineRoute & { ch: number }>;
+  buses: Array<EngineRoute & { bus: number }>;
+  /** The buses in processing order: each after every bus that feeds it. */
+  order: number[];
+  /** The bus that gets what a built-in instrument sends to reverb by itself (its SoundFont's setting). */
+  instrumentReverb: number;
+}
+
+/**
+ * The song's routing for the engine (F2.2 parte D): every track's and bus's output and sends.
+ * Outside tracks do not sound in the engine and are left out.
+ */
+export function engineRouting(song: Song, stripOf: (track: Track) => number, busIndex: (id: string) => number): EngineRouting {
+  const route = (c: { bus?: string | undefined; sends?: ReadonlyArray<{ bus: string; level: number; pre?: boolean | undefined }> | undefined }): EngineRoute => ({
+    out: c.bus && song.buses?.[c.bus] ? busIndex(c.bus) : -1,
+    sends: (c.sends ?? []).filter((x) => song.buses?.[x.bus]).map((x) => ({ bus: busIndex(x.bus), level: x.level, pre: !!x.pre })),
+  });
+  const strips: EngineRouting["strips"] = [];
+  for (const id of song.trackOrder) {
+    const t = song.tracks[id];
+    if (!t || t.output === "external") continue;
+    const r = route(t);
+    if (r.out >= 0 || r.sends.length) strips.push({ ch: stripOf(t), ...r });
+  }
+  const buses = busList(song).map((b) => ({ bus: busIndex(b.id), ...route(b) }));
+  const reverb = reverbBus(song);
+  return { strips, buses, order: processingOrder(song).map(busIndex), instrumentReverb: reverb ? busIndex(reverb.id) : -1 };
+}
+
 /** What the engine measured on each strip (linear), as `levels` gives it. */
 export interface EngineLevels {
   channels: Array<{ peak: number; rms: number; clips: number }>;
   master: { peak: number; rms: number; clips: number };
+  /** Parte D: each bus, by its engine index. */
+  buses?: Array<{ peak: number; rms: number; clips: number }>;
 }
 
 /** dB, one decimal; −∞ for silence. */
@@ -139,8 +200,16 @@ export function levelDb(linear: number): number {
 }
 
 /** The levels of the song's tracks and the master, in dB, for the log (and the AI's reading). */
-export function levelsReport(levels: EngineLevels, tracks: ReadonlyArray<{ name: string; channel: number; strip?: number | undefined }>) {
-  return {
+export function levelsReport(
+  levels: EngineLevels,
+  tracks: ReadonlyArray<{ name: string; channel: number; strip?: number | undefined }>,
+  buses: ReadonlyArray<{ name: string; index: number }> = [],
+) {
+  const report: {
+    master: { peakDb: number; rmsDb: number; clips: number };
+    tracks: Array<{ track: string; strip: number; peakDb: number; rmsDb: number; clips: number }>;
+    buses?: Array<{ bus: string; peakDb: number; rmsDb: number; clips: number }>;
+  } = {
     master: { peakDb: levelDb(levels.master.peak), rmsDb: levelDb(levels.master.rms), clips: levels.master.clips },
     tracks: tracks.map((t) => {
       const strip = t.strip ?? t.channel;
@@ -148,6 +217,12 @@ export function levelsReport(levels: EngineLevels, tracks: ReadonlyArray<{ name:
       return { track: t.name, strip, peakDb: levelDb(c.peak), rmsDb: levelDb(c.rms), clips: c.clips };
     }),
   };
+  if (buses.length)
+    report.buses = buses.map((b) => {
+      const c = levels.buses?.[b.index] ?? { peak: 0, rms: 0, clips: 0 };
+      return { bus: b.name, peakDb: levelDb(c.peak), rmsDb: levelDb(c.rms), clips: c.clips };
+    });
+  return report;
 }
 
 /** The master fader's gain (F2.2 parte B): the song's `masterVolume`, same curve as a track. */

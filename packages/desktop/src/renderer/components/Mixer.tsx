@@ -4,7 +4,7 @@
  * Changes apply on release; Esc or a click outside closes it.
  */
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { Track } from "@fourhands/core";
+import { type Track, reverbBus, reverbLevel } from "@fourhands/core";
 import { useActions, useApp, useSong } from "../context.js";
 import { formatDb, formatPan, formatReverb, parseDb, parsePan, parseReverb } from "../../shared/mix.js";
 import { InlineEdit } from "./InlineEdit.js";
@@ -74,15 +74,17 @@ function MixerCard({ track, x, y }: { track: Track; x: number; y: number }) {
 export function MixRows({ track, onValues }: { track: Track; onValues?: (v: { volume: number; pan: number; reverb: number }) => void }) {
   const { t, lang } = useApp();
   const actions = useActions();
+  const song = useSong();
+  const revNow = reverbLevel(song, track);
   const [typing, setTyping] = useState<"volume" | "pan" | "reverb" | null>(null);
   const [volume, setVolume] = useState(track.volume);
   const [pan, setPan] = useState(track.pan);
-  const [reverb, setReverb] = useState(track.reverb ?? 0);
+  const [reverb, setReverb] = useState(reverbLevel(song, track));
   useEffect(() => {
     setVolume(track.volume);
     setPan(track.pan);
-    setReverb(track.reverb ?? 0);
-  }, [track.id, track.volume, track.pan, track.reverb]);
+    setReverb(reverbLevel(song, track));
+  }, [track.id, track.volume, track.pan, revNow]);
   onValues?.({ volume, pan, reverb });
   const commit = () => actions.setMix(track.id, volume, pan, reverb);
   const panText = formatPan(pan);
@@ -118,11 +120,14 @@ export function MixRows({ track, onValues }: { track: Track; onValues?: (v: { vo
         <input type="range" min={-100} max={100} value={Math.round(pan * 100)} onChange={(e) => (setPan(Number(e.target.value) / 100), actions.previewMix(track.id, volume, Number(e.target.value) / 100, reverb))} onPointerUp={commit} onKeyUp={commit} onDoubleClick={() => (setPan(0), actions.setMix(track.id, volume, 0, reverb))} />
         {value("pan", panText, t("panTypeHint"))}
       </label>
+      {/* The send to the «Reverb» bus (F2.2 parte D); a song whose reverb bus was deleted has none. */}
+      {reverbBus(song) && (
       <label className="qrow" title={t("reverbTypeHint")}>
         <span>{t("reverb")}</span>
         <input type="range" min={0} max={100} value={Math.round(reverb * 100)} onChange={(e) => (setReverb(Number(e.target.value) / 100), actions.previewMix(track.id, volume, pan, Number(e.target.value) / 100))} onPointerUp={commit} onKeyUp={commit} onDoubleClick={() => (setReverb(0), actions.setMix(track.id, volume, pan, 0))} />
         {value("reverb", formatReverb(reverb), t("reverbTypeHint"))}
       </label>
+      )}
     </>
   );
 }

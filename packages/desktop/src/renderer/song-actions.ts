@@ -3,7 +3,7 @@
  * sections, chords and annotations. Every action is one command list (one undo step) with its
  * sentence in the history. Also holds which field is being typed into (one at a time).
  */
-import { EFFECT_NAME_MAX, type InsertSpec, OWN_EFFECTS, OWN_KINDS, findInsert, insertName, kindName, paramDefs } from "@fourhands/core";
+import { BUS_NAME_MAX, EFFECT_NAME_MAX, type InsertSpec, OWN_EFFECTS, OWN_KINDS, busList, findInsert, insertName, kindName, paramDefs, reaches, reverbLevel } from "@fourhands/core";
 import {
   type CommandData,
   type KeySignature,
@@ -37,7 +37,10 @@ import { PALETTE, type PaletteItem, instrumentName, paletteName } from "../share
 import { barRange, keyName } from "./music.js";
 import type { Replica } from "./replica.js";
 import { SIZE, TRACK_PALETTE, trackColor, trackColorIndex } from "./theme.js";
-import { formatDb, parseDb, parsePan } from "../shared/mix.js";
+import { formatDb, parseDb, parsePan, parseReverb } from "../shared/mix.js";
+
+/** A new send starts at half (−6 dB): heard, and with room both ways (F2.2 parte D). */
+const DEFAULT_SEND = 0.5;
 
 /** The sections of Ajustes, in their order. */
 export const SETTINGS_SECTIONS = ["ai", "sound", "plugins", "midi", "folders", "advanced"] as const;
@@ -55,7 +58,10 @@ export type Typing =
   | { kind: "annotation"; id: string | null; tick: number }
   /** A tempo change typed on the Tempo ruler (H4); `editing` is the tick of the change being rewritten. */
   | { kind: "tempoChange"; tick: number; editing: number | null }
-  | { kind: "effectName"; id: string };
+  | { kind: "effectName"; id: string }
+  /** F2.2 parte D: a bus's name, and a send's level typed in place (0–100). */
+  | { kind: "busName"; id: string }
+  | { kind: "sendLevel"; source: string; bus: string };
 
 /** What the palette gives: an instrument of the default bank, or a preset of an installed bank. */
 export type SoundChoice = { kind: "default"; item: PaletteItem } | { kind: "bank"; bank: SoundBankInfo; preset: BankPreset };
@@ -90,6 +96,8 @@ export class SongActions {
   notice: string | null = null;
   /** F2.2 parte C: the effect slot selected in the console (Supr removes it). */
   selectedEffect: string | null = null;
+  /** F2.2 parte D: the bus selected in the console (Supr removes it, after an effect). */
+  selectedBus: string | null = null;
   /**
    * The Sonidos tab shows instruments or effects (Fran, 04/11/2026), and where an effect goes from
    * there: a track's chain or the Master's (null: the active track).
@@ -486,25 +494,263 @@ export class SongActions {
   setMix(id: string, volume: number, pan: number, reverb?: number): void {
     const track = this.song.tracks[id];
     if (!track) return;
-    const rev = reverb ?? track.reverb ?? 0;
-    const revChanged = rev !== (track.reverb ?? 0);
+    const was = reverbLevel(this.song, track);
+    const rev = reverb ?? was;
+    const revChanged = rev !== was;
     if (track.volume === volume && track.pan === pan && !revChanged) return;
     const onlyReverb = track.volume === volume && track.pan === pan;
-    void this.run(this.h(onlyReverb ? "hReverb" : "hMix", { name: track.name }), [{ type: "updateTrack", id, changes: { volume, pan, reverb: rev } }]);
+    void this.run(this.h(onlyReverb ? "hReverb" : "hMix", { name: track.name }), [{ type: "updateTrack", id, changes: revChanged ? { volume, pan, reverb: rev } : { volume, pan } }]);
   }
 
   // -------------------------------------------------------------------------
   // Insert effects (F2.2 parte C)
 
-  /** "el Piano" / "el Máster", for the history. */
+  /** "el Piano" / "el Máster" / "Voces", for the history. */
   private chainLabel(target: string): string {
-    return target === "master" ? this.t("consoleMaster") : (this.song.tracks[target]?.name ?? target);
+    return target === "master" ? this.t("consoleMaster") : (this.song.tracks[target]?.name ?? this.song.buses?.[target]?.name ?? target);
   }
 
   selectEffect(id: string | null): void {
     if (this.selectedEffect === id) return;
     this.selectedEffect = id;
+    // One thing selected in the console at a time: Supr removes what the user last chose.
+    if (id) this.selectedBus = null;
     this.changed();
+  }
+
+  // -------------------------------------------------------------------------
+  // Buses, outputs and sends (F2.2 parte D)
+
+  selectBus(id: string | null): void {
+    if (this.selectedBus === id && (!id || !this.selectedEffect)) return;
+    this.selectedBus = id;
+    if (id) this.selectedEffect = null;
+    this.changed();
+  }
+
+  /** «Añadir bus»: a new bus at the end, its name ready to type. `from`: a track or bus that goes into it. */
+  async addBus(from?: { source: string; as: "output" | "send" }): Promise<string | null> {
+    const names = new Set(busList(this.song).map((b) => b.name));
+    let n = busList(this.song).length + 1;
+    while (names.has(`${this.t("busDefault")} ${n}`)) n++;
+    const name = `${this.t("busDefault")} ${n}`;
+    const commands: CommandData[] = [{ type: "addBus", spec: { name } }];
+    const id = `b${this.song.counters.b ?? 1}`;
+    if (from?.as === "output") commands.push({ type: "setOutput", source: from.source, bus: id });
+    if (from?.as === "send") commands.push({ type: "setSend", source: from.source, bus: id, changes: { level: DEFAULT_SEND } });
+    const reply = await this.run(this.h("hBusAdd", { name }), commands);
+    const made = reply.ok ? reply.results[0] : null;
+    if (typeof made !== "string") return null;
+    this.selectedBus = made;
+    this.type({ kind: "busName", id: made });
+    return made;
+  }
+
+  /**
+   * Deletes a bus (menu or Supr). What went through it goes on to its output, the sends to it go;
+   * a notice says so (DIRECCION_ARTISTICA.md, 13).
+   */
+  removeBus(id: string): void {
+    const bus = this.song.buses?.[id];
+    if (!bus) return;
+    const channels = [...this.song.trackOrder.map((t) => this.song.tracks[t]!), ...busList(this.song)].filter((c) => c && c.id !== id);
+    const rerouted = channels.filter((c) => c.bus === id).map((c) => c.name);
+    const dropped = channels.filter((c) => c.sends?.some((x) => x.bus === id)).map((c) => c.name);
+    const to = bus.bus ? (this.song.buses?.[bus.bus]?.name ?? bus.bus) : this.t("consoleMaster");
+    if (this.selectedBus === id) this.selectedBus = null;
+    void this.run(this.h("hBusRemove", { name: bus.name }), [{ type: "removeBus", id }]).then((r) => {
+      if (!r.ok) return;
+      const parts = [this.t("busRemoved", { name: bus.name })];
+      if (rerouted.length) parts.push(this.t("busRemovedTo", { names: rerouted.join(", "), to }));
+      if (dropped.length) parts.push(this.t("busRemovedSends", { names: dropped.join(", ") }));
+      this.say(parts.join(" "));
+    });
+  }
+
+  /** Supr in the console: the selected effect, else the selected bus. False if neither. */
+  removeSelectedInConsole(): boolean {
+    if (this.removeSelectedEffect()) return true;
+    if (this.selectedBus && this.song.buses?.[this.selectedBus]) {
+      this.removeBus(this.selectedBus);
+      return true;
+    }
+    return false;
+  }
+
+  renameBus(id: string, text: string): void {
+    const bus = this.song.buses?.[id];
+    const name = text.trim().slice(0, BUS_NAME_MAX);
+    if (!bus || !name || name === bus.name) return;
+    void this.run(this.h("hBusRename", { old: bus.name, name }), [{ type: "updateBus", id, changes: { name } }]);
+  }
+
+  setBusMix(id: string, volume: number, pan: number): void {
+    const bus = this.song.buses?.[id];
+    if (!bus || (bus.volume === volume && bus.pan === pan)) return;
+    void this.run(this.h("hBusMix", { name: bus.name }), [{ type: "updateBus", id, changes: { volume, pan } }]);
+  }
+
+  previewBus(id: string, volume: number, pan: number): void {
+    this.audio?.previewBus(id, volume, pan);
+  }
+
+  /** A typed volume (dB) or pan of a bus; false (with a notice) if it cannot be read. */
+  typeBusMix(id: string, field: "volume" | "pan", text: string): boolean {
+    const bus = this.song.buses?.[id];
+    if (!bus) return false;
+    const value = field === "volume" ? parseDb(text) : parsePan(text);
+    if (value === null) {
+      this.say(this.t(field === "volume" ? "volumeTypeHint" : "panTypeHint"));
+      return false;
+    }
+    if (field === "volume") this.setBusMix(id, value, bus.pan);
+    else this.setBusMix(id, bus.volume, value);
+    return true;
+  }
+
+  toggleBus(id: string, field: "mute" | "solo"): void {
+    const bus = this.song.buses?.[id];
+    if (!bus) return;
+    const on = !bus[field];
+    const key = field === "mute" ? (on ? "hMute" : "hUnmute") : on ? "hSolo" : "hUnsolo";
+    void this.run(this.h(key, { name: bus.name }), [{ type: "updateBus", id, changes: { [field]: on } }]);
+  }
+
+  setBusColor(id: string, color: number): void {
+    const bus = this.song.buses?.[id];
+    const c = TRACK_PALETTE[color];
+    if (!bus || !c || bus.color === color) return;
+    void this.run(this.h("hColor", { name: bus.name, color: (this.lang === "es" ? c.es : c.en).toLowerCase() }), [{ type: "updateBus", id, changes: { color } }]);
+  }
+
+  /** Right click on a bus. */
+  busMenu(id: string, x: number, y: number): void {
+    const bus = this.song.buses?.[id];
+    if (!bus) return;
+    const t = this.t;
+    const close = (fn: () => void) => () => (this.editor.closeMenus(), fn());
+    this.selectBus(id);
+    this.editor.openMenu(x, y, [
+      { label: bus.name, header: true },
+      { label: t("fxRename"), run: close(() => this.type({ kind: "busName", id })) },
+      { label: t("trackMenuColor"), swatch: trackColor(bus.color), shortcut: "›", run: () => this.busColorMenu(id, x, y) },
+      { label: t("busOutput"), shortcut: `${this.outputName(bus.bus)} ›`, run: () => this.routeMenu(id, x, y) },
+      { separator: true },
+      { label: t("busRemove"), shortcut: "Supr", run: close(() => this.removeBus(id)) },
+    ]);
+  }
+
+  private busColorMenu(id: string, x: number, y: number): void {
+    const bus = this.song.buses?.[id];
+    if (!bus) return;
+    const items: MenuItem[] = [
+      { label: this.t("soundsBack"), run: () => this.busMenu(id, x, y) },
+      { separator: true },
+      { label: `${this.t("trackMenuColor")} · ${bus.name}`, header: true },
+    ];
+    TRACK_PALETTE.forEach((c, i) =>
+      items.push({ label: this.lang === "es" ? c.es : c.en, swatch: trackColor(i), active: trackColorIndex(bus.color) === i, run: () => (this.editor.closeMenus(), this.setBusColor(id, i)) }),
+    );
+    this.editor.openMenu(x, y, items);
+  }
+
+  /** "Máster" or the bus's name. */
+  outputName(bus: string | undefined): string {
+    return bus ? (this.song.buses?.[bus]?.name ?? bus) : this.t("consoleToMaster");
+  }
+
+  /** Where a track's or bus's sound goes: the Master, a bus (never one that would loop), or a new bus. */
+  routeMenu(source: string, x: number, y: number): void {
+    const item = this.song.tracks[source] ?? this.song.buses?.[source];
+    if (!item) return;
+    const close = (fn: () => void) => () => (this.editor.closeMenus(), fn());
+    const isBus = !!this.song.buses?.[source];
+    const items: MenuItem[] = [
+      { label: `${this.t("busOutput")} · ${item.name}`, header: true },
+      { label: this.t("consoleToMaster"), active: !item.bus, run: close(() => this.setRoute(source, null)) },
+    ];
+    for (const b of busList(this.song)) {
+      if (isBus && (b.id === source || reaches(this.song, b.id, source))) continue;
+      items.push({ label: b.name, swatch: trackColor(b.color), active: item.bus === b.id, run: close(() => this.setRoute(source, b.id)) });
+    }
+    items.push({ separator: true }, { label: this.t("busNew"), run: close(() => void this.addBus({ source, as: "output" })) });
+    this.editor.openMenu(x, y, items);
+  }
+
+  setRoute(source: string, bus: string | null): void {
+    const item = this.song.tracks[source] ?? this.song.buses?.[source];
+    if (!item || (item.bus ?? null) === bus) return;
+    void this.run(this.h("hOutput", { name: item.name, to: this.outputName(bus ?? undefined) }), [{ type: "setOutput", source, bus }]);
+  }
+
+  /** «+ envío»: the buses it does not send to yet (none that would loop), or a new one. */
+  sendAddMenu(source: string, x: number, y: number): void {
+    const item = this.song.tracks[source] ?? this.song.buses?.[source];
+    if (!item) return;
+    const close = (fn: () => void) => () => (this.editor.closeMenus(), fn());
+    const isBus = !!this.song.buses?.[source];
+    const items: MenuItem[] = [{ label: `${this.t("sendTo")} · ${item.name}`, header: true }];
+    for (const b of busList(this.song)) {
+      if (item.sends?.some((x) => x.bus === b.id)) continue;
+      if (isBus && (b.id === source || reaches(this.song, b.id, source))) continue;
+      items.push({ label: b.name, swatch: trackColor(b.color), run: close(() => this.setSend(source, b.id, DEFAULT_SEND)) });
+    }
+    items.push({ separator: true }, { label: this.t("busNew"), run: close(() => void this.addBus({ source, as: "send" })) });
+    this.editor.openMenu(x, y, items);
+  }
+
+  /** Right click on a send. */
+  sendMenu(source: string, bus: string, x: number, y: number): void {
+    const item = this.song.tracks[source] ?? this.song.buses?.[source];
+    const send = item?.sends?.find((s) => s.bus === bus);
+    if (!item || !send) return;
+    const close = (fn: () => void) => () => (this.editor.closeMenus(), fn());
+    this.editor.openMenu(x, y, [
+      { label: `${item.name} → ${this.outputName(bus)}`, header: true },
+      { label: this.t("sendPost"), active: !send.pre, run: close(() => this.setSendPre(source, bus, false)) },
+      { label: this.t("sendPre"), active: !!send.pre, run: close(() => this.setSendPre(source, bus, true)) },
+      { label: this.t("sendType"), run: close(() => this.type({ kind: "sendLevel", source, bus })) },
+      { separator: true },
+      { label: this.t("sendRemove"), run: close(() => this.removeSend(source, bus)) },
+    ]);
+  }
+
+  previewSend(source: string, bus: string, level: number): void {
+    this.audio?.previewSend(source, bus, level);
+  }
+
+  setSend(source: string, bus: string, level: number): void {
+    const item = this.song.tracks[source] ?? this.song.buses?.[source];
+    if (!item || !this.song.buses?.[bus]) return;
+    const v = Math.max(0, Math.min(1, level));
+    const was = item.sends?.find((s) => s.bus === bus);
+    if (was && was.level === v) return;
+    const key = was ? "hSendLevel" : "hSendAdd";
+    void this.run(this.h(key, { name: item.name, bus: this.outputName(bus), level: Math.round(v * 100) }), [{ type: "setSend", source, bus, changes: { level: v } }]);
+  }
+
+  /** A typed send level, 0–100; false (with a notice) if it cannot be read. */
+  typeSend(source: string, bus: string, text: string): boolean {
+    const v = parseReverb(text);
+    if (v === null) {
+      this.say(this.t("sendTypeHint"));
+      return false;
+    }
+    this.setSend(source, bus, v);
+    return true;
+  }
+
+  setSendPre(source: string, bus: string, pre: boolean): void {
+    const item = this.song.tracks[source] ?? this.song.buses?.[source];
+    const send = item?.sends?.find((s) => s.bus === bus);
+    if (!item || !send || !!send.pre === pre) return;
+    void this.run(this.h(pre ? "hSendPre" : "hSendPost", { name: item.name, bus: this.outputName(bus) }), [{ type: "setSend", source, bus, changes: { pre } }]);
+  }
+
+  removeSend(source: string, bus: string): void {
+    const item = this.song.tracks[source] ?? this.song.buses?.[source];
+    if (!item?.sends?.some((s) => s.bus === bus)) return;
+    void this.run(this.h("hSendRemove", { name: item.name, bus: this.outputName(bus) }), [{ type: "removeSend", source, bus }]);
   }
 
   /** «+» in a slot: Four Hands' own effects, then the plugin effects the engine knows. */

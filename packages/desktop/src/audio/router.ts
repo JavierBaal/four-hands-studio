@@ -93,6 +93,10 @@ export function engineBytes(ev: SynthEvent): number[] | null {
 export function soundsBytes(ev: SynthEvent): number[][] {
   if (ev.kind === "prog") return ev.bank === undefined ? [[0xc0 | ev.ch, ev.prog & 0x7f]] : [[0xb0 | ev.ch, 0, ev.bank & 0x7f], [0xc0 | ev.ch, ev.prog & 0x7f]];
   const bytes = midiBytes(ev);
+  // F2.2 parte D: in the engine the track's fader is its strip (the synth stays at full volume, so
+  // a send before the fader still gets the sound) and its reverb is a send to the «Reverb» bus.
+  if (bytes && ev.kind === "cc" && ev.cc === 7) bytes[2] = 127;
+  if (bytes && ev.kind === "cc" && ev.cc === 91) bytes[2] = 0;
   return bytes ? [bytes] : [];
 }
 

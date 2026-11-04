@@ -18,7 +18,7 @@
  */
 import type { EngineLevels, EngineLoad } from "../../shared/mix.js";
 import { levelsText } from "./texts.js";
-import { type ChainTarget, type Insert, type InsertKind, type InsertSpec, OWN_EFFECTS, addInsert, chainOf, findInsert, insertName, moveInsert, paramDefs, paramText, removeInsert, updateInsert } from "@fourhands/core";
+import { type ChainTarget, type Insert, type InsertKind, type InsertSpec, OWN_EFFECTS, addInsert, chainOf, findInsert, insertName, moveInsert, paramDefs, paramText, removeInsert, updateInsert, reverbLevel } from "@fourhands/core";
 import { TRACK_PALETTE, trackColorByName, trackColorId } from "../../shared/track-colors.js";
 import {
   type Authorship,
@@ -88,6 +88,15 @@ import {
   type CurveKind,
   CURVE_KINDS,
   nextChannel,
+  addBus,
+  busList,
+  removeBus,
+  setOutput,
+  setReverb,
+  setSend,
+  removeSend,
+  updateBus,
+  isBusId,
 } from "@fourhands/core";
 import { NAMED_PROGRAMS, PALETTE } from "../../shared/instruments.js";
 import type { AiApply, AiClientInfo, AiMark, AiRecent, AiState, AiTone, AiWriting, PatchMessage, SoundBankInfo } from "../../shared/protocol.js";
@@ -121,7 +130,7 @@ export interface AiDeskOptions {
   skills?: SkillSource;
   /** F2.2: what the engine measured in the last playback (the window asks it when playback stops). */
   /** The last playback's levels, and the strip each track had then (A2). */
-  levels?: () => { levels: EngineLevels; at: number; strips?: Record<string, number> } | null;
+  levels?: () => { levels: EngineLevels; at: number; strips?: Record<string, number>; buses?: Record<string, number> } | null;
   /** F2.2 parte B: the engine's last load reading (for get_levels), null without engine. */
   load?: () => EngineLoad | null;
   /**
@@ -200,6 +209,18 @@ function parseRevision(text: string | undefined): number | null {
   if (text === undefined) return null;
   const m = /^\s*r?(\d+)\s*$/i.exec(text);
   return m ? Number(m[1]) : NaN;
+}
+
+/** What one line of set_mix changes on a track or bus. */
+interface MixChanges {
+  volume?: number;
+  pan?: number;
+  reverb?: number;
+  mute?: boolean;
+  /** A bus, or null: the Master. */
+  to?: string | null;
+  sends: Array<{ bus: string; level: number; pre?: boolean }>;
+  noSends: string[];
 }
 
 export class AiDesk {
@@ -811,6 +832,7 @@ export class AiDesk {
       return levelsText(last?.levels ?? null, tracks.map((t) => ({ name: t.name, channel: t.channel, strip: last?.strips?.[t.id] })), last?.at ?? null, {
         masterVolume: song.masterVolume ?? 1,
         load: this.options.load?.() ?? null,
+        buses: busList(song).flatMap((b) => (last?.buses?.[b.id] === undefined ? [] : [{ name: b.name, index: last.buses[b.id]! }])),
       });
     },
 
@@ -1383,19 +1405,73 @@ export class AiDesk {
       });
       const seen = new Set<string>();
       for (const c of changes) {
-        if (seen.has(c.trackId)) throw new MusicError(`Line ${c.line}: ${this.song.tracks[c.trackId]!.name} appears twice`);
-        seen.add(c.trackId);
+        if (seen.has(c.id)) throw new MusicError(`Line ${c.line}: ${this.channelName(c.id)} appears twice`);
+        seen.add(c.id);
       }
       this.write(iv, (tx) => {
-        for (const c of changes) updateTrack(tx, c.trackId, c.changes);
+        for (const c of changes) {
+          const { volume, pan, mute, reverb } = c.changes;
+          if (isBusId(c.id)) {
+            updateBus(tx, c.id, { ...(volume === undefined ? {} : { volume }), ...(pan === undefined ? {} : { pan }), ...(mute === undefined ? {} : { mute }) });
+            if (reverb !== undefined) setReverb(tx, c.id, reverb);
+          } else {
+            updateTrack(tx, c.id, { ...(volume === undefined ? {} : { volume }), ...(pan === undefined ? {} : { pan }), ...(mute === undefined ? {} : { mute }), ...(reverb === undefined ? {} : { reverb }) });
+          }
+          if (c.changes.to !== undefined) setOutput(tx, c.id, c.changes.to);
+          for (const x of c.changes.sends) setSend(tx, c.id, x.bus, { level: x.level, ...(x.pre === undefined ? {} : { pre: x.pre }) });
+          for (const bus of c.changes.noSends) removeSend(tx, c.id, bus);
+        }
         if (master !== undefined) setSongProperties(tx, { masterVolume: master });
       });
-      for (const c of changes) iv.trackIds.add(c.trackId);
+      for (const c of changes) if (!isBusId(c.id)) iv.trackIds.add(c.id);
       iv.other.push(master !== undefined ? "the mix and the master" : "the mix");
       this.emit();
-      const after = changes.map((c) => `${c.trackId} ${this.song.tracks[c.trackId]!.name} · ${mixText(this.song.tracks[c.trackId]!)}`);
+      const after = changes.map((c) => {
+        const ch = this.song.tracks[c.id] ?? this.song.buses![c.id]!;
+        return `${c.id} ${ch.name} · ${mixText({ ...ch, mute: !!ch.mute, solo: !!ch.solo }, this.song)}`;
+      });
       if (master !== undefined) after.push(`Master · vol ${Math.round((this.song.masterVolume ?? 1) * 100)}`);
       return `Mix set:\n${after.join("\n")}\n${this.rev()}`;
+    },
+
+    // F2.2 parte D: buses.
+    add_bus: (conn, args) => {
+      const iv = this.intervention(conn, args);
+      const name = this.str(args, "name")!;
+      const colorText = this.str(args, "color", false);
+      const toText = this.str(args, "to", false);
+      const to = toText && !/^(master|máster)$/i.test(toText.trim()) ? this.bus(toText) : undefined;
+      const tracks = this.tracks(args) ?? [];
+      const reverbOn = args.reverb === true;
+      let id = "";
+      this.write(iv, (tx) => {
+        id = addBus(tx, { name, ...(colorText === undefined ? {} : { color: colorIndex(colorText) }), ...(to ? { bus: to } : {}) });
+        for (const t of tracks) setOutput(tx, t, id);
+        if (reverbOn) addInsert(tx, id, { kind: "reverb" });
+      });
+      for (const t of tracks) iv.trackIds.add(t);
+      iv.other.push(`bus ${name}`);
+      this.emit();
+      const bus = this.song.buses![id]!;
+      const fed = tracks.length ? ` Now going into it: ${tracks.map((t) => this.song.tracks[t]!.name).join(", ")}.` : " Nothing goes into it yet: route tracks with set_mix ('Violín 1 to " + bus.name + "') or send to it ('send " + bus.name + " 30').";
+      return `Bus ${id} ${bus.name} → ${bus.bus ? this.song.buses![bus.bus]!.name : "Master"}${bus.inserts?.length ? ` · effects: ${chainText(bus.inserts)}` : ""}.${fed}\n${this.rev()}`;
+    },
+
+    remove_bus: (conn, args) => {
+      const iv = this.intervention(conn, args);
+      const id = this.bus(this.str(args, "bus")!);
+      const name = this.song.buses![id]!.name;
+      let result: ReturnType<typeof removeBus> | undefined;
+      this.write(iv, (tx) => (result = removeBus(tx, id)));
+      iv.other.push(`bus ${name}`);
+      this.emit();
+      const to = result!.to === "master" ? "the Master" : this.song.buses![result!.to]!.name;
+      const names = (ids: string[]) => ids.map((c) => this.song.tracks[c]?.name ?? this.song.buses?.[c]?.name ?? c).join(", ");
+      const parts = [`Removed the bus ${name} (${id}).`];
+      if (result!.rerouted.length) parts.push(`${names(result!.rerouted)} went through it and now go to ${to}.`);
+      if (result!.sendsDropped.length) parts.push(`The sends of ${names(result!.sendsDropped)} to it are gone.`);
+      parts.push("Tell the user; it is one undo step.");
+      return `${parts.join(" ")}\n${this.rev()}`;
     },
 
     // F2.2 parte C: insert effects.
@@ -1413,7 +1489,7 @@ export class AiDesk {
         id = addInsert(tx, target, own ? { kind: spec.kind as Exclude<InsertKind, "plugin">, params: own.params } : spec, position === undefined ? undefined : position - 1);
         if (own?.bypass !== undefined || givenName !== undefined) updateInsert(tx, id, { ...(own?.bypass === undefined ? {} : { bypass: own.bypass }), ...(givenName === undefined ? {} : { name: givenName }) });
       });
-      if (target !== "master") iv.trackIds.add(target);
+      if (target !== "master" && !isBusId(target)) iv.trackIds.add(target);
       iv.other.push(`effects of ${this.chainName(target)}`);
       this.emit();
       return `Added ${id} ${effectText(findInsert(this.song, id)!.insert)} to ${this.chainName(target)}.\nChain: ${chainText(chainOf(this.song, target))}\n${this.rev()}`;
@@ -1582,18 +1658,31 @@ export class AiDesk {
     return { bank: bank.id, program: preset.program, bankMSB: preset.bankMSB, name: preset.name };
   }
 
-  /** "Violines vol 80 pan L25 rev 30 mute": the track is what is left after the settings, read from the end. */
-  private mixLine(text: string): { trackId: string; changes: { volume?: number; pan?: number; reverb?: number; mute?: boolean } } {
-    const tokens = text.split(/\s+/);
-    const changes: { volume?: number; pan?: number; reverb?: number; mute?: boolean } = {};
+  /**
+   * "Violines vol 80 pan L25 rev 30 mute", "Voces to Mix bus send Delay 25 pre": the track or bus is
+   * what comes before the first setting. Parte D: 'to <bus|master>', 'send <bus> <0-100> [pre|post]',
+   * 'nosend <bus>'. (Solo is the user's listening tool, not the AI's.)
+   */
+  private mixLine(text: string): { id: string; changes: MixChanges } {
+    const tokens = text.split(/\s+/).filter(Boolean);
+    const changes: MixChanges = { sends: [], noSends: [] };
+    const KEY = /^(vol|volume|pan|rev|reverb|mute|unmute|to|send|nosend)$/i;
     const value = (raw: string | undefined, what: string): string => {
       if (raw === undefined) throw new MusicError(`'${what}' needs a value`);
       return raw;
     };
     // Settings are pairs ("vol 70", "pan L30") or words ("mute"); scan for the first one.
-    const first = tokens.findIndex((t) => /^(vol|volume|pan|rev|reverb|mute|unmute)$/i.test(t));
-    if (first <= 0) throw new MusicError("write the track first, then 'vol', 'pan', 'rev', 'mute' or 'unmute'");
-    const trackId = this.track(tokens.slice(0, first).join(" "));
+    const first = tokens.findIndex((t) => KEY.test(t));
+    if (first <= 0) throw new MusicError("write the track or bus first, then 'vol', 'pan', 'rev', 'mute', 'to', 'send' or 'nosend'");
+    const id = this.channel(tokens.slice(0, first).join(" "));
+    // A bus's name may have spaces ("Mix bus"): the words up to the next setting (or number, for 'send').
+    const busName = (from: number, stopAtNumber: boolean): [string, number] => {
+      let j = from;
+      while (j < tokens.length && !KEY.test(tokens[j]!) && !(stopAtNumber && /^\d+(?:\.\d+)?$/.test(tokens[j]!))) j++;
+      const name = tokens.slice(from, j).join(" ").replace(/^["'«]|["'»]$/g, "");
+      if (!name) throw new MusicError("which bus?");
+      return [name, j];
+    };
     for (let i = first; i < tokens.length; i++) {
       const key = tokens[i]!.toLowerCase();
       if (key === "mute" || key === "unmute") {
@@ -1613,12 +1702,66 @@ export class AiDesk {
         const v = Number(value(tokens[++i], key));
         if (!(v >= 0 && v <= 100)) throw new MusicError("reverb goes from 0 (dry) to 100");
         changes.reverb = v / 100;
+      } else if (key === "to") {
+        const [name, j] = busName(i + 1, false);
+        changes.to = /^(master|máster)$/i.test(name) ? null : this.bus(name);
+        i = j - 1;
+      } else if (key === "send") {
+        const [name, j] = busName(i + 1, true);
+        const v = Number(value(tokens[j], `send ${name}`));
+        if (!(v >= 0 && v <= 100)) throw new MusicError("a send goes from 0 to 100 (100: as loud as the channel)");
+        const send: { bus: string; level: number; pre?: boolean } = { bus: this.bus(name), level: v / 100 };
+        i = j;
+        const mode = tokens[i + 1]?.toLowerCase();
+        if (mode === "pre" || mode === "post") {
+          send.pre = mode === "pre";
+          i++;
+        }
+        changes.sends.push(send);
+      } else if (key === "nosend") {
+        const [name, j] = busName(i + 1, false);
+        changes.noSends.push(this.bus(name));
+        i = j - 1;
       } else {
-        throw new MusicError(`'${tokens[i]}' is not 'vol', 'pan', 'rev', 'mute' or 'unmute'`);
+        throw new MusicError(`'${tokens[i]}' is not 'vol', 'pan', 'rev', 'mute', 'to', 'send' or 'nosend'`);
       }
     }
-    if (Object.keys(changes).length === 0) throw new MusicError("nothing to change");
-    return { trackId, changes };
+    if (Object.keys(changes).length === 2 && !changes.sends.length && !changes.noSends.length) throw new MusicError("nothing to change");
+    return { id, changes };
+  }
+
+  /** A bus by id ("b2") or by name ("Voces", "voces", "Voc"). */
+  private bus(text: string): string {
+    const buses = busList(this.song);
+    const t = text.trim();
+    if (this.song.buses?.[t]) return t;
+    const key = fold(t);
+    const exact = buses.filter((b) => fold(b.name) === key);
+    const found = exact.length ? exact : buses.filter((b) => key.length > 0 && fold(b.name).startsWith(key));
+    if (found.length === 1) return found[0]!.id;
+    if (found.length > 1) throw new MusicError(`'${text}' could be several buses (${found.map((b) => `${b.id} ${b.name}`).join(", ")}): use the id`);
+    throw new MusicError(`There is no bus '${text}'. ${buses.length ? `Buses: ${buses.map((b) => `${b.id} ${b.name}`).join(", ")}` : "The song has no buses: create one with add_bus"}`);
+  }
+
+  /** A track or a bus, by id or name; an exact name wins over the start of one. */
+  private channel(text: string): string {
+    const t = text.trim();
+    if (this.song.tracks[t] || this.song.buses?.[t]) return t;
+    const key = fold(t);
+    const channels: Array<{ id: string; name: string }> = [...orderedTracks(this.song), ...busList(this.song)];
+    const exact = channels.filter((c) => fold(c.name) === key);
+    if (exact.length === 1) return exact[0]!.id;
+    if (exact.length > 1) throw new MusicError(`'${text}' is the name of several (${exact.map((c) => `${c.id} ${c.name}`).join(", ")}): use the id`);
+    try {
+      return this.track(t);
+    } catch (error) {
+      if (busList(this.song).some((b) => key.length > 0 && fold(b.name).startsWith(key))) return this.bus(t);
+      throw error;
+    }
+  }
+
+  private channelName(id: string): string {
+    return this.song.tracks[id]?.name ?? this.song.buses?.[id]?.name ?? id;
   }
 
   // -------------------------------------------------------------------------
@@ -1697,13 +1840,15 @@ export class AiDesk {
     },
   };
 
-  /** "master", or a track by id or name. */
+  /** "master", or a track or bus by id or name. */
   private chainTarget(text: string): ChainTarget {
-    return /^(master|máster|master bus)$/i.test(text.trim()) ? "master" : this.track(text);
+    return /^(master|máster)$/i.test(text.trim()) ? "master" : this.channel(text);
   }
 
   private chainName(target: ChainTarget): string {
-    return target === "master" ? "the Master" : `${this.song.tracks[target]?.name ?? target} (${target})`;
+    if (target === "master") return "the Master";
+    if (isBusId(target)) return `the bus ${this.song.buses?.[target]?.name ?? target} (${target})`;
+    return `${this.song.tracks[target]?.name ?? target} (${target})`;
   }
 
   private effect(text: string): { target: ChainTarget; index: number; insert: Insert } {
@@ -1715,7 +1860,7 @@ export class AiDesk {
   /** 'eq', 'compressor', 'limiter' (also in Spanish), or a plugin effect by name. */
   private effectSpec(text: string): InsertSpec {
     const key = fold(text);
-    const own: Record<string, Exclude<InsertKind, "plugin">> = { eq: "eq", ecualizador: "eq", equalizer: "eq", compressor: "compressor", compresor: "compressor", limiter: "limiter", limitador: "limiter" };
+    const own: Record<string, Exclude<InsertKind, "plugin">> = { eq: "eq", ecualizador: "eq", equalizer: "eq", compressor: "compressor", compresor: "compressor", limiter: "limiter", limitador: "limiter", reverb: "reverb", reverberacion: "reverb" };
     if (own[key]) return { kind: own[key] };
     const list = (this.options.plugins?.() ?? []).filter((p) => !p.instrument);
     const found = list.find((p) => fold(p.name) === key) ?? list.find((p) => fold(p.name).startsWith(key));
@@ -1814,6 +1959,6 @@ function describeTrack(song: Song, id: string): string {
   if (t.sound) parts.push(`sound "${t.sound.name}" from ${t.sound.bank}`);
   else if (t.program === null || t.channel === 9) parts.push("drums");
   else parts.push(`program ${t.program}`);
-  parts.push(`volume ${Math.round(t.volume * 100)}`, `pan ${Math.round(t.pan * 100)}`, `reverb ${Math.round((t.reverb ?? 0) * 100)}`, `color ${trackColorId(t.color)}`);
+  parts.push(`volume ${Math.round(t.volume * 100)}`, `pan ${Math.round(t.pan * 100)}`, `reverb ${Math.round(reverbLevel(song, t) * 100)}`, `color ${trackColorId(t.color)}`);
   return parts.join(" · ");
 }

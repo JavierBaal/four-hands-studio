@@ -3,7 +3,7 @@
  * as compact text in English. Pure functions of the song, so they are tested without the app.
  * Notes themselves are formatted by the core (compact.ts).
  */
-import { type Insert, insertName, kindName, paramDefs, paramText } from "@fourhands/core";
+import { type Insert, busList, insertName, kindName, paramDefs, paramText, reverbBus } from "@fourhands/core";
 import { type EngineLevels, type EngineLoad, levelsReport } from "../../shared/mix.js";
 import { trackColorId } from "../../shared/track-colors.js";
 import {
@@ -60,10 +60,18 @@ export function panText(pan: number): string {
   return v === 0 ? "C" : v < 0 ? `L${-v}` : `R${v}`;
 }
 
-/** "mix vol 80 pan L30", "mix vol 80 pan C rev 30" or "mix vol 80 pan C muted" (no reverb: no "rev"). */
-export function mixText(track: Track): string {
-  const rev = track.reverb ? ` rev ${Math.round(track.reverb * 100)}` : "";
-  return `mix vol ${Math.round(track.volume * 100)} pan ${panText(track.pan)}${rev}${track.mute ? " muted" : ""}`;
+/**
+ * "mix vol 80 pan L30", "mix vol 80 pan C rev 30 → Voces send Delay 20 pre muted": volume, pan,
+ * the send to the reverb bus as "rev" (H4's reverb), where it goes and its other sends (parte D).
+ */
+export function mixText(track: Pick<Track, "volume" | "pan" | "mute" | "solo" | "bus" | "sends">, song: Song): string {
+  const reverb = reverbBus(song);
+  const level = (n: number) => Math.round(n * 100);
+  const rev = reverb && track.sends?.find((x) => x.bus === reverb.id);
+  const out = track.bus ? ` → ${song.buses?.[track.bus]?.name ?? track.bus}` : "";
+  const sends = (track.sends ?? []).filter((x) => x !== rev).map((x) => ` send ${song.buses?.[x.bus]?.name ?? x.bus} ${level(x.level)}${x.pre ? " pre" : ""}`).join("");
+  const revText = rev ? ` rev ${level(rev.level)}${rev.pre ? " pre" : ""}` : "";
+  return `mix vol ${level(track.volume)} pan ${panText(track.pan)}${revText}${out}${sends}${track.mute ? " muted" : ""}${track.solo ? " solo" : ""}`;
 }
 
 function bars(from: number, to: number): string {
@@ -114,7 +122,7 @@ export function overviewText(song: Song, extras: OverviewExtras = { open: [] }):
       parts.push(`${notes.length} notes`, bars(first, last), `${pitchName(low, song.key)}–${pitchName(high, song.key)}`, `avg v${velocity}`);
       parts.push(ai === 0 ? "all by the user" : ai === notes.length ? "all by an AI" : `user ${percent(notes.length - ai, notes.length)}% · AI ${percent(ai, notes.length)}%`);
     }
-    parts.push(mixText(track), `color ${trackColorId(track.color)}`);
+    parts.push(mixText(track, song), `color ${trackColorId(track.color)}`);
     if (track.inserts?.length) parts.push(`effects: ${chainText(track.inserts)}`);
     if (track.solo) parts.push("solo (the user is listening to it alone)");
     if (track.pedal.length) parts.push(`${track.pedal.length} pedal spans`);
@@ -125,6 +133,21 @@ export function overviewText(song: Song, extras: OverviewExtras = { open: [] }):
     lines.push(parts.join(" · "));
   }
 
+  // F2.2 parte D: the buses, with where they go and their effects.
+  const buses = busList(song);
+  if (buses.length) {
+    lines.push("Buses (tracks reach them through their output '→' or a send; 'rev' is the send to the reverb bus):");
+    for (const b of buses) {
+      const feeders = [...orderedTracks(song), ...buses].filter((c) => c.bus === b.id).map((c) => c.name);
+      const senders = [...orderedTracks(song), ...buses].filter((c) => c.sends?.some((x) => x.bus === b.id)).map((c) => c.name);
+      const parts = [`${b.id} ${b.name}`, mixText({ ...b, mute: !!b.mute, solo: !!b.solo }, song).replace(/^mix /, "")];
+      if (b.inserts?.length) parts.push(`effects: ${chainText(b.inserts)}`);
+      if (feeders.length) parts.push(`fed by ${feeders.join(", ")}`);
+      if (senders.length) parts.push(`sends from ${senders.join(", ")}`);
+      if (!feeders.length && !senders.length) parts.push("nothing goes into it");
+      lines.push(parts.join(" · "));
+    }
+  } else lines.push("Buses: none (add_bus makes one; the song has no reverb bus, so 'rev' does nothing)");
   // F2.2 parte B: the master fader, 0-100 like the tracks' volume (100 = 0 dB).
   lines.push(`Master: vol ${Math.round((song.masterVolume ?? 1) * 100)}${(song.masterVolume ?? 1) === 1 ? " (0 dB)" : ""}${song.masterInserts?.length ? ` · effects: ${chainText(song.masterInserts)}` : ""}`);
   if (Object.keys(song.harmony).length === 0) lines.push("Harmony: no chords written yet");
@@ -304,11 +327,11 @@ export function levelsText(
   levels: EngineLevels | null,
   tracks: ReadonlyArray<{ name: string; channel: number; strip?: number | undefined }>,
   at: number | null,
-  extras: { masterVolume?: number | undefined; load?: EngineLoad | null } = {},
+  extras: { masterVolume?: number | undefined; load?: EngineLoad | null; buses?: ReadonlyArray<{ name: string; index: number }> } = {},
 ): string {
   const load = loadText(extras.load);
   if (!levels) return ["No levels yet: they are measured in the audio engine while the song plays. Ask the user to play it (or the part you care about) and stop; then call get_levels again.", ...(load ? [load] : [])].join("\n");
-  const r = levelsReport(levels, tracks);
+  const r = levelsReport(levels, tracks, extras.buses ?? []);
   const db = (v: number) => (Number.isFinite(v) ? `${v.toFixed(1)}` : "silent");
   const clip = (n: number) => (n > 0 ? `, CLIPPING (${n} samples over 0 dBFS)` : "");
   const when = at ? ` (${new Date(at).toISOString().slice(11, 16)} UTC)` : "";
@@ -318,6 +341,10 @@ export function levelsText(
   for (const t of r.tracks) {
     if (!Number.isFinite(t.peakDb)) silent.push(t.track);
     else lines.push(`- ${t.track}: ${db(t.peakDb)} / ${db(t.rmsDb)}${clip(t.clips)}`);
+  }
+  for (const b of r.buses ?? []) {
+    if (!Number.isFinite(b.peakDb)) silent.push(`bus ${b.bus}`);
+    else lines.push(`- bus ${b.bus}: ${db(b.peakDb)} / ${db(b.rmsDb)}${clip(b.clips)}`);
   }
   if (silent.length) lines.push(`Silent in that playback (muted, not playing there, or no notes): ${silent.join(", ")}.`);
   if (load) lines.push(load);

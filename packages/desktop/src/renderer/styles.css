@@ -626,6 +626,17 @@ input.inline.mixval { height: 16px; padding: 0 2px; font-size: 10px; text-align:
 .cminibar { height: 4px; border-radius: 2px; background: var(--line-strong); overflow: hidden; }
 .cminibar > div { height: 100%; background: var(--text-2); }
 .cout { font-size: 11px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: none; border-top: 1px solid var(--line-soft); padding-top: 4px; }
+/* F2.2 parte D: the output is chosen with a click; sends are dragged across, «+ envío» opens the buses. */
+button.cout { background: none; border: 0; border-top: 1px solid var(--line-soft); border-radius: 0; text-align: left; font: inherit; font-size: 11px; color: var(--text-2); cursor: pointer; padding: 4px 0 0; margin: 0; width: 100%; }
+button.cout:hover { color: var(--text); }
+button.cout:focus-visible, .csend:focus-visible, button.csend.add:focus-visible { outline: 2px solid var(--line-on); outline-offset: 1px; border-radius: 3px; }
+.csend[role="slider"] { cursor: ew-resize; touch-action: none; flex: none; }
+.csend[role="slider"]:hover .csendname { color: var(--text); }
+.csend.pre .cminibar { box-shadow: inset 0 0 0 1px var(--line-on); background: transparent; }
+button.csend.add { background: transparent; font: inherit; font-size: 10px; padding: 0; cursor: pointer; flex: none; }
+button.csend.add:hover { color: var(--text); }
+.csend.ctype { font-size: 10px; height: 18px; flex: none; }
+.cname .ctitle.ctype { width: 100%; font-size: 12px; }
 .cpan { display: flex; align-items: center; justify-content: space-between; flex: none; }
 .cstrip.narrow .cpan { justify-content: center; }
 .cstrip.narrow .fader.fpan { width: 32px; margin-left: 0; }

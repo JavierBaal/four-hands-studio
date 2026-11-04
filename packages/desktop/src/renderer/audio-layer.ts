@@ -4,14 +4,14 @@
  * as one command at the end, so the whole take undoes in one step, and it is never quantized.
  */
 import { currentProposal, songWithProposal } from "./proposals.js";
-import { type Note, OWN_EFFECTS, type PedalSpan, type Song, type Track, PPQ, barAt, barStart, orderedSections } from "@fourhands/core";
+import { type Note, OWN_EFFECTS, type PedalSpan, type Song, type Track, PPQ, allInserts, audible, barAt, barStart, busList, orderedSections, reverbBus, reverbLevel } from "@fourhands/core";
 import type { Lang, Strings, Translate } from "../shared/i18n.js";
 import { Engine } from "../audio/engine.js";
 import { INITIAL_KEYBOARD, type KeyboardState, keyAction } from "../audio/keyboard.js";
 import { HIDDEN_LOOKAHEAD, Player, type Target } from "../audio/player.js";
 import { type EnginePort, type MidiPort, SoundRouter, isOwnLoopback } from "../audio/router.js";
-import { type EngineLevels, type EngineLoad, engineChain, engineStrips, levelsReport, masterGain } from "../shared/mix.js";
-import { METRONOME_KEY, StripMap } from "../shared/strips.js";
+import { type EngineLevels, type EngineLoad, busChainKey, engineBuses, engineChain, engineRouting, engineStrips, levelsReport, masterGain } from "../shared/mix.js";
+import { BusMap, METRONOME_KEY, StripMap } from "../shared/strips.js";
 import { type EffectItem, NO_SOUND_PREFS, type SoundItem, type SoundPrefs, buildCatalog, buildEffectCatalog, withRecent } from "../shared/sound-catalog.js";
 import { ENGINE_OFF, type EnginePluginList, type EngineScanProgress, type EngineStatus } from "../shared/engine.js";
 import type { Bridge } from "./bridge.js";
@@ -113,6 +113,9 @@ export class AudioLayer {
    * neutral at the next mix (their track went).
    */
   private strips = new StripMap();
+  /** F2.2 parte D: each bus's place in the engine, and the routing last sent (with its engine run). */
+  private buses = new BusMap();
+  private routingSent = "";
   private stripReset: number[] = [];
   private engineLoading = new Set<string>();
   private engineRefused = new Set<string>();
@@ -182,12 +185,17 @@ export class AudioLayer {
       this.syncStrips();
       const sig = this.replica.song.trackOrder.map((id) => {
         const tr = this.replica.song.tracks[id];
-        return tr ? `${this.stripOf(tr)}:${tr.output ?? ""}:${tr.channel}:${tr.program}:${tr.volume}:${tr.pan}:${tr.reverb ?? 0}:${tr.sound ? `${tr.sound.bank}/${tr.sound.bankMSB}/${tr.sound.program}` : ""}` : "";
+        return tr ? `${this.stripOf(tr)}:${tr.output ?? ""}:${tr.channel}:${tr.program}:${tr.volume}:${tr.pan}:${reverbLevel(this.replica.song, tr)}:${tr.sound ? `${tr.sound.bank}/${tr.sound.bankMSB}/${tr.sound.program}` : ""}` : "";
       }).join("|");
-      // F2.2 parte B: mute, solo and the master fader go to the engine (they do not re-set the player).
-      const mixSig = `${this.replica.song.masterVolume ?? 1}|${this.replica.song.trackOrder.map((id) => {
-        const tr = this.replica.song.tracks[id];
-        return tr ? `${tr.mute ? "m" : ""}${tr.solo ? "s" : ""}` : "";
+      // F2.2 parte B: mute, solo and the master fader go to the engine (they do not re-set the player);
+      // parte D: so do the buses and where every track goes.
+      const song = this.replica.song;
+      const mixSig = `${song.masterVolume ?? 1}|${song.trackOrder.map((id) => {
+        const tr = song.tracks[id];
+        return tr ? `${tr.mute ? "m" : ""}${tr.solo ? "s" : ""}>${tr.bus ?? ""}${JSON.stringify(tr.sends ?? [])}` : "";
+      }).join(",")}|${(song.busOrder ?? []).map((id) => {
+        const b = song.buses?.[id];
+        return b ? JSON.stringify({ ...b, inserts: undefined, name: undefined, color: undefined }) : "";
       }).join(",")}`;
       if (mixSig !== this.mixSignature && sig === this.trackSignature) {
         this.mixSignature = mixSig;
@@ -347,15 +355,39 @@ export class AudioLayer {
     return song.trackOrder.map((id) => song.tracks[id]!).filter(Boolean);
   }
 
-  /** F2.2: the engine's strips for the song's tracks (plugin tracks: fader, balance, reverb send). */
+  /**
+   * F2.2: the engine's strips for the song's tracks (fader, balance, on or off), the master fader,
+   * and (parte D) the buses' faders and the whole routing when it changed.
+   */
   private sendMix(): void {
     if (this.engineStatus.state !== "ready") return;
     // The song heard (Con / Sin, a proposal): the AI's mix changes can be compared too.
     const song = this.heard();
+    this.syncBuses();
     const tracks = song.trackOrder.map((id) => song.tracks[id]!).filter(Boolean);
     const reset = [...this.stripReset, this.strips.of(METRONOME_KEY, 15)];
     this.stripReset = [];
-    this.bridge.engineMix(engineStrips(tracks.map((t) => ({ ...t, strip: this.stripOf(t) })), reset), masterGain(song.masterVolume));
+    const on = audible(song);
+    this.bridge.engineMix(engineStrips(tracks.map((t) => ({ ...t, strip: this.stripOf(t) })), reset, on), masterGain(song.masterVolume), engineBuses(song, (id) => this.busIndexOf(id), on));
+    const routing = engineRouting(song, (t) => this.stripOf(t), (id) => this.busIndexOf(id));
+    const sig = `${this.engineStatus.generation}:${JSON.stringify(routing)}`;
+    if (sig !== this.routingSent) {
+      this.routingSent = sig;
+      this.bridge.engineRouting(routing);
+    }
+  }
+
+  /** F2.2 parte D: every bus of the song (and of the song heard) keeps its place in the engine. */
+  private syncBuses(): void {
+    const ids = new Set<string>();
+    for (const song of [this.replica.song, this.heard()]) for (const id of song.busOrder ?? []) ids.add(id);
+    this.buses.sync([...ids]);
+  }
+
+  /** A bus's place in the engine (-1: none). */
+  busIndexOf(id: string): number {
+    if (this.buses.of(id) < 0) this.syncBuses();
+    return this.buses.of(id);
   }
 
   /**
@@ -372,6 +404,11 @@ export class AudioLayer {
       if (t && t.output !== "external") want.set(this.stripOf(t), engineChain(t.inserts ?? []));
     }
     want.set(-1, engineChain(song.masterInserts ?? []));
+    this.syncBuses();
+    for (const b of busList(song)) {
+      const index = this.busIndexOf(b.id);
+      if (index >= 0) want.set(busChainKey(index), engineChain(b.inserts ?? []));
+    }
     // Strips whose track went (or now sounds outside): their chain goes.
     for (const strip of this.chainsSent.keys()) if (!want.has(strip)) want.set(strip, []);
     for (const [strip, chain] of want) {
@@ -390,7 +427,7 @@ export class AudioLayer {
     // After the chains (the engine loads a new plugin effect before it gets its parameters).
     // The AI's plugin parameters: only the ones that changed, and back to what was there when undone.
     const seen = new Set<string>();
-    for (const x of [...(song.masterInserts ?? []), ...song.trackOrder.flatMap((t) => song.tracks[t]?.inserts ?? [])]) {
+    for (const x of allInserts(song)) {
       if (x.kind !== "plugin") continue;
       seen.add(x.id);
       const now = x.pluginParams ?? {};
@@ -417,6 +454,7 @@ export class AudioLayer {
       const t = song.tracks[tid];
       if (t && t.output !== "external") where.push([this.stripOf(t), t.inserts ?? []]);
     }
+    for (const b of busList(song)) if (this.busIndexOf(b.id) >= 0) where.push([busChainKey(this.busIndexOf(b.id)), b.inserts ?? []]);
     for (const [strip, chain] of where) {
       if (!chain.some((x) => x.id === id)) continue;
       const changed = chain.map((x) => (x.id === id ? { ...x, params: { ...(x.params ?? {}), ...params }, ...(bypass === undefined ? {} : { bypass }) } : x));
@@ -1058,12 +1096,43 @@ export class AudioLayer {
     const track = this.replica.song.tracks[trackId];
     if (!track) return;
     this.player.previewMix({ ch: track.channel, strip: this.stripOf(track) }, volume, pan, reverb);
-    // A plugin's strip is audio in the engine (it gets no CC7): move it there while dragging.
-    if (track.output === "plugin" && this.engineStatus.state === "ready") {
-      const tracks = this.heardTracks().map((t) => (t.id === trackId ? { ...t, volume, pan, reverb: reverb ?? t.reverb } : t));
-      const mine = engineStrips(tracks.map((t) => ({ ...t, strip: this.stripOf(t) }))).filter((st) => st.track === trackId);
+    // Parte D: the reverb is the send to the «Reverb» bus: heard there while it moves.
+    const bus = reverbBus(this.heard());
+    if (reverb !== undefined && bus) this.previewSend(trackId, bus.id, reverb);
+    // The strip's fader is audio in the engine (parte D: the built-in sounds' too): move it there.
+    if (track.output !== "external" && this.engineStatus.state === "ready") {
+      const tracks = this.heardTracks().map((t) => (t.id === trackId ? { ...t, volume, pan } : t));
+      const mine = engineStrips(tracks.map((t) => ({ ...t, strip: this.stripOf(t) })), [], audible(this.heard())).filter((st) => st.track === trackId);
       this.bridge.engineMix(mine);
     }
+  }
+
+  /** F2.2 parte D: a send's level while it moves (the song changes on release; 0: as if gone). */
+  previewSend(sourceId: string, busId: string, level: number, pre?: boolean): void {
+    if (this.engineStatus.state !== "ready") return;
+    const song = this.heard();
+    const source = song.tracks[sourceId] ?? song.buses?.[sourceId];
+    if (!source || !song.buses?.[busId]) return;
+    const others = (source.sends ?? []).filter((x) => x.bus !== busId);
+    const was = source.sends?.find((x) => x.bus === busId);
+    const sends = [...others, { bus: busId, level, ...((pre ?? was?.pre) ? { pre: true as const } : {}) }];
+    const changed: Song = song.tracks[sourceId]
+      ? { ...song, tracks: { ...song.tracks, [sourceId]: { ...song.tracks[sourceId]!, sends } } }
+      : { ...song, buses: { ...song.buses, [sourceId]: { ...song.buses[sourceId]!, sends } } };
+    const routing = engineRouting(changed, (t) => this.stripOf(t), (id) => this.busIndexOf(id));
+    // Sent as it is; the next mix sends the song's own routing (the signature differs).
+    this.routingSent = "";
+    this.bridge.engineRouting(routing);
+  }
+
+  /** F2.2 parte D: a bus's fader or pan while it moves (the song changes on release). */
+  previewBus(busId: string, volume: number, pan: number): void {
+    if (this.engineStatus.state !== "ready") return;
+    const song = this.heard();
+    const bus = song.buses?.[busId];
+    if (!bus) return;
+    const changed = { ...song, buses: { ...song.buses, [busId]: { ...bus, volume, pan } } };
+    this.bridge.engineMix([], undefined, engineBuses(changed, (id) => this.busIndexOf(id), audible(song)).filter((b) => b.id === busId));
   }
 
   /** F2.2 parte B: the master fader while it moves (the song changes on release). */

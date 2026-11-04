@@ -67,3 +67,48 @@ export class StripMap {
     this.taken.clear();
   }
 }
+
+/** Buses in the engine (Engine.h, kBuses). */
+export const MAX_BUSES = 128;
+
+/**
+ * F2.2 parte D: each bus has its place in the engine while it exists, so its effects stay loaded
+ * when other buses come, go or move in the console. The lowest free place for a new one.
+ */
+export class BusMap {
+  private byId = new Map<string, number>();
+
+  /** Up to date with the song's buses; returns the places that are free again. */
+  sync(ids: readonly string[]): number[] {
+    const alive = new Set(ids);
+    const freed: number[] = [];
+    for (const [id, index] of this.byId)
+      if (!alive.has(id)) {
+        this.byId.delete(id);
+        freed.push(index);
+      }
+    const taken = new Set(this.byId.values());
+    for (const id of ids) {
+      if (this.byId.has(id)) continue;
+      let index = 0;
+      while (taken.has(index) && index < MAX_BUSES) index++;
+      if (index >= MAX_BUSES) continue;
+      this.byId.set(id, index);
+      taken.add(index);
+    }
+    return freed;
+  }
+
+  /** A bus's place, or -1 if it has none (all taken). */
+  of(id: string): number {
+    return this.byId.get(id) ?? -1;
+  }
+
+  entries(): Array<[string, number]> {
+    return [...this.byId.entries()];
+  }
+
+  clear(): void {
+    this.byId.clear();
+  }
+}

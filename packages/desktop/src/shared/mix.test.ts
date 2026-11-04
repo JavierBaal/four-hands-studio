@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { dbToVolume, formatDb, formatPan, formatReverb, parseDb, parsePan, parseReverb, volumeToDb } from "./mix.js";
-import { engineLoad, engineStrips, levelDb, levelsReport, masterGain, stripGain } from "./mix.js";
+import { SongDocument, USER, addBus, addTrack, audible, setOutput, setSend, starterSong, updateBus, updateTrack } from "@fourhands/core";
+import { busChainKey, engineBuses, engineLoad, engineRouting, engineStrips, levelDb, levelsReport, masterGain, stripGain } from "./mix.js";
 import { trackColorByName, trackColorId, TRACK_PALETTE } from "./track-colors.js";
 import { TRACK_COLOR_COUNT } from "@fourhands/core";
 
@@ -79,26 +80,29 @@ describe("reverb send (H4)", () => {
 });
 
 describe("the engine's strips (F2.2, 03/11/2026)", () => {
-  it("gives a plugin track its fader in the dB the window shows, its balance and its reverb send", () => {
+  it("gives every track its fader in the dB the window shows; a plugin also its balance (parte D)", () => {
     expect(stripGain(1)).toBe(1);
     expect(20 * Math.log10(stripGain(0.8))).toBeCloseTo(volumeToDb(0.8), 6);
     expect(stripGain(0)).toBe(0);
     const strips = engineStrips([
-      { channel: 2, output: "plugin", volume: 0.8, pan: -0.5, reverb: 0.3 },
-      { channel: 0, volume: 0.5, pan: 0.2, reverb: 0.4 },
+      { channel: 2, output: "plugin", volume: 0.8, pan: -0.5 },
+      { channel: 0, volume: 0.5, pan: 0.2 },
+      { channel: 3, output: "external", volume: 0.5, pan: 0.2 },
     ]);
     expect(strips).toEqual([
-      { ch: 2, gain: stripGain(0.8), pan: -0.5, reverb: 0.3 },
-      // The built-in sounds keep volume, pan and reverb as MIDI: their strip stays neutral.
-      { ch: 0, gain: 1, pan: 0, reverb: 0 },
+      { ch: 2, gain: stripGain(0.8), pan: -0.5 },
+      // A built-in sound: its volume in the strip (the synth gets CC7 at 127), its pan stays CC10.
+      { ch: 0, gain: stripGain(0.5), pan: 0 },
+      // Outside Four Hands: nothing to do in the engine.
+      { ch: 3, gain: 1, pan: 0 },
     ]);
   });
 
   it("goes by the track's strip, says whose it is, and puts freed strips back to neutral (A2)", () => {
     const strips = engineStrips([{ id: "t9", channel: 0, strip: 37, output: "plugin", volume: 1, pan: 0.5 }], [12, 37]);
     expect(strips).toEqual([
-      { ch: 12, gain: 1, pan: 0, reverb: 0 },
-      { ch: 37, gain: 1, pan: 0.5, reverb: 0, track: "t9" },
+      { ch: 12, gain: 1, pan: 0 },
+      { ch: 37, gain: 1, pan: 0.5, track: "t9" },
     ]);
   });
 });
@@ -144,5 +148,54 @@ describe("the levels the engine measured (F2.2)", () => {
     // A2: by strip when the track has one.
     expect(levelsReport({ channels, master: { peak: 1, rms: 0.2, clips: 0 } }, [{ name: "Viola", channel: 0, strip: 2 }]).tracks[0]!.peakDb).toBe(-6);
     expect(r.master.peakDb).toBe(0);
+  });
+});
+
+describe("buses in the engine (F2.2 parte D)", () => {
+  function song() {
+    const doc = new SongDocument(starterSong("Buses"), { now: () => 0 });
+    doc.transact({ actor: USER, label: "buses" }, (tx) => {
+      addTrack(tx, { name: "Voz" }); // t2
+      addTrack(tx, { name: "Fuera" }); // t3
+      updateTrack(tx, "t3", { output: "external" });
+      const voces = addBus(tx, { name: "Voces" }); // b2
+      const mix = addBus(tx, { name: "Mix bus", index: 0 }); // b3
+      setOutput(tx, voces, mix);
+      setOutput(tx, "t2", voces);
+      setSend(tx, "t2", "b1", { level: 0.3 });
+      setSend(tx, "t1", voces, { level: 0.5, pre: true });
+      setSend(tx, "t3", "b1", { level: 0.4 });
+      updateBus(tx, mix, { volume: 0.8, mute: true });
+    });
+    return doc.song;
+  }
+  const index = (id: string) => ({ b1: 0, b2: 1, b3: 2 })[id] ?? -1;
+
+  it("sends every strip's and bus's output and sends, each bus after those that feed it", () => {
+    const s = song();
+    const r = engineRouting(s, (t) => ({ t1: 0, t2: 1, t3: 2 })[t.id]!, index);
+    expect(r.strips).toEqual([
+      { ch: 0, out: -1, sends: [{ bus: 1, level: 0.5, pre: true }] },
+      { ch: 1, out: 1, sends: [{ bus: 0, level: 0.3, pre: false }] },
+    ]);
+    expect(r.buses).toEqual([
+      { bus: 2, out: -1, sends: [] },
+      { bus: 0, out: -1, sends: [] },
+      { bus: 1, out: 2, sends: [] },
+    ]);
+    // Voces (1) before Mix bus (2); the reverb bus takes the instruments' own reverb.
+    expect(r.order.indexOf(1)).toBeLessThan(r.order.indexOf(2));
+    expect(r.instrumentReverb).toBe(0);
+  });
+
+  it("gives the buses their faders, off when muted", () => {
+    const s = song();
+    expect(engineBuses(s, index, audible(s))).toEqual([
+      { bus: 2, gain: stripGain(0.8), pan: 0, on: false, id: "b3" },
+      { bus: 0, gain: 1, pan: 0, id: "b1" },
+      { bus: 1, gain: 1, pan: 0, id: "b2" },
+    ]);
+    expect(busChainKey(0)).toBe(-2);
+    expect(busChainKey(5)).toBe(-7);
   });
 });
