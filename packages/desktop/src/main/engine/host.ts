@@ -137,6 +137,11 @@ export class EngineHost {
               fail("The engine was built before A2 (strips per track): build it again");
               return;
             }
+            // F2.2 parte D (04/11/2026): buses and sends. An older engine would not route anything.
+            if (!(Number(hello.buses) > 0)) {
+              fail("The engine was built before the buses (F2.2 parte D): build it again");
+              return;
+            }
             settled = true;
             this.abortStart = null;
             clearTimeout(timer);

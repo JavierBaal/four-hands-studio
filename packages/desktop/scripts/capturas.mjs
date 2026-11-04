@@ -152,13 +152,6 @@ export const SHOTS = [
     await page.locator(".thdr").nth(1).click({ button: "right", position: { x: 120, y: 12 } });
     await page.getByRole("menuitem", { name: /^Mezcla/ }).click();
   } },
-  // H4: reverb send in the mix card, at 35, and typing it.
-  { name: "reverb_tarjeta_mezcla", q: `?song=boceto&view=${sketchView(1440 - 288 - 72, 12)}`, act: async (page) => {
-    await page.evaluate(() => window.fhTest.replica.run("x", [{ type: "updateTrack", id: window.fhTest.replica.song.trackOrder[1], changes: { reverb: 0.35 } }]));
-    await page.waitForTimeout(200);
-    await page.locator(".thdr").nth(1).click({ button: "right", position: { x: 120, y: 12 } });
-    await page.getByRole("menuitem", { name: /^Mezcla/ }).click();
-  } },
   // H4: tempo and key changes. Bars 41–52 of the sketch: an accelerando, a jump, a ritardando, a fermata and a key change.
   { name: "tempo_reglas", q: `?song=boceto&view=${view({ startTick: 40 * BAR, pxPerTick: (1440 - 288 - 72) / 12 / BAR, scrollY: (127 - 86) * 15 })}`, act: tempoSong },
   { name: "tempo_escribir", q: `?song=boceto&view=${view({ startTick: 40 * BAR, pxPerTick: (1440 - 288 - 72) / 12 / BAR, scrollY: (127 - 86) * 15 })}`, act: async (page) => {
@@ -179,15 +172,6 @@ export const SHOTS = [
     await page.waitForTimeout(300);
     await page.locator(".topbar .fbtn").first().hover();
     await page.waitForTimeout(900);
-  } },
-  { name: "reverb_escribir", q: `?song=boceto&view=${sketchView(1440 - 288 - 72, 12)}`, act: async (page) => {
-    await page.locator(".thdr").nth(1).click({ button: "right", position: { x: 120, y: 12 } });
-    await page.getByRole("menuitem", { name: /^Mezcla/ }).click();
-    await page.locator(".qdialog .mixtype").nth(2).click();
-    await page.keyboard.type("40");
-  } },
-  { name: "reverb_menu_pista", q: `?song=boceto&view=${sketchView(1440 - 288 - 72, 12)}`, act: async (page) => {
-    await page.locator(".thdr").nth(1).click({ button: "right", position: { x: 120, y: 12 } });
   } },
   { name: "notas_en_carriles", q: `?song=boceto&view=${sketchView(1440 - 288 - 72, 12)}`, act: async (page) => {
     await page.evaluate((bar) => window.fhTest.replica.run("x", [
@@ -410,11 +394,82 @@ export const SHOTS = [
       await page.waitForTimeout(500);
     },
   })),
+  // F2.2 parte D (04/11/2026): buses and sends, as the approved sketch: Cuerdas (a subgroup of the
+  // melody and the countermelody) into Mix bus, a Delay return, the «Reverb» bus every song has.
+  { name: "buses_1_consola", q: `?song=boceto&view=${view({ bottom: "mix", mixMax: true })}`, act: async (page) => { await withBuses(page); await consoleLevels(page); } },
+  { name: "buses_2_con_arreglo", q: `?song=boceto&view=${view({ bottom: "mix" })}`, act: async (page) => { await withBuses(page); await consoleLevels(page); } },
+  { name: "buses_3_estrecha", q: `?song=boceto&view=${view({ bottom: "mix", mixNarrow: true, mixMax: true })}`, act: async (page) => { await withBuses(page); await consoleLevels(page); } },
+  { name: "buses_4_menu_salida", q: `?song=boceto&view=${view({ bottom: "mix", mixMax: true })}`, act: async (page) => {
+    await withBuses(page);
+    await consoleLevels(page);
+    await page.locator('.cstrip[data-track]').nth(1).locator("button.cout").click();
+    await page.waitForTimeout(200);
+  } },
+  { name: "buses_5_menu_envio", q: `?song=boceto&view=${view({ bottom: "mix", mixMax: true })}`, act: async (page) => {
+    await withBuses(page);
+    await consoleLevels(page);
+    await page.locator('.cstrip[data-track]').nth(4).locator("button.csend.add").click();
+    await page.waitForTimeout(200);
+  } },
+  { name: "buses_6_menu_bus", q: `?song=boceto&view=${view({ bottom: "mix", mixMax: true })}`, act: async (page) => {
+    await withBuses(page);
+    await consoleLevels(page);
+    await page.locator('.cstrip.bus .cname').nth(1).click({ button: "right" });
+    await page.waitForTimeout(200);
+  } },
+  { name: "buses_7_ventana_reverb", q: `?song=boceto&view=${view({ bottom: "mix", mixMax: true })}`, act: async (page) => {
+    await withBuses(page);
+    await consoleLevels(page);
+    await page.locator('.cstrip.bus[data-bus="b1"] .cslot[data-fx]').first().dblclick();
+    await page.waitForTimeout(500);
+  } },
+  { name: "buses_8_borrado", q: `?song=boceto&view=${view({ bottom: "mix", mixMax: true })}`, act: async (page) => {
+    await withBuses(page);
+    await consoleLevels(page);
+    await page.locator('.cstrip.bus .cname').nth(1).click();
+    await page.keyboard.press("Delete");
+    await page.waitForTimeout(500);
+  } },
   // The Mezcla / Editor button (Fran, 03/11/2026: at the start of the bar).
   { name: "boton_mezcla_editor", q: `?song=boceto&view=${sketchView(1440 - 288 - 72, 12)}` },
   { name: "boton_mezcla_consola", q: `?song=boceto&view=${view({ bottom: "mix" })}`, act: consoleLevels },
   { name: "boton_mezcla_editor_880", w: 880, h: 800, q: `?song=boceto&view=${sketchView(880 - 48 - 56, 8)}` },
 ];
+
+/** Buses like a real mix (F2.2 parte D): Cuerdas → Mix bus, a Delay return, sends to the reverb. */
+async function withBuses(page) {
+  await page.evaluate(async () => {
+    const { replica } = window.fhTest;
+    const [t0, t1, t2, t3, t4] = replica.song.trackOrder;
+    await replica.run("x", [
+      { type: "addBus", spec: { name: "Reverb", color: 4 } }, // b1
+      { type: "addBus", spec: { name: "Cuerdas", color: 2 } }, // b2
+      { type: "addBus", spec: { name: "Delay", color: 6 } }, // b3
+      { type: "addBus", spec: { name: "Mix bus", color: 8 } }, // b4
+    ]);
+    await replica.run("x", [
+      { type: "addInsert", target: "b1", spec: { kind: "reverb" } },
+      { type: "addInsert", target: "b2", spec: { kind: "eq" } },
+      { type: "addInsert", target: "b2", spec: { kind: "compressor" } },
+      { type: "addInsert", target: "b3", spec: { kind: "plugin", plugin: { id: "VST3-ValhallaDelay-1", name: "ValhallaDelay" } } },
+      { type: "addInsert", target: "b4", spec: { kind: "compressor" } },
+      { type: "setOutput", source: "b2", bus: "b4" },
+      { type: "setOutput", source: "b3", bus: "b4" },
+      { type: "setOutput", source: "b1", bus: "b4" },
+      { type: "setOutput", source: t2, bus: "b2" },
+      { type: "setOutput", source: t3, bus: "b2" },
+      { type: "setOutput", source: t0, bus: "b4" },
+      { type: "setOutput", source: t1, bus: "b4" },
+      { type: "setSend", source: t0, bus: "b1", changes: { level: 0.35 } },
+      { type: "setSend", source: t1, bus: "b1", changes: { level: 0.2 } },
+      { type: "setSend", source: t2, bus: "b1", changes: { level: 0.45 } },
+      { type: "setSend", source: t3, bus: "b1", changes: { level: 0.4 } },
+      { type: "setSend", source: t2, bus: "b3", changes: { level: 0.25, pre: true } },
+      { type: "setSend", source: t4, bus: "b1", changes: { level: 0.1 } },
+      { type: "updateBus", id: "b3", changes: { volume: 0.85 } },
+    ]);
+  });
+}
 
 /** Effects like a real mix: EQ and compressor on the melody, Pro-Q on the piano, an EQ bypassed, a limiter on the Master. */
 async function withEffects(page) {
@@ -448,7 +503,9 @@ async function consoleLevels(page, load = { avgLoad: 0.23, maxLoad: 0.31, dropou
       const [peak, rms] = dbs[i % dbs.length];
       channels[audio.stripOf(replica.song.tracks[id])] = { peak: lin(peak), rms: lin(rms), clips: i === 2 ? 1 : 0 };
     });
-    ai.engine.meters = { channels, master: { peak: lin(-9.6), rms: lin(-27.9), clips: 0 } };
+    // Parte D: the buses' meters too.
+    const buses = Array.from({ length: 16 }, (_, i) => ({ peak: lin(-14 - i * 4), rms: lin(-30 - i * 4), clips: 0 }));
+    ai.engine.meters = { channels, master: { peak: lin(-9.6), rms: lin(-27.9), clips: 0 }, buses };
     ai.engine.load = load;
   }, load);
   // The meters settle and the load is read (every second).

@@ -1,4 +1,4 @@
-import { addNotes, addTrack, SongDocument, starterSong, updateTrack, USER, setCurve, setPedal } from "@fourhands/core";
+import { addBus, addInsert, addNotes, addTrack, SongDocument, setSend, starterSong, updateTrack, USER, setCurve, setPedal } from "@fourhands/core";
 import { describe, expect, it } from "vitest";
 import { audibleTracks, clickEvents, curveResetEvents, curveStateEvents, noteEvents, secondsPerTick, setupEvents, windowPieces } from "./schedule.js";
 
@@ -71,7 +71,12 @@ describe("schedule", () => {
     // Reverb send (CC91): 0 when the track has none, so it goes back to dry.
     expect(setupEvents(song().song)).toContainEqual({ kind: "cc", ch: 1, cc: 91, value: 0, strip: 1 });
     const doc = song();
-    doc.transact({ actor: USER, label: "r" }, (tx) => updateTrack(tx, "t1", { reverb: 0.5 }));
+    // Parte D: the send to the reverb bus is CC91 for the window's synth and for a DAW.
+    doc.transact({ actor: USER, label: "r" }, (tx) => {
+      const bus = addBus(tx, { name: "Reverb" });
+      addInsert(tx, bus, { kind: "reverb" });
+      setSend(tx, "t1", bus, { level: 0.5 });
+    });
     const ch = doc.song.tracks.t1!.channel;
     expect(setupEvents(doc.song)).toContainEqual({ kind: "cc", ch, cc: 91, value: 64, strip: ch });
     // A track that plays a preset of an installed bank sends that bank's select and preset instead.

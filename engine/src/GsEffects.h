@@ -125,10 +125,18 @@ private:
 class Reverb
 {
 public:
-    explicit Reverb (double rate) : dattorro (rate)
+    explicit Reverb (double rate) : dattorro (rate), sampleRate (rate)
     {
         // setReverbMacro(4): level 64, character 4, pre-lowpass 0, time 64, no pre-delay.
-        const int level = 64, preLowpass = 0, time = 64;
+        configure (64, 0, 64, 0);
+    }
+
+    /**
+     * SpessaSynth's GS reverb parameters (F2.2 parte D: Four Hands' Reverb effect turns them):
+     * level and time 0–127, pre-lowpass 0–7 (0: brightest), pre-delay in samples (under a second).
+     */
+    void configure (int level, int preLowpass, int time, double preDelaySamples)
+    {
         dattorro.damping = 0.1f;
         dattorro.inputDiffusion1 = 0.75f;
         dattorro.inputDiffusion2 = 0.625f;
@@ -140,13 +148,14 @@ public:
         dattorro.preLPF = (float) std::fmin (1.0, 0.1 + (7 - preLowpass) / 14.0 + lpfCoefficient);
         dattorro.gain = (float) (level / 345.0 * gainCoefficient);
         dattorro.decay = (float) (timeCoefficient * (0.05 + 0.65 * (time / 127.0)));
-        dattorro.preDelay = 0;
+        dattorro.preDelay = (float) std::fmax (0.0, std::fmin (0.9 * sampleRate, preDelaySamples));
     }
 
     void process (const float* input, float* left, float* right, int start, int count) { dattorro.process (input, left, right, start, count); }
 
 private:
     DattorroReverb dattorro;
+    double sampleRate;
 };
 
 /** SpessaSynthChorus with the GS macro 2 (Chorus 3), what SpessaSynth sets on reset. */

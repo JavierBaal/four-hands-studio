@@ -183,7 +183,7 @@ function engineHost(): EngineHost {
 }
 
 /** F2.2: the engine's levels in the last playback, for the AI's get_levels. */
-let lastLevels: { levels: EngineLevels; at: number; strips: Record<string, number> } | null = null;
+let lastLevels: { levels: EngineLevels; at: number; strips: Record<string, number>; buses?: Record<string, number> } | null = null;
 /** F2.2 parte B: the engine's last load reading (the window asks every second), for get_levels. */
 let lastLoad: EngineLoad | null = null;
 /**
@@ -192,6 +192,8 @@ let lastLoad: EngineLoad | null = null;
  */
 let trackStrips: Record<string, number> = {};
 const stripOfTrack = (track: { id: string; channel: number }): number => trackStrips[track.id] ?? track.channel;
+/** F2.2 parte D: each bus's place in the engine, as the window last sent it. */
+const busIndexes: Record<string, number> = {};
 
 /** F2.1: sound banks the engine is loading, by "id@offset", waiting for its "soundsLoaded". */
 const soundsWaiting = new Map<string, (r: EngineSoundsResult) => void>();
@@ -808,7 +810,9 @@ function registerIpc(): void {
     const started = Date.now();
     try {
       const links = chain as Array<{ id: string; kind: string; plugin?: string }>;
-      const reply = await engine.request({ type: "inserts", strip: Number(strip), chain: links });
+      // Parte D: -2 - n is bus n's chain (shared/mix.ts, busChainKey).
+      const key = Number(strip);
+      const reply = await engine.request(key <= -2 ? { type: "inserts", bus: -2 - key, chain: links } : { type: "inserts", strip: key, chain: links });
       const errors = Array.isArray(reply.errors) ? (reply.errors as Array<{ id: string; error: string }>) : [];
       for (const x of links) {
         if (x.kind !== "plugin" || !x.plugin || errors.some((e) => e.id === x.id)) continue;
@@ -865,16 +869,27 @@ function registerIpc(): void {
     try {
       const reply = await engine.request({ type: reset ? "resetLevels" : "levels" });
       // What the AI reads with get_levels: the last playback's levels, as the window asked them.
-      if (!reset) lastLevels = { levels: reply as unknown as EngineLevels, at: Date.now(), strips: { ...trackStrips } };
+      if (!reset) lastLevels = { levels: reply as unknown as EngineLevels, at: Date.now(), strips: { ...trackStrips }, buses: { ...busIndexes } };
       return reply;
     } catch {
       return null;
     }
   });
-  ipcMain.on(CH.engineMix, (_e, channels: unknown, master: unknown) => {
+  ipcMain.on(CH.engineMix, (_e, channels: unknown, master: unknown, buses: unknown) => {
     if (!Array.isArray(channels)) return;
     for (const c of channels as Array<{ ch?: unknown; track?: unknown }>) if (typeof c?.track === "string") trackStrips[c.track] = Number(c.ch);
-    engine?.send(typeof master === "number" && Number.isFinite(master) ? { type: "mix", channels, master } : { type: "mix", channels });
+    const message: Record<string, unknown> = { type: "mix", channels };
+    if (typeof master === "number" && Number.isFinite(master)) message.master = master;
+    // Parte D: the buses' faders; the main process keeps where each bus is, for the AI's levels.
+    if (Array.isArray(buses)) {
+      message.buses = buses;
+      for (const b of buses as Array<{ bus?: unknown; id?: unknown }>) if (typeof b?.id === "string") busIndexes[b.id] = Number(b.bus);
+    }
+    engine?.send(message);
+  });
+  ipcMain.on(CH.engineRouting, (_e, routing: unknown) => {
+    if (!routing || typeof routing !== "object") return;
+    engine?.send({ type: "routing", ...(routing as Record<string, unknown>) });
   });
   // F2.2 parte B: the console's meters (~30 times a second, only with the console open) and the
   // engine's load for «Carga». Never start the engine for them.

@@ -3,7 +3,7 @@
  * the next ~200 ms to the synth worklet. Reading the replica at every window means notes the AI
  * writes ahead of the playhead simply play when it gets there.
  */
-import { type Song, CURVE_CC, CURVE_DEFAULT, CURVE_KINDS, PPQ, beatTicks, barTicks, curveValueAt, type Track } from "@fourhands/core";
+import { type Song, CURVE_CC, CURVE_DEFAULT, CURVE_KINDS, PPQ, beatTicks, barTicks, curveValueAt, reverbLevel, type Track } from "@fourhands/core";
 import type { SynthEvent } from "../shared/messages.js";
 
 /** The metronome uses its own channel and a woodblock, so it never clashes with a track. */
@@ -106,7 +106,11 @@ export function clickEvents(song: Song, from: number, to: number, strip = METRON
 /** Bank select and preset a track plays with, when it is not the default bank's General MIDI program. */
 export type SoundResolver = (track: Track) => { bank: number; prog: number } | null;
 
-/** Programs (with their bank), volume, pan and reverb send of every track, to send before playing. */
+/**
+ * Programs (with their bank), volume, pan and reverb send of every track, to send before playing.
+ * The reverb is the track's send to the «Reverb» bus (F2.2 parte D): CC91 for the window's synth
+ * and for a DAW; in the engine the bus does it (router.ts turns CC91 off there).
+ */
 export function setupEvents(song: Song, soundFor: SoundResolver = () => null, stripOf: StripResolver = byChannel, metronomeStrip = METRONOME_CHANNEL): SynthEvent[] {
   const out: SynthEvent[] = [{ kind: "prog", ch: METRONOME_CHANNEL, prog: METRONOME_PROGRAM, bank: 0, strip: metronomeStrip }];
   for (const id of song.trackOrder) {
@@ -119,7 +123,7 @@ export function setupEvents(song: Song, soundFor: SoundResolver = () => null, st
     out.push({ kind: "cc", ch: t.channel, cc: 7, value: Math.round(t.volume * 127), strip });
     out.push({ kind: "cc", ch: t.channel, cc: 10, value: Math.round(64 + t.pan * 63), strip });
     // Always sent, 0 included: a track whose reverb goes back to 0 must sound dry again.
-    out.push({ kind: "cc", ch: t.channel, cc: 91, value: Math.round((t.reverb ?? 0) * 127), strip });
+    out.push({ kind: "cc", ch: t.channel, cc: 91, value: Math.round(reverbLevel(song, t) * 127), strip });
   }
   return out;
 }

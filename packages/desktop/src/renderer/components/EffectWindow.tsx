@@ -71,8 +71,9 @@ function Window({ audio, insert, target }: { audio: AudioLayer; insert: Insert; 
   }, []);
 
   const drag = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
-  const where = target === "master" ? t("consoleMaster") : (song.tracks[target]?.name ?? "");
-  const color = target === "master" ? "var(--text)" : trackColor(song.tracks[target]?.color ?? 0);
+  // A track's or (parte D) a bus's name and colour.
+  const where = target === "master" ? t("consoleMaster") : (song.tracks[target]?.name ?? song.buses?.[target]?.name ?? "");
+  const color = target === "master" ? "var(--text)" : trackColor(song.tracks[target]?.color ?? song.buses?.[target]?.color ?? 0);
   const name = insertName(insert, lang);
   return (
     <div className={`fxwin ${insert.kind}${insert.bypass ? " byp" : ""}`} ref={ref} role="dialog" aria-label={`${name} · ${where}`} style={pos}>
@@ -110,6 +111,7 @@ function Window({ audio, insert, target }: { audio: AudioLayer; insert: Insert; 
         {insert.kind === "eq" && <EqView params={params} onPreview={preview} onCommit={commit} />}
         {insert.kind === "compressor" && <CompView audio={audio} id={insert.id} params={params} onPreview={preview} onCommit={commit} />}
         {insert.kind === "limiter" && <LimView audio={audio} id={insert.id} params={params} onPreview={preview} onCommit={commit} />}
+        {insert.kind === "reverb" && <ReverbView params={params} onPreview={preview} onCommit={commit} />}
       </div>
     </div>
   );
@@ -121,7 +123,7 @@ interface ViewProps {
   onCommit(p: Params): void;
 }
 
-const defOf = (kind: "eq" | "compressor" | "limiter", id: string): ParamDef => paramDefs(kind).find((d) => d.id === id)!;
+const defOf = (kind: "eq" | "compressor" | "limiter" | "reverb", id: string): ParamDef => paramDefs(kind).find((d) => d.id === id)!;
 
 /** A value shown as text that becomes a field with one click; out of range or unreadable, it stays open. */
 function TypedValue({ def, value, onCommit }: { def: ParamDef; value: number; onCommit(v: number): void }) {
@@ -189,6 +191,11 @@ const ES_LABELS: Record<string, string> = {
   makeup: "Ganancia",
   gain: "Entrada",
   ceiling: "Techo",
+  // Reverb (F2.2 parte D).
+  mix: "Mezcla",
+  time: "Tiempo",
+  tone: "Brillo",
+  preDelay: "Predelay",
 };
 function paramLabel(def: ParamDef, lang: "es" | "en"): string {
   return lang === "es" ? (ES_LABELS[def.id] ?? def.name) : def.name;
@@ -501,6 +508,22 @@ function LimView({ audio, id, params, onPreview, onCommit }: ViewProps & { audio
       <ReductionMeter db={reduction} />
       <div className="fxrows">
         {paramDefs("limiter").map((d) => (
+          <ParamRow key={d.id} def={d} value={value(d.id)} onPreview={(v) => onPreview({ [d.id]: v })} onCommit={(v) => onCommit({ [d.id]: v })} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// --- Reverb (F2.2 parte D) -------------------------------------------------------------------------
+
+/** Four Hands' reverb: its four parameters in rows (all wet on a bus; lower «Mix» on a track). */
+function ReverbView({ params, onPreview, onCommit }: ViewProps) {
+  const value = (k: string) => params[k] ?? defOf("reverb", k).default;
+  return (
+    <div className="fxdyn rev">
+      <div className="fxrows">
+        {paramDefs("reverb").map((d) => (
           <ParamRow key={d.id} def={d} value={value(d.id)} onPreview={(v) => onPreview({ [d.id]: v })} onCommit={(v) => onCommit({ [d.id]: v })} />
         ))}
       </div>

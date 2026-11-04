@@ -2,6 +2,7 @@
  * Commands as data: what the window sends to the main process for one gesture, and what an AI
  * proposal stores until it is accepted (H4). `runCommands` applies a list inside one transaction.
  */
+import { type BusChanges, type BusSpec, type SendChanges, addBus, moveBus, removeBus, setOutput, setSend, removeSend, updateBus } from "./buses.js";
 import { type ChainTarget, type InsertChanges, type InsertSpec, addInsert, moveInsert, removeInsert, updateInsert } from "./effects.js";
 import {
   type NoteChange,
@@ -57,7 +58,14 @@ export type CommandData =
   | { type: "addInsert"; target: ChainTarget; spec: InsertSpec; index?: number }
   | { type: "removeInsert"; id: string }
   | { type: "moveInsert"; id: string; index: number; target?: ChainTarget }
-  | { type: "updateInsert"; id: string; changes: InsertChanges };
+  | { type: "updateInsert"; id: string; changes: InsertChanges }
+  | { type: "addBus"; spec: BusSpec }
+  | { type: "removeBus"; id: string }
+  | { type: "updateBus"; id: string; changes: BusChanges }
+  | { type: "moveBus"; id: string; index: number }
+  | { type: "setOutput"; source: string; bus: string | null }
+  | { type: "setSend"; source: string; bus: string; changes: SendChanges }
+  | { type: "removeSend"; source: string; bus: string };
 
 /** What each command returns: new ids for the commands that create things, otherwise null. */
 export type CommandResult = string[] | string | null;
@@ -134,6 +142,26 @@ export function runCommand(tx: Transaction, c: CommandData): CommandResult {
       return null;
     case "updateInsert":
       updateInsert(tx, c.id, c.changes);
+      return null;
+    case "addBus":
+      return addBus(tx, c.spec);
+    case "removeBus":
+      removeBus(tx, c.id);
+      return null;
+    case "updateBus":
+      updateBus(tx, c.id, c.changes);
+      return null;
+    case "moveBus":
+      moveBus(tx, c.id, c.index);
+      return null;
+    case "setOutput":
+      setOutput(tx, c.source, c.bus);
+      return null;
+    case "setSend":
+      setSend(tx, c.source, c.bus, c.changes);
+      return null;
+    case "removeSend":
+      removeSend(tx, c.source, c.bus);
       return null;
     default:
       throw new CommandError(`Unknown command: ${(c as { type?: unknown }).type}`);

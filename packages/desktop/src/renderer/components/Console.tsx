@@ -6,13 +6,14 @@
  * the arrangement. A strip, top to bottom: the track's colour, insert effects, sends, output, pan,
  * M and S, the fader with its meter and scale, dB, name and sound. The Master is fixed on the right.
  *
- * In this part: the real tracks (fader = volume, pan, M and S with the usual commands, colour, name,
- * sound), live meters from the engine and the master fader. Effects, sends and buses come in parts C
- * and D: their places are there, empty, so the console does not change shape later (Fran, 03/11/2026).
+ * Parte B: the real tracks (fader = volume, pan, M and S with the usual commands, colour, name,
+ * sound), live meters from the engine and the master fader. Parte C: the effects. Parte D (04/11/2026):
+ * the buses after a «Buses» divider (the «Reverb» bus in every song), each strip's sends and its
+ * output, which is clicked to choose a bus or the Master; «Añadir bus».
  */
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { type Insert, type Track, insertName, kindName } from "@fourhands/core";
-import { dbToVolume, formatDb, formatPan, parseDb, volumeToDb } from "../../shared/mix.js";
+import { type Bus, type Insert, type Send, type Track, audible, busList, insertName, kindName } from "@fourhands/core";
+import { dbToVolume, formatDb, formatPan, formatReverb, parseDb, volumeToDb } from "../../shared/mix.js";
 import { SILENT_METER, type MeterState, fracToDb, meterFrac, stepMeter } from "../../shared/meters.js";
 import type { AudioLayer } from "../audio-layer.js";
 import { useActions, useApp, useSong, useView } from "../context.js";
@@ -26,7 +27,7 @@ import { EFFECT_DRAG } from "./SoundsBrowser.js";
 const METER_MS = 33;
 
 /** The meters of every strip ("master" for the Master), stepped with each reading. */
-function useMeters(audio: AudioLayer, strips: ReadonlyArray<{ key: string; strip: number | null }>): {
+function useMeters(audio: AudioLayer, strips: ReadonlyArray<{ key: string; strip: number | null; bus?: number }>): {
   states: Map<string, MeterState>;
   clear(key: string): void;
 } {
@@ -47,7 +48,7 @@ function useMeters(audio: AudioLayer, strips: ReadonlyArray<{ key: string; strip
           const now = performance.now();
           let moving = false;
           for (const s of stripsRef.current) {
-            const reading = !levels ? null : s.strip === null ? levels.master : (levels.channels[s.strip] ?? null);
+            const reading = !levels ? null : s.bus !== undefined ? (levels.buses?.[s.bus] ?? null) : s.strip === null ? levels.master : (levels.channels[s.strip] ?? null);
             const prev = states.current.get(s.key) ?? SILENT_METER;
             const next = stepMeter(prev, reading, now, last);
             if (next.rmsDb !== prev.rmsDb || next.peakDb !== prev.peakDb || next.clip !== prev.clip) moving = true;
@@ -326,6 +327,111 @@ function FxChain({ audio, target, inserts, narrow }: { audio: AudioLayer; target
   );
 }
 
+/**
+ * A strip's sends (F2.2 parte D): the bus's name over a bar with its level. Dragging across it
+ * changes the level (heard at once, the song on release); double click types it; right click has
+ * before or after the fader and remove. «+ envío» at the end.
+ */
+function Sends({ source, sends }: { source: string; sends: readonly Send[] }) {
+  const { t } = useApp();
+  const actions = useActions();
+  const song = useSong();
+  const [live, setLive] = useState<{ bus: string; level: number } | null>(null);
+  const drag = useRef<{ bus: string; x0: number; l0: number; width: number } | null>(null);
+  return (
+    <div className="csends">
+      {sends.map((x) => {
+        const bus = song.buses?.[x.bus];
+        if (!bus) return null;
+        const level = live?.bus === x.bus ? live.level : x.level;
+        if (actions.typing?.kind === "sendLevel" && actions.typing.source === source && actions.typing.bus === x.bus)
+          return (
+            <InlineEdit
+              key={x.bus}
+              className="csend ctype"
+              value={formatReverb(x.level)}
+              inputMode="numeric"
+              maxLength={4}
+              title={t("sendTypeHint")}
+              onCommit={(v) => (actions.typeSend(source, x.bus, v), actions.type(null))}
+              onCancel={() => actions.type(null)}
+            />
+          );
+        const title = t("sendTitle", { bus: bus.name, level: formatReverb(level), pre: x.pre ? t("sendPreShort") : "" });
+        return (
+          <div
+            key={x.bus}
+            className={`csend${x.pre ? " pre" : ""}`}
+            role="slider"
+            tabIndex={0}
+            aria-label={title}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(level * 100)}
+            data-send={x.bus}
+            title={title}
+            style={{ ["--send" as string]: trackColor(bus.color) }}
+            onPointerDown={(e) => {
+              if (e.button !== 0) return;
+              e.stopPropagation();
+              e.currentTarget.setPointerCapture(e.pointerId);
+              drag.current = { bus: x.bus, x0: e.clientX, l0: x.level, width: e.currentTarget.getBoundingClientRect().width };
+            }}
+            onPointerMove={(e) => {
+              const d = drag.current;
+              if (!d || !e.currentTarget.hasPointerCapture(e.pointerId)) return;
+              const scale = e.shiftKey ? 0.15 : 1;
+              const v = Math.max(0, Math.min(1, d.l0 + ((e.clientX - d.x0) / Math.max(1, d.width)) * scale));
+              setLive({ bus: d.bus, level: v });
+              actions.previewSend(source, d.bus, v);
+            }}
+            onPointerUp={() => {
+              const d = drag.current;
+              drag.current = null;
+              if (!d || !live) return;
+              setLive(null);
+              actions.setSend(source, d.bus, live.level);
+            }}
+            onDoubleClick={() => actions.type({ kind: "sendLevel", source, bus: x.bus })}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              actions.sendMenu(source, x.bus, e.clientX, e.clientY);
+            }}
+            onKeyDown={(e) => {
+              const step = e.shiftKey ? 0.01 : 0.05;
+              const v = e.key === "ArrowRight" || e.key === "ArrowUp" ? x.level + step : e.key === "ArrowLeft" || e.key === "ArrowDown" ? x.level - step : null;
+              if (v === null) return;
+              e.preventDefault();
+              e.stopPropagation();
+              actions.setSend(source, x.bus, Math.round(Math.max(0, Math.min(1, v)) * 100) / 100);
+            }}
+          >
+            <span className="csendname">{bus.name}</span>
+            <div className="cminibar">
+              <div style={{ width: `${level * 100}%` }} />
+            </div>
+          </div>
+        );
+      })}
+      <button className="csend add" title={t("sendTo")} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => actions.sendAddMenu(source, e.clientX, e.clientY)}>
+        {t("consoleAddSend")}
+      </button>
+    </div>
+  );
+}
+
+/** Where a strip's sound goes: «→ Máster» or «→ Voces»; a click chooses (F2.2 parte D). */
+function Output({ source, bus }: { source: string; bus: string | undefined }) {
+  const { t } = useApp();
+  const actions = useActions();
+  const name = actions.outputName(bus);
+  return (
+    <button className="cout" title={t("consoleOutputTitle")} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => actions.routeMenu(source, e.clientX, e.clientY)}>
+      → {name}
+    </button>
+  );
+}
+
 /** "Altavoces (Realtek)" from "Windows Audio · Altavoces (Realtek) · 48000 Hz · 480 muestras". */
 function deviceName(device: string | undefined): string | null {
   if (!device) return null;
@@ -361,16 +467,14 @@ function TrackStrip({ audio, track, narrow, active, silenced, meter, onClearClip
       ) : (
         <FxChain audio={audio} target={track.id} inserts={track.inserts ?? []} narrow={narrow} />
       )}
-      {!narrow && (
-        <div className="csends">
-          <div className="csend add off" title={t("consoleSendsLater")} aria-disabled="true">
-            {t("consoleAddSend")}
-          </div>
+      {!narrow && (external ? <div className="csends" /> : <Sends source={track.id} sends={track.sends ?? []} />)}
+      {external ? (
+        <div className="cout" title={t("outputDaw", { ch: track.channel + 1 })}>
+          → {t("outputDawShort")}
         </div>
+      ) : (
+        <Output source={track.id} bus={track.bus} />
       )}
-      <div className="cout" title={external ? t("outputDaw", { ch: track.channel + 1 }) : t("consoleToMaster")}>
-        → {external ? t("outputDawShort") : t("consoleToMaster")}
-      </div>
       <div className="cpan">
         <Fader
           className="fpan"
@@ -421,6 +525,112 @@ function TrackStrip({ audio, track, narrow, active, silenced, meter, onClearClip
       <div className="cinst" title={actions.soundLabel(track)}>
         {actions.soundLabel(track)}
       </div>
+    </div>
+  );
+}
+
+/** «Subgrupo» when tracks go into it, «Bus de envío» when only sends do. */
+function busKind(song: ReturnType<typeof useSong>, bus: Bus): "busKindGroup" | "busKindSend" | "busKindEmpty" {
+  const channels = [...song.trackOrder.map((id) => song.tracks[id]!), ...busList(song)].filter(Boolean);
+  if (channels.some((c) => c.bus === bus.id)) return "busKindGroup";
+  if (channels.some((c) => c.sends?.some((x) => x.bus === bus.id))) return "busKindSend";
+  return "busKindEmpty";
+}
+
+interface BusStripProps {
+  audio: AudioLayer;
+  bus: Bus;
+  narrow: boolean;
+  silenced: boolean;
+  meter: MeterState;
+  onClearClip(): void;
+}
+
+/** A bus (F2.2 parte D): like a track's strip, with its colour, effects, sends, output and fader. */
+function BusStrip({ audio, bus, narrow, silenced, meter, onClearClip }: BusStripProps) {
+  const { t, lang } = useApp();
+  const actions = useActions();
+  const song = useSong();
+  const [live, setLive] = useState<number | null>(null);
+  const db = formatDb(live ?? bus.volume, lang);
+  const selected = actions.selectedBus === bus.id;
+  const cls = `cstrip bus${selected ? " active" : ""}${bus.mute || silenced ? " muted" : ""}${narrow ? " narrow" : ""}`;
+  return (
+    <div
+      className={cls}
+      style={{ ["--strip" as string]: trackColor(bus.color) }}
+      data-bus={bus.id}
+      title={t("busTitle", { name: bus.name })}
+      onPointerDown={() => actions.selectBus(bus.id)}
+      onContextMenu={(e) => {
+        if (e.defaultPrevented) return;
+        e.preventDefault();
+        actions.busMenu(bus.id, e.clientX, e.clientY);
+      }}
+    >
+      <div className="cband" />
+      <FxChain audio={audio} target={bus.id} inserts={bus.inserts ?? []} narrow={narrow} />
+      {!narrow && <Sends source={bus.id} sends={bus.sends ?? []} />}
+      <Output source={bus.id} bus={bus.bus} />
+      <div className="cpan">
+        <Fader
+          className="fpan"
+          value={bus.pan}
+          min={-1}
+          max={1}
+          reset={0}
+          bipolar
+          label={t("busPan", { bus: bus.name })}
+          valueText={formatPan(bus.pan)}
+          onInput={(v) => actions.previewBus(bus.id, bus.volume, v)}
+          onCommit={(v) => actions.setBusMix(bus.id, bus.volume, v)}
+        />
+        {!narrow && <Typed className="cval" text={formatPan(bus.pan)} title={t("consolePanType")} commit={(v) => actions.typeBusMix(bus.id, "pan", v)} />}
+      </div>
+      <div className="cms">
+        <button className={`msb${bus.mute ? " on" : ""}`} aria-pressed={!!bus.mute} aria-label={t("mute")} title={t("mute")} onClick={() => actions.toggleBus(bus.id, "mute")}>
+          M
+        </button>
+        <button className={`msb${bus.solo ? " on" : ""}`} aria-pressed={!!bus.solo} aria-label={t("solo")} title={t("solo")} onClick={() => actions.toggleBus(bus.id, "solo")}>
+          S
+        </button>
+      </div>
+      <div className="cfaderzone">
+        {!narrow && <Scale />}
+        <VFader
+          value={bus.volume}
+          reset={1}
+          label={t("busFader", { bus: bus.name })}
+          valueText={db}
+          onInput={(v) => {
+            setLive(v);
+            actions.previewBus(bus.id, v, bus.pan);
+          }}
+          onCommit={(v) => {
+            setLive(null);
+            actions.setBusMix(bus.id, v, bus.pan);
+          }}
+        />
+        <Meter m={meter} onClear={onClearClip} clipTitle={t("consoleClip")} />
+      </div>
+      <Typed className="cdb" text={db} title={t("consoleVolumeType")} commit={(v) => actions.typeBusMix(bus.id, "volume", v)} />
+      <div className="cname">
+        {actions.typing?.kind === "busName" && actions.typing.id === bus.id ? (
+          <InlineEdit
+            className="ctitle ctype"
+            value={bus.name}
+            maxLength={60}
+            title={t("busRenameHint")}
+            onCommit={(v) => (actions.renameBus(bus.id, v), actions.type(null))}
+            onCancel={() => actions.type(null)}
+          />
+        ) : (
+          <span className="ctitle" title={bus.name} onDoubleClick={() => actions.type({ kind: "busName", id: bus.id })}>
+            {bus.name}
+          </span>
+        )}
+      </div>
+      <div className="cinst">{t(busKind(song, bus))}</div>
     </div>
   );
 }
@@ -488,18 +698,27 @@ export interface ConsoleProps {
 
 export function Console({ audio, onSelectTrack, onToggle }: ConsoleProps) {
   const song = useSong();
+  const actions = useActions();
+  // The selected bus and what is being typed (a bus's name, a send's level) live in the actions.
+  useSyncExternalStore(actions.subscribe, actions.getVersion);
   const v = useView();
   const { t, view } = useApp();
   const tracks: Track[] = song.trackOrder.map((id) => song.tracks[id]!).filter(Boolean);
   const activeId = song.context.activeTrackId ?? tracks[0]?.id;
-  const meters = useMeters(audio, [...tracks.map((tr) => ({ key: tr.id, strip: tr.output === "external" ? -1 : audio.stripOf(tr) })), { key: "master", strip: null }]);
+  const buses = busList(song);
+  const meters = useMeters(audio, [
+    ...tracks.map((tr) => ({ key: tr.id, strip: tr.output === "external" ? -1 : audio.stripOf(tr) })),
+    ...buses.map((b) => ({ key: b.id, strip: -1, bus: audio.busIndexOf(b.id) })),
+    { key: "master", strip: null },
+  ]);
   const meterOf = (key: string) => meters.states.get(key) ?? SILENT_METER;
   const narrow = v.mixNarrow;
   // The plugin effects for «+»: the list the engine knows (scanned before, as in Sonidos).
   useEffect(() => {
     if (!audio.pluginList && !audio.pluginScan && audio.engineStatus.state !== "missing") void audio.loadPlugins(false);
   }, [audio]);
-  const anySolo = tracks.some((tr) => tr.solo);
+  // Who sounds (parte D: a solo keeps on the buses a soloed track goes through or sends to).
+  const on = audible(song);
   const engineOn = audio.engineStatus.state === "ready";
   return (
     <section className="console" aria-label={t("consoleLabel")}>
@@ -507,7 +726,7 @@ export function Console({ audio, onSelectTrack, onToggle }: ConsoleProps) {
         <ModeButton />
         <span className="cspacer" />
         {!engineOn && <span className="cnote">{t("consoleNoEngine")}</span>}
-        <button className="tgl" disabled title={t("consoleBusesLater")}>
+        <button className="tgl" title={t("consoleAddBusTitle")} onClick={() => void actions.addBus()}>
           {t("consoleAddBus")}
         </button>
         <div className="cseg">
@@ -531,12 +750,20 @@ export function Console({ audio, onSelectTrack, onToggle }: ConsoleProps) {
               track={tr}
               narrow={narrow}
               active={tr.id === activeId}
-              silenced={anySolo && !tr.solo}
+              silenced={!tr.mute && !on.has(tr.id)}
               meter={meterOf(tr.id)}
               onClearClip={() => meters.clear(tr.id)}
               onSelect={onSelectTrack}
               onToggle={onToggle}
             />
+          ))}
+          {buses.length > 0 && (
+            <div className="cdivider" aria-hidden="true">
+              <span>{t("consoleBuses")}</span>
+            </div>
+          )}
+          {buses.map((b) => (
+            <BusStrip key={b.id} audio={audio} bus={b} narrow={narrow} silenced={!b.mute && !on.has(b.id)} meter={meterOf(b.id)} onClearClip={() => meters.clear(b.id)} />
           ))}
         </div>
         <div className="cmasterzone">

@@ -15,7 +15,7 @@
 import { z } from "zod";
 
 /** Bumped whenever a tool, its parameters or its meaning changes. The app refuses other bridges. */
-export const TOOLS_VERSION = 20;
+export const TOOLS_VERSION = 21;
 
 /**
  * Track colours by name (H3.2). The app's palette (desktop/src/shared/track-colors.ts) has the same
@@ -116,7 +116,7 @@ export const TOOLS: readonly ToolDefinition[] = [
     title: "Song overview",
     description:
       "Read the overview of the song open in Four Hands Studio: title, tempo, meter, key, length, form (sections with bars), " +
-      "tracks (id, instrument, sound, mix: volume, pan, reverb and mute; range, note count, average velocity, share by author), " +
+      "tracks (id, instrument, sound, mix: volume, pan, mute, output and sends; range, note count, average velocity, share by author), " +
       "harmony per bar, annotations and current revision. " +
       "Small on purpose: call it first. Read-only.",
     inputSchema: {},
@@ -561,7 +561,7 @@ export const TOOLS: readonly ToolDefinition[] = [
     name: "update_track",
     title: "Change a track",
     description:
-      "Change a track's name, instrument, installed sound, volume (0-100), pan (-100 left to 100 right), reverb (0 dry to 100), mute or colour. " +
+      "Change a track's name, instrument, installed sound, volume (0-100), pan (-100 left to 100 right), mute or colour. Reverb is not a track setting: a bus with a reverb and a send to it (set_mix), or a 'reverb' effect on the track (add_effect). " +
       "sound: 'bank file / sound name', 'plugin / <name>' (a plugin from list_instruments), or 'default' to go back to the built-in sound. A track has one sound: a built-in one or a bank's replaces its plugin. " +
       "To balance several tracks at once, use set_mix. The current mix is in get_song_overview.",
     inputSchema: {
@@ -572,7 +572,6 @@ export const TOOLS: readonly ToolDefinition[] = [
       sound: z.string().optional(),
       volume: z.number().min(0).max(100).optional(),
       pan: z.number().min(-100).max(100).optional(),
-      reverb: z.number().min(0).max(100).optional().describe("Reverb send: 0 dry, more sounds further away"),
       mute: z.boolean().optional().describe("Silence the whole track (an arrangement decision)"),
       color: z.string().optional().describe(COLOR_HELP),
     },
@@ -582,19 +581,51 @@ export const TOOLS: readonly ToolDefinition[] = [
     name: "set_mix",
     title: "Balance the mix",
     description:
-      "Set volume, pan, reverb and mute of several tracks (and the master's volume) in one step, one track per line: the track (id or name), then any of " +
-      "'vol 70' (0-100), 'pan -30' (-100 left to 100 right; also 'pan L30', 'pan R20', 'pan C'), 'rev 30' (reverb send, 0 dry to 100), 'mute' or 'unmute'. " +
-      "E.g. 't1 vol 65 pan -40', 'Violines vol 80 pan L25 rev 35', 'Bateria mute'. Read the current mix in get_song_overview first. " +
+      "Set volume, pan, mute, routing and sends of several tracks and buses (and the master's volume) in one step, one per line: the track or bus (id or name), then any of " +
+      "'vol 70' (0-100), 'pan -30' (-100 left to 100 right; also 'pan L30', 'pan R20', 'pan C'), 'mute' or 'unmute', " +
+      "'to Voces' (where its sound goes after the fader: a bus, or 'to master'), 'send Delay 25' (a send to a bus, 0-100, after the fader; add 'pre' for before it), 'nosend Delay'. " +
+      "E.g. 't1 vol 65 pan -40', 'Violines vol 80 pan L25 send Reverb 35', 'Bateria mute', 'Violín 1 to Cuerdas', 'Cuerdas vol 85 to Mix bus', 'Voz send Delay 20'. Read the current mix in get_song_overview first. " +
       "A line 'master vol 90' sets the master fader (0-100, 100 = 0 dB, the default): lower it only to take the whole mix down, not to fix one track. " +
-      "Reverb places a track in depth: more sounds further back. Keep bass, drums and fast or short parts drier, and remember " +
-      "tracks sounding in the user's DAW get the send too, where their own reverb may already be on. " +
+      "Reverb places a track in depth: more send to a reverb bus sounds further back (no reverb bus yet: add_bus with reverb: true). Keep bass, drums and fast or short parts drier, and remember " +
+      "tracks sounding in the user's DAW get their send to the reverb bus as CC91, where their own reverb may already be on. " +
+      "A bus groups tracks (subgroup: one fader and one chain of effects for all the strings) or takes sends (a reverb or delay shared by many). Buses chain (Voces → Mix bus → Master) and never loop. " +
       "You cannot hear the result: describe what you changed and why, and let the user listen. " +
       "Solo is the user's listening tool and is not available.",
     inputSchema: {
       intervention_id: INTERVENTION,
-      mix: z.string().describe("One track per line, e.g. 't1 vol 65 pan -40'"),
+      mix: z.string().describe("One track or bus per line, e.g. 't1 vol 65 pan -40' or 'Cuerdas to Mix bus'"),
     },
     annotations: write,
+  },
+  // F2.2 parte D (04/11/2026): buses. Routing and sends go through set_mix.
+  {
+    name: "add_bus",
+    title: "Add a bus",
+    description:
+      "Make a bus: a channel with its own effects, fader and output, fed by tracks (their output) or by sends. " +
+      "A subgroup: give the tracks that go into it ('tracks') and add effects with add_effect on the bus (e.g. a compressor for all the strings). " +
+      "A return for sends: put a 'reverb' or a delay plugin on it and send to it with set_mix ('Voz send Delay 20'); 'reverb: true' adds Four Hands' reverb. " +
+      "'to' chains it into another bus (Voces → Mix bus); by default it goes to the Master. A new song has no buses: look at the overview first and reuse a bus that does the job. One undo step.",
+    inputSchema: {
+      intervention_id: INTERVENTION,
+      name: z.string().min(1).max(60).describe("The bus's name in the user's language, e.g. 'Cuerdas', 'Delay'"),
+      tracks: z.array(z.string()).optional().describe("Tracks whose sound goes into it (their output), by id or name"),
+      to: z.string().optional().describe("Another bus it goes into; the Master if left out"),
+      reverb: z.boolean().optional().describe("Put Four Hands' reverb on it, all wet (a reverb return)"),
+      color: z.string().optional().describe("A palette colour name, as for tracks"),
+    },
+    annotations: write,
+  },
+  {
+    name: "remove_bus",
+    title: "Remove a bus",
+    description:
+      "Delete a bus and its effects. What went through it goes on to where the bus went (the next bus or the Master); sends to it are dropped. Tell the user what moved. One undo step.",
+    inputSchema: {
+      intervention_id: INTERVENTION,
+      bus: z.string().describe("The bus's id or name"),
+    },
+    annotations: destructive,
   },
   // F2.2 parte C (03/11/2026): insert effects. Four Hands' own (EQ, compressor, limiter) keep their
   // parameters in the song; a plugin effect's parameters are the plugin's, read through the engine.
@@ -602,15 +633,16 @@ export const TOOLS: readonly ToolDefinition[] = [
     name: "add_effect",
     title: "Add an insert effect",
     description:
-      "Put an effect on a track's chain (after its sound, before its fader) or on the Master ('master'). " +
-      "Four Hands' own: 'eq' (low and high cut, low and high shelf, two bells), 'compressor', 'limiter' (5 ms look-ahead; the engine keeps the other tracks in time). " +
+      "Put an effect on a track's or bus's chain (after its sound, before its fader) or on the Master ('master'). " +
+      "Four Hands' own: 'eq' (low and high cut, low and high shelf, two bells), 'compressor', 'limiter' (5 ms look-ahead; the engine keeps the other tracks in time), " +
+      "'reverb' (the song's GS reverb: mix, time, tone, pre-delay; all wet on a bus, lower its mix on a track). " +
       "Or a plugin effect by its name, as list_instruments lists the user's plugins (e.g. 'Pro-Q 3', 'Valhalla VintageVerb'). " +
       "It starts neutral (an EQ flat, a compressor at -18 dB 3:1): shape it with set_effect. Prefer fixing the arrangement when that is the cause; " +
       "use effects for what only they can do. You cannot hear the result: measure with get_levels and let the user listen (B compares with and without).",
     inputSchema: {
       intervention_id: INTERVENTION,
-      track: z.string().describe("Track id or name, or 'master'"),
-      effect: z.string().describe("'eq', 'compressor', 'limiter', or a plugin effect's name"),
+      track: z.string().describe("Track or bus id or name, or 'master'"),
+      effect: z.string().describe("'eq', 'compressor', 'limiter', 'reverb', or a plugin effect's name"),
       position: z.number().int().min(1).optional().describe("Place in the chain, 1 = first; the end if left out"),
       settings: z.string().optional().describe("Optional, as in set_effect: one per line, 'name: value'"),
       name: z.string().max(60).optional().describe("Optional: a name for it in the user's language, when there are several alike (e.g. 'EQ graves')"),

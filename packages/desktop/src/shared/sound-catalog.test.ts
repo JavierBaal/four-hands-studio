@@ -86,13 +86,13 @@ describe("the effect catalog (F2.2 parte C, Fran 04/11/2026)", () => {
     { id: "VST3-Decap", name: "Decapitator", vendor: "Soundtoys", category: "Fx", format: "VST3", instrument: false },
     { id: "VST3-Kontakt", name: "Kontakt 8", vendor: "Native Instruments", category: "Instrument|Sampler", format: "VST3", instrument: true },
   ];
-  const fx = (prefs = NO_SOUND_PREFS) => buildEffectCatalog({ lang: "es", plugins, prefs, ownLabel: "Four Hands", ownNames: { eq: "EQ", compressor: "Compresor", limiter: "Limitador" } });
+  const fx = (prefs = NO_SOUND_PREFS) => buildEffectCatalog({ lang: "es", plugins, prefs, ownLabel: "Four Hands", ownNames: { eq: "EQ", compressor: "Compresor", limiter: "Limitador", reverb: "Reverb" } });
 
   it("has Four Hands' own effects first, the effect plugins after, and no instruments", () => {
     const items = fx();
-    expect(items.slice(0, 3).map((i) => i.name)).toEqual(["EQ", "Compresor", "Limitador"]);
+    expect(items.slice(0, 4).map((i) => i.name)).toEqual(["EQ", "Compresor", "Limitador", "Reverb"]);
     expect(items.some((i) => i.name === "Kontakt 8")).toBe(false);
-    expect(items).toHaveLength(9);
+    expect(items).toHaveLength(10);
   });
 
   it("sorts plugins by type from their own category, else from their name", () => {
@@ -113,7 +113,7 @@ describe("the effect catalog (F2.2 parte C, Fran 04/11/2026)", () => {
     const byVendor = groupEffects(fx(), "vendor", "es", "Sin fabricante");
     expect(byVendor.map((g) => g.label)).toEqual(["Four Hands", "FabFilter", "iZotope", "Soundtoys", "Valhalla DSP, LLC", "Waves"]);
     expect(filterEffects(fx(), "all", "fabfilter", NO_SOUND_PREFS).map((i) => i.name)).toEqual(["Pro-Q 3", "Pro-C 2"]);
-    expect(filterEffects(fx(), "fourHands", "", NO_SOUND_PREFS).map((i) => i.name)).toEqual(["EQ", "Compresor", "Limitador"]);
+    expect(filterEffects(fx(), "fourHands", "", NO_SOUND_PREFS).map((i) => i.name)).toEqual(["EQ", "Compresor", "Limitador", "Reverb"]);
   });
 
   it("keeps hidden plugins out, and favourites by the same keys", () => {

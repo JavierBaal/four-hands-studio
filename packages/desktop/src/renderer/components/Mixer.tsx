@@ -1,12 +1,12 @@
 /**
- * Volume, pan and (H4) reverb send of a track, in a small floating card (same look as the
+ * Volume and pan of a track, in a small floating card (same look as the
  * quantize dialog).
  * Changes apply on release; Esc or a click outside closes it.
  */
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Track } from "@fourhands/core";
 import { useActions, useApp, useSong } from "../context.js";
-import { formatDb, formatPan, formatReverb, parseDb, parsePan, parseReverb } from "../../shared/mix.js";
+import { formatDb, formatPan, parseDb, parsePan } from "../../shared/mix.js";
 import { InlineEdit } from "./InlineEdit.js";
 
 export function Mixer() {
@@ -24,7 +24,7 @@ function MixerCard({ track, x, y }: { track: Track; x: number; y: number }) {
   const actions = useActions();
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ left: x, top: y });
-  const latest = useRef<{ volume: number; pan: number; reverb: number } | null>(null);
+  const latest = useRef<{ volume: number; pan: number } | null>(null);
   useLayoutEffect(() => {
     const r = ref.current?.getBoundingClientRect();
     if (!r) return;
@@ -33,7 +33,7 @@ function MixerCard({ track, x, y }: { track: Track; x: number; y: number }) {
   useEffect(() => {
     const close = () => {
       const l = latest.current;
-      if (l) actions.setMix(track.id, l.volume, l.pan, l.reverb);
+      if (l) actions.setMix(track.id, l.volume, l.pan);
       actions.closeMixer();
     };
     const down = (e: PointerEvent) => {
@@ -67,38 +67,36 @@ function MixerCard({ track, x, y }: { track: Track; x: number; y: number }) {
 }
 
 /**
- * Volume, pan and reverb of a track, each a slider whose value can also be typed: in the mixer
- * card and in the Pista tab (ESTUDIO_INTERFAZ_2.md, 5.2). The sound follows while dragging; the
- * song gets the value on release (one undo step). Values the AI or an undo change come in.
+ * Volume and pan of a track, each a slider whose value can also be typed: in the mixer card and in
+ * the Pista tab (ESTUDIO_INTERFAZ_2.md, 5.2). The sound follows while dragging; the song gets the
+ * value on release (one undo step). Values the AI or an undo change come in. (The reverb row is
+ * gone, Fran 04/11/2026: reverb is a bus or an effect on the track.)
  */
-export function MixRows({ track, onValues }: { track: Track; onValues?: (v: { volume: number; pan: number; reverb: number }) => void }) {
+export function MixRows({ track, onValues }: { track: Track; onValues?: (v: { volume: number; pan: number }) => void }) {
   const { t, lang } = useApp();
   const actions = useActions();
-  const [typing, setTyping] = useState<"volume" | "pan" | "reverb" | null>(null);
+  const [typing, setTyping] = useState<"volume" | "pan" | null>(null);
   const [volume, setVolume] = useState(track.volume);
   const [pan, setPan] = useState(track.pan);
-  const [reverb, setReverb] = useState(track.reverb ?? 0);
   useEffect(() => {
     setVolume(track.volume);
     setPan(track.pan);
-    setReverb(track.reverb ?? 0);
-  }, [track.id, track.volume, track.pan, track.reverb]);
-  onValues?.({ volume, pan, reverb });
-  const commit = () => actions.setMix(track.id, volume, pan, reverb);
+  }, [track.id, track.volume, track.pan]);
+  onValues?.({ volume, pan });
+  const commit = () => actions.setMix(track.id, volume, pan);
   const panText = formatPan(pan);
   const volText = formatDb(volume, lang);
-  // H3.2: the value can be typed, like the tempo (volume in dB, pan as C, L30 or R25, reverb 0–100).
-  const typed = (field: "volume" | "pan" | "reverb", text: string) => {
-    const v = field === "volume" ? parseDb(text) : field === "pan" ? parsePan(text) : parseReverb(text);
+  // H3.2: the value can be typed, like the tempo (volume in dB, pan as C, L30 or R25).
+  const typed = (field: "volume" | "pan", text: string) => {
+    const v = field === "volume" ? parseDb(text) : parsePan(text);
     if (v === null) return;
-    const next = { volume, pan, reverb, [field]: v };
+    const next = { volume, pan, [field]: v };
     if (field === "volume") setVolume(v);
-    else if (field === "pan") setPan(v);
-    else setReverb(v);
-    actions.setMix(track.id, next.volume, next.pan, next.reverb);
+    else setPan(v);
+    actions.setMix(track.id, next.volume, next.pan);
     setTyping(null);
   };
-  const value = (field: "volume" | "pan" | "reverb", text: string, hint: string) =>
+  const value = (field: "volume" | "pan", text: string, hint: string) =>
     typing === field ? (
       <InlineEdit className="mixval card" value={text} maxLength={8} title={hint} onCommit={(v) => typed(field, v)} onCancel={() => setTyping(null)} />
     ) : (
@@ -110,18 +108,13 @@ export function MixRows({ track, onValues }: { track: Track; onValues?: (v: { vo
     <>
       <label className="qrow">
         <span>{t("volume")}</span>
-        <input type="range" min={0} max={100} value={Math.round(volume * 100)} onChange={(e) => (setVolume(Number(e.target.value) / 100), actions.previewMix(track.id, Number(e.target.value) / 100, pan, reverb))} onPointerUp={commit} onKeyUp={commit} />
+        <input type="range" min={0} max={100} value={Math.round(volume * 100)} onChange={(e) => (setVolume(Number(e.target.value) / 100), actions.previewMix(track.id, Number(e.target.value) / 100, pan))} onPointerUp={commit} onKeyUp={commit} />
         {value("volume", `${volText} dB`, t("volumeTypeHint"))}
       </label>
       <label className="qrow">
         <span>{t("pan")}</span>
-        <input type="range" min={-100} max={100} value={Math.round(pan * 100)} onChange={(e) => (setPan(Number(e.target.value) / 100), actions.previewMix(track.id, volume, Number(e.target.value) / 100, reverb))} onPointerUp={commit} onKeyUp={commit} onDoubleClick={() => (setPan(0), actions.setMix(track.id, volume, 0, reverb))} />
+        <input type="range" min={-100} max={100} value={Math.round(pan * 100)} onChange={(e) => (setPan(Number(e.target.value) / 100), actions.previewMix(track.id, volume, Number(e.target.value) / 100))} onPointerUp={commit} onKeyUp={commit} onDoubleClick={() => (setPan(0), actions.setMix(track.id, volume, 0))} />
         {value("pan", panText, t("panTypeHint"))}
-      </label>
-      <label className="qrow" title={t("reverbTypeHint")}>
-        <span>{t("reverb")}</span>
-        <input type="range" min={0} max={100} value={Math.round(reverb * 100)} onChange={(e) => (setReverb(Number(e.target.value) / 100), actions.previewMix(track.id, volume, pan, Number(e.target.value) / 100))} onPointerUp={commit} onKeyUp={commit} onDoubleClick={() => (setReverb(0), actions.setMix(track.id, volume, pan, 0))} />
-        {value("reverb", formatReverb(reverb), t("reverbTypeHint"))}
       </label>
     </>
   );

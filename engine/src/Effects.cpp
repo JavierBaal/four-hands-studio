@@ -1,4 +1,5 @@
 #include "Effects.h"
+#include "GsEffects.h"
 
 #include <cmath>
 
@@ -271,6 +272,70 @@ private:
     std::atomic<float> lastReduction { 0 };
     Params<3> p { { "gain", "ceiling", "release" }, { 0, -1, 50 } };
 };
+
+// --- Reverb (F2.2 parte D): the GS reverb of the built-in sounds, as an effect ------------------
+
+/**
+ * The sound in goes to the GS reverb as its mono send did: (L + R) / 2, with the level that makes
+ * a send at 100 % as wet as a built-in sound's CC91 at 127 (measured 03/11/2026, 10^(5.1/20)).
+ * At its defaults (mix 100 %, time 50, tone 100, no pre-delay) it is that reverb exactly.
+ */
+class ReverbFx final : public OwnEffect
+{
+public:
+    static constexpr double kSendMatch = 1.8;
+
+    void prepare (double r, int block) override
+    {
+        rate = r;
+        reverb = std::make_unique<gs::Reverb> (rate);
+        const auto n = (size_t) juce::jmax (block, 64);
+        mono.assign (n, 0.0f);
+        wetL.assign (n, 0.0f);
+        wetR.assign (n, 0.0f);
+        p.dirty.store (true);
+    }
+    bool setParam (const juce::String& id, double v) override { return p.set (id, v); }
+    void process (float* l, float* r, int n, bool bypass) override
+    {
+        if (reverb == nullptr)
+            return;
+        if (p.dirty.exchange (false))
+        {
+            mix = juce::jlimit (0.0, 1.0, p[0] / 100.0);
+            const int time = juce::jlimit (0, 127, (int) std::lround (p[1] * 1.28));
+            const int preLowpass = juce::jlimit (0, 7, (int) std::lround ((100.0 - p[2]) / 100.0 * 7.0));
+            reverb->configure (64, preLowpass, time, p[3] * 0.001 * rate);
+        }
+        const int chunk = (int) mono.size();
+        for (int done = 0; done < n; done += chunk)
+        {
+            const int m = juce::jmin (chunk, n - done);
+            float* L = l + done;
+            float* R = r + done;
+            for (int i = 0; i < m; ++i)
+                mono[(size_t) i] = (float) ((L[i] + R[i]) * 0.5 * kSendMatch);
+            std::fill (wetL.begin(), wetL.begin() + m, 0.0f);
+            std::fill (wetR.begin(), wetR.begin() + m, 0.0f);
+            // Bypassed it keeps running (its tail is ready when it comes back) but is not heard.
+            reverb->process (mono.data(), wetL.data(), wetR.data(), 0, m);
+            if (bypass)
+                continue;
+            const auto dry = (float) (1.0 - mix), wet = (float) mix;
+            for (int i = 0; i < m; ++i)
+            {
+                L[i] = L[i] * dry + wetL[(size_t) i] * wet;
+                R[i] = R[i] * dry + wetR[(size_t) i] * wet;
+            }
+        }
+    }
+
+private:
+    Params<4> p { { "mix", "time", "tone", "preDelay" }, { 100.0, 50.0, 100.0, 0.0 } };
+    double rate = 48000, mix = 1;
+    std::unique_ptr<gs::Reverb> reverb;
+    std::vector<float> mono, wetL, wetR;
+};
 } // namespace
 
 std::unique_ptr<OwnEffect> makeOwnEffect (const juce::String& kind)
@@ -281,6 +346,8 @@ std::unique_ptr<OwnEffect> makeOwnEffect (const juce::String& kind)
         return std::make_unique<Compressor>();
     if (kind == "limiter")
         return std::make_unique<Limiter>();
+    if (kind == "reverb")
+        return std::make_unique<ReverbFx>();
     return nullptr;
 }
 

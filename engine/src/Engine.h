@@ -26,6 +26,8 @@ namespace fh
  */
 constexpr int kStrips = 512;
 constexpr int kSlots = kStrips;
+/** Buses (F2.2 parte D): channels fed by strips and by other buses, with their own chain and fader. */
+constexpr int kBuses = 128;
 /** After them, the built-in sounds (SoundFontSynth): one channel of its own per strip. */
 constexpr int kSoundsSlot = kSlots;
 constexpr int kAllSlots = kSlots + 1;
@@ -106,22 +108,41 @@ public:
     // Mix (F2.2, 03/11/2026): one strip per track
 
     /**
-     * A strip's fader (linear gain), balance (-1 to 1) and send to the Reverb bus (0 to 1, after
-     * the fader). The built-in sounds keep their volume, pan and reverb as MIDI (CC7, CC10,
-     * CC91) inside their synth, so they sound as before: their strip stays at 1, 0, 0.
+     * A strip's fader (linear gain) and balance (-1 to 1). F2.2 parte B: a strip that is off (`on`
+     * false: muted, or not soloed while another is) is silent here, after its sound, so the tails of
+     * its plugin and of what it sends stop at once. Parte D: the built-in sounds' volume is here too
+     * (Four Hands sends them CC7 at 127); their pan stays in the synth (CC10, per voice).
      */
-    /**
-     * F2.2 parte B: a strip that is off (`on` false: muted, or not soloed while another is) is
-     * silent here, after its sound, so the tails of its reverb send and of its plugin stop at once.
-     */
-    void setMix (int strip, double gain, double pan, double reverb, bool on = true);
-    /** The master fader (linear gain, after the Reverb bus and before the master meter). */
+    void setMix (int strip, double gain, double pan, bool on = true);
+    /** A bus's fader, balance and on/off (F2.2 parte D). */
+    void setBusMix (int bus, double gain, double pan, bool on = true);
+    /** The master fader (linear gain, after the buses and before the master meter). */
     void setMasterGain (double gain) { masterGain.store (juce::jlimit (0.0, 4.0, gain)); }
+
+    /** Where a strip or bus goes (F2.2 parte D): its output (a bus, or -1: the master) and its sends. */
+    struct Route
+    {
+        int out = -1;
+        struct Send { int bus = 0; float level = 0; bool pre = false; };
+        std::vector<Send> sends;
+    };
+    /**
+     * The whole routing: the strips and buses that do not go straight to the master with no sends,
+     * the buses in processing order (each after every bus that feeds it; a bus left out is not
+     * processed), and the bus that gets what the built-in instruments send to reverb on their own
+     * (their SoundFont's setting; -1: none). Until Four Hands sends it, the engine sounds as before
+     * parte D (offline renders, tests): the built-in sounds' CC91 goes to the GS reverb.
+     */
+    void setRouting (std::vector<std::pair<int, Route>> strips, std::vector<std::pair<int, Route>> buses, std::vector<int> order, int instrumentReverb);
+    /** Samples every bus input is delayed (compensation), for tests. */
+    int busDelay (int bus);
 
     /** Peak and RMS (linear) of a strip, or of the master (index kStrips), and samples above 1. */
     struct Level { double peak = 0, rms = 0; juce::int64 clips = 0; };
     /** Since the last call (for the meters), or since `resetLevels` (for the AI, «last playback»). */
     std::vector<Level> takeMeters (bool sinceReset);
+    /** The buses' levels (up to the highest in the routing), like the strips'. */
+    std::vector<Level> takeBusMeters (bool sinceReset);
     /** Strips in use: one past the highest that has sounded, had a plugin or a mix. */
     int stripsInUse() const { return used.load(); }
     void resetLevels();
@@ -136,8 +157,9 @@ public:
         bool bypass = false;
         std::vector<std::pair<juce::String, double>> params;
     };
-    /** Strip -1 (or kStrips) is the master. */
+    /** Strip -1 (or kStrips) is the master; kBusChain + n, bus n (F2.2 parte D). */
     static constexpr int kMasterChain = kStrips;
+    static constexpr int kBusChain = kStrips + 1;
     /**
      * Makes a strip's chain the one given, keeping the links that are already there (same id and
      * kind: a plugin is not loaded again). Returns, per id, what went wrong (a plugin that would not
@@ -247,7 +269,7 @@ private:
     std::vector<SynthEvent> soundsEvents;
     std::atomic<int> used { 0 };
 
-    struct Strip { double gain = 1, pan = 0, reverb = 0; bool on = true; };
+    struct Strip { double gain = 1, pan = 0; bool on = true; };
     std::atomic<double> masterGain { 1.0 };
     int lastXRuns = -1;
     struct Meter
@@ -260,8 +282,53 @@ private:
     std::vector<Strip> mix = std::vector<Strip> ((size_t) kStrips);
     std::vector<Meter> meters = std::vector<Meter> ((size_t) kStrips + 1);
     juce::AudioBuffer<float> strips, sends, master, busIn;
+    /** Before parte D's routing arrives: the GS reverb the built-in sounds' CC91 goes to. */
     std::unique_ptr<gs::Reverb> busReverb;
     double busRate = 0;
+
+    // Buses (F2.2 parte D). The routing is built on the message thread and swapped in under the lock.
+    struct Edge
+    {
+        int to = -1; // a bus, or -1: the master
+        float level = 1;
+        bool pre = false;
+        int delay = 0;
+        DelayLine line;
+    };
+    struct Routing
+    {
+        std::vector<Route> strips = std::vector<Route> ((size_t) kStrips);
+        std::vector<Route> buses = std::vector<Route> ((size_t) kBuses);
+        std::vector<int> order;
+        int instrumentReverb = -1;
+        int busesInUse = 0;
+        /** Every bus's input from the strips, and the master's, wait for the slowest path. */
+        std::vector<int> busInDelay = std::vector<int> ((size_t) kBuses);
+        std::vector<DelayLine> busInLines = std::vector<DelayLine> ((size_t) kBuses);
+        int masterInDelay = 0;
+        DelayLine masterInLine;
+        /** Per bus, where its sound goes: its output and its sends. */
+        std::vector<std::vector<Edge>> edges = std::vector<std::vector<Edge>> ((size_t) kBuses);
+    };
+    struct RoutingConfig
+    {
+        std::vector<std::pair<int, Route>> strips, buses;
+        std::vector<int> order;
+        int instrumentReverb = -1;
+    };
+    RoutingConfig routingConfig;
+    bool hasRouting = false;
+    std::shared_ptr<Routing> routing;
+    /** The bus latencies the routing was built with (to rebuild it when one changes). */
+    std::vector<int> routedLatency;
+    int routedCompensation = -1;
+    void rebuildRouting();
+    void mixLegacy (int inUse, int numSamples);
+    void mixRouted (Routing& r, int inUse, int numSamples);
+    struct BusMix { double gain = 1, pan = 0; bool on = true; };
+    std::vector<BusMix> busMix = std::vector<BusMix> ((size_t) kBuses);
+    std::vector<Meter> busMeters = std::vector<Meter> ((size_t) kBuses);
+    juce::AudioBuffer<float> busBuffers, masterIn, edgeBuffer;
 
     juce::SpinLock statsLock;
     Stats stats;
@@ -273,7 +340,7 @@ private:
     void applyTransport (juce::int64 start, int numSamples);
 
     // Insert effects: one chain per strip and the master's; delay lines for compensation.
-    std::array<std::shared_ptr<Chain>, (size_t) kStrips + 1> chains;
+    std::array<std::shared_ptr<Chain>, (size_t) kStrips + 1 + kBuses> chains;
     std::vector<DelayLine> delays = std::vector<DelayLine> ((size_t) kStrips);
     std::atomic<int> maxLatency { 0 };
     juce::MidiBuffer noMidi;

@@ -205,6 +205,9 @@ export const EFFECT_CATEGORY_NAMES: Record<EffectCategory, [es: string, en: stri
 /** Keys of Four Hands' own effects in the catalog (favourites and recents are kept by key). */
 export const ownEffectKey = (kind: string) => `fx:${kind}`;
 
+/** Four Hands' own effects. */
+export type OwnKind = "eq" | "compressor" | "limiter" | "reverb";
+
 export interface EffectItem {
   key: string;
   name: string;
@@ -212,7 +215,7 @@ export interface EffectItem {
   source: string;
   origin: "builtin" | "plugin";
   category: EffectCategory;
-  target: { kind: "eq" | "compressor" | "limiter" } | { kind: "plugin"; plugin: EnginePlugin };
+  target: { kind: OwnKind } | { kind: "plugin"; plugin: EnginePlugin };
 }
 
 const EFFECT_WORDS: [EffectCategory, RegExp][] = [
@@ -241,11 +244,13 @@ export function effectCategory(p: Pick<EnginePlugin, "name" | "category">): Effe
   return "other";
 }
 
-export function buildEffectCatalog(input: { lang: Lang; plugins: EnginePlugin[]; prefs: SoundPrefs; ownLabel: string; ownNames: Record<"eq" | "compressor" | "limiter", string> }): EffectItem[] {
-  const own: Array<["eq" | "compressor" | "limiter", EffectCategory]> = [
+export function buildEffectCatalog(input: { lang: Lang; plugins: EnginePlugin[]; prefs: SoundPrefs; ownLabel: string; ownNames: Record<OwnKind, string> }): EffectItem[] {
+  const own: Array<[OwnKind, EffectCategory]> = [
     ["eq", "eq"],
     ["compressor", "dynamics"],
     ["limiter", "dynamics"],
+    // F2.2 parte D: the song's GS reverb, as an effect (on the «Reverb» bus by default).
+    ["reverb", "reverb"],
   ];
   const items: EffectItem[] = own.map(([kind, category]) => ({ key: ownEffectKey(kind), name: input.ownNames[kind], source: input.ownLabel, origin: "builtin", category, target: { kind } }));
   const hidden = new Set(input.prefs.hidden);

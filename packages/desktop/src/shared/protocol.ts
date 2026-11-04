@@ -222,6 +222,7 @@ export const CH = {
   enginePanic: "fh:engine-panic",
   engineSounds: "fh:engine-sounds",
   engineMix: "fh:engine-mix",
+  engineRouting: "fh:engine-routing",
   engineLevels: "fh:engine-levels",
   engineMeters: "fh:engine-meters",
   engineStats: "fh:engine-stats",

@@ -58,7 +58,7 @@ Below these pitches the interval stops sounding as harmony and becomes a muddy b
 
 ## 4b. Depth
 
-Register and pan place a part up and down and left and right; the reverb send (`set_mix 't2 rev 30'`) places it near or far.
+Register and pan place a part up and down and left and right; the send to a reverb bus (`set_mix 't2 send Reverb 30'`) places it near or far. With no reverb bus in the song, make one (`add_bus` with `reverb: true`) and send to it: one room for every track.
 
 - **Far for what holds, near for what moves.** Pads, string sections, choir and slow solo lines take more reverb (around 25–45); bass, drums, piano ostinatos and fast figures stay drier (0–15), or they blur.
 - **One room.** Give related parts similar values so they sound in the same space; a single very wet part sounds pasted on.

@@ -624,16 +624,14 @@ describe("H3.1: the mix and the track list", () => {
     expect(orderedTracks(session.song).map((t) => ({ v: t.volume, p: t.pan, m: t.mute }))).toEqual(before);
   });
 
-  it("set_mix and update_track set the reverb send, and the overview shows it (H4)", () => {
+  it("reverb is a bus and a send, not a track setting (Fran, 04/11/2026)", () => {
     const id = begin("Los violines más lejos");
-    const text = ok("set_mix", { intervention_id: id, mix: "t1 rev 35\nt2 vol 70 reverb 20" });
-    expect(text).toContain("t1 Organo · mix vol 80 pan C rev 35");
-    expect(session.song.tracks.t1!.reverb).toBe(0.35);
-    expect(session.song.tracks.t2).toMatchObject({ volume: 0.7, reverb: 0.2 });
-    expect(ok("update_track", { intervention_id: id, track: "t1", reverb: 0 })).toContain("reverb 0");
-    expect("reverb" in session.song.tracks.t1!).toBe(false);
-    expect(fail("set_mix", { intervention_id: id, mix: "t1 rev 120" })).toMatch(/reverb goes from 0 \(dry\) to 100/);
-    expect(ok("get_song_overview")).toMatch(/t2 .*mix vol 70 pan C rev 20/);
+    expect(fail("set_mix", { intervention_id: id, mix: "t1 rev 35" })).toMatch(/write the track or bus first/);
+    ok("add_bus", { intervention_id: id, name: "Reverb", reverb: true });
+    const text = ok("set_mix", { intervention_id: id, mix: "t1 send Reverb 35\nt2 vol 70 send Reverb 20" });
+    expect(text).toContain("t1 Organo · mix vol 80 pan C send Reverb 35");
+    expect(session.song.tracks.t2).toMatchObject({ volume: 0.7, sends: [{ bus: "b1", level: 0.2 }] });
+    expect(ok("get_song_overview")).toMatch(/t2 .*mix vol 70 pan C send Reverb 20/);
     ok("end_intervention", { intervention_id: id });
   });
 
@@ -716,7 +714,7 @@ describe("H3.1: the mix and the track list", () => {
     const id = begin("Mezcla");
     const revision = session.song.revision;
     expect(fail("set_mix", { intervention_id: id, mix: "t1 vol 65\nt2 vol 140" })).toMatch(/^Line 2 \("t2 vol 140"\): volume goes from 0 to 100\. Nothing was written\.$/);
-    expect(fail("set_mix", { intervention_id: id, mix: "t1 solo" })).toMatch(/write the track first/);
+    expect(fail("set_mix", { intervention_id: id, mix: "t1 solo" })).toMatch(/write the track or bus first/);
     expect(fail("set_mix", { intervention_id: id, mix: "t1 vol 60\nt1 pan L10" })).toMatch(/appears twice/);
     expect(fail("set_mix", { intervention_id: id, mix: "t1 pan X9" })).toMatch(/is not a pan/);
     expect(session.song.revision).toBe(revision);
@@ -1012,5 +1010,69 @@ describe("insert effects for the AI (F2.2 parte C)", () => {
     const r = await desk.callAsync("c1", "list_effect_parameters", { effect: "x1" });
     expect(!r.ok && r.error).toMatch(/engine is not running/);
     ok("end_intervention", { intervention_id: id });
+  });
+});
+
+describe("buses for the AI (F2.2 parte D)", () => {
+  it("a song starts without buses; the overview shows them with what goes into them", () => {
+    expect(ok("get_song_overview")).toMatch(/Buses: none yet/);
+    const id = begin("Profundidad");
+    ok("add_bus", { intervention_id: id, name: "Reverb", reverb: true });
+    ok("set_mix", { intervention_id: id, mix: "t1 send Reverb 30" });
+    ok("end_intervention", { intervention_id: id });
+    const text = ok("get_song_overview");
+    expect(text).toMatch(/Buses \(/);
+    expect(text).toMatch(/b1 Reverb · vol 100 pan C · effects: x1 Reverb \(neutral\) · sends from Organo/);
+  });
+
+  it("add_bus makes a subgroup with its tracks, set_mix routes and sends, one undo step each", () => {
+    const id = begin("Subgrupo de cuerdas");
+    const made = ok("add_bus", { intervention_id: id, name: "Cuerdas", tracks: ["t3", "t4"] });
+    expect(made).toMatch(/^Bus b1 Cuerdas → Master\. Now going into it: Melodia \(cuerdas\), Contramelodia/);
+    expect(session.song.tracks.t3!.bus).toBe("b1");
+    ok("add_bus", { intervention_id: id, name: "Mix bus" });
+    ok("add_bus", { intervention_id: id, name: "Delay", reverb: true });
+    const text = ok("set_mix", { intervention_id: id, mix: "Cuerdas vol 85 to Mix bus\nt1 send Delay 25 pre\nt2 to Mix bus send Delay 10" });
+    expect(text).toContain("b1 Cuerdas · mix vol 85 pan C → Mix bus");
+    expect(text).toContain("t1 Organo · mix vol 80 pan C send Delay 25 pre");
+    expect(session.song.buses!.b1!.bus).toBe("b2");
+    expect(session.song.tracks.t2).toMatchObject({ bus: "b2", sends: [{ bus: "b3", level: 0.1 }] });
+    expect(session.song.buses!.b3!.inserts![0]!.kind).toBe("reverb");
+    // Loops and unknown buses are refused, and nothing is written.
+    expect(fail("set_mix", { intervention_id: id, mix: "Mix bus to Cuerdas" })).toMatch(/loop/);
+    expect(fail("set_mix", { intervention_id: id, mix: "t1 to Nada" })).toMatch(/There is no bus 'Nada'/);
+    ok("set_mix", { intervention_id: id, mix: "t1 nosend Delay\nt2 to master" });
+    expect("sends" in session.song.tracks.t1!).toBe(false);
+    expect("bus" in session.song.tracks.t2!).toBe(false);
+    // Effects go on a bus by its name.
+    expect(ok("add_effect", { intervention_id: id, track: "Cuerdas", effect: "compressor" })).toMatch(/to the bus Cuerdas \(b1\)/);
+    ok("end_intervention", { intervention_id: id });
+    session.handle({ type: "undo" });
+    expect(session.song.busOrder).toBeUndefined();
+    expect("bus" in session.song.tracks.t3!).toBe(false);
+  });
+
+  it("remove_bus says what moved where", () => {
+    const id = begin("Buses");
+    ok("add_bus", { intervention_id: id, name: "Mix bus" });
+    ok("add_bus", { intervention_id: id, name: "Voces", tracks: ["t1"], to: "Mix bus" });
+    ok("set_mix", { intervention_id: id, mix: "t2 send Voces 40" });
+    const text = ok("remove_bus", { intervention_id: id, bus: "Voces" });
+    expect(text).toMatch(/Removed the bus Voces \(b2\)\. Organo went through it and now go to Mix bus\. The sends of Piano ostinato to it are gone\./);
+    expect(session.song.tracks.t1!.bus).toBe("b1");
+    expect(fail("remove_bus", { intervention_id: id, bus: "Voces" })).toMatch(/There is no bus/);
+    ok("end_intervention", { intervention_id: id });
+  });
+
+  it("get_levels reads the buses too", async () => {
+    const { levelsText } = await import("./texts.js");
+    const text = levelsText(
+      { channels: [{ peak: 0.5, rms: 0.1, clips: 0 }], master: { peak: 0.5, rms: 0.1, clips: 0 }, buses: [{ peak: 0.25, rms: 0.05, clips: 0 }, { peak: 0, rms: 0, clips: 0 }] },
+      [{ name: "Piano", channel: 0 }],
+      null,
+      { buses: [{ name: "Reverb", index: 0 }, { name: "Voces", index: 1 }] },
+    );
+    expect(text).toContain("- bus Reverb: -12.0 / -26.0");
+    expect(text).toContain("Silent in that playback (muted, not playing there, or no notes): bus Voces.");
   });
 });

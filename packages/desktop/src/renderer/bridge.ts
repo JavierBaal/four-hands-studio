@@ -2,7 +2,7 @@
  * The window's door to the main process (exposed by the preload as `window.fh`), plus an in-page
  * stand-in that runs the core directly, for the browser harness and the interface tests.
  */
-import type { EngineInsert, EngineLevels, EngineLoad, EngineStrip } from "../shared/mix.js";
+import type { EngineBusMix, EngineInsert, EngineLevels, EngineLoad, EngineRouting, EngineStrip } from "../shared/mix.js";
 import { ENGINE_OFF, type EngineLoadResult, type EngineMidiEvent, type EnginePlugin, type EngineTransportPoint, type EnginePluginList, type EngineScanProgress, type EngineSoundsResult, type EngineStatus, type PluginFolders } from "../shared/engine.js";
 import { NO_SOUND_PREFS, type SoundPrefs } from "../shared/sound-catalog.js";
 import { SongDocument, USER, runCommands, type Song } from "@fourhands/core";
@@ -85,15 +85,20 @@ export interface Bridge {
    */
   engineSounds(id: string, offset: number): Promise<EngineSoundsResult>;
   /**
-   * F2.2: the engine's channel strips (fader, balance and reverb send of the plugin tracks; on or off
-   * for mute and solo) and, when given, the master fader's gain (parte B).
+   * F2.2: the engine's channel strips (fader and balance; on or off for mute and solo), when given
+   * the master fader's gain (parte B) and the buses' faders (parte D).
    */
-  engineMix(channels: EngineStrip[], master?: number): void;
+  engineMix(channels: EngineStrip[], master?: number, buses?: EngineBusMix[]): void;
+  /** F2.2 parte D: where every strip and bus goes (outputs and sends), whole. */
+  engineRouting(routing: EngineRouting): void;
   /** F2.2 parte B: the strips' levels since the last call, for the console's meters (null without engine). */
   engineMeters(): Promise<EngineLevels | null>;
   /** F2.2 parte B: the engine's load since the last call (null without engine). */
   engineStats(): Promise<EngineLoad | null>;
-  /** F2.2 parte C: a strip's effect chain (-1: the Master); what failed to load comes back. */
+  /**
+   * F2.2 parte C: a strip's effect chain (-1: the Master; parte D: -2 - n, bus n, `busChainKey`);
+   * what failed to load comes back.
+   */
   engineInserts(strip: number, chain: EngineInsert[]): Promise<{ ok: boolean; errors: Array<{ id: string; error: string }>; latency?: number; compensation?: number }>;
   /** A plugin effect's own window. */
   engineShowInsert(id: string): Promise<boolean>;
@@ -140,7 +145,7 @@ export function memoryBridge(
     /** Plugins of a pretend engine (interface tests); absent: the engine is "missing". */
     enginePlugins?: EnginePlugin[];
   } = {},
-): Bridge & { doc: SongDocument; setAi(state: AiState): void; closed: string[]; engine: { loaded: Map<number, string>; midi: EngineMidiEvent[]; shown: number[]; mix: EngineStrip[]; master?: number; meters?: EngineLevels; load?: EngineLoad; inserts: Map<number, EngineInsert[]>; shownInserts: string[]; failPlugin?: string; params: Array<[string, number, number]>; reduction?: number; transport: EngineTransportPoint[] } } {
+): Bridge & { doc: SongDocument; setAi(state: AiState): void; closed: string[]; engine: { loaded: Map<number, string>; midi: EngineMidiEvent[]; shown: number[]; mix: EngineStrip[]; buses: EngineBusMix[]; routing?: EngineRouting; master?: number; meters?: EngineLevels; load?: EngineLoad; inserts: Map<number, EngineInsert[]>; shownInserts: string[]; failPlugin?: string; params: Array<[string, number, number]>; reduction?: number; transport: EngineTransportPoint[] } } {
   const now = options.now ?? Date.now;
   const doc = new SongDocument(song, { now });
   const patchListeners = new Set<(m: PatchMessage) => void>();
@@ -164,7 +169,7 @@ export function memoryBridge(
   let outPort: string | null = null;
   const fakePlugins = options.enginePlugins;
   const engineState: EngineStatus = fakePlugins ? { state: "ready", device: "Prueba · 48000 Hz", latency: 0.02, generation: 1 } : { ...ENGINE_OFF, state: "missing" };
-  const engine: { loaded: Map<number, string>; midi: EngineMidiEvent[]; shown: number[]; mix: EngineStrip[]; master?: number; meters?: EngineLevels; load?: EngineLoad; inserts: Map<number, EngineInsert[]>; shownInserts: string[]; failPlugin?: string; params: Array<[string, number, number]>; reduction?: number; transport: EngineTransportPoint[] } = { loaded: new Map<number, string>(), midi: [], shown: [], mix: [], inserts: new Map(), shownInserts: [], params: [], transport: [] };
+  const engine: { loaded: Map<number, string>; midi: EngineMidiEvent[]; shown: number[]; mix: EngineStrip[]; buses: EngineBusMix[]; routing?: EngineRouting; master?: number; meters?: EngineLevels; load?: EngineLoad; inserts: Map<number, EngineInsert[]>; shownInserts: string[]; failPlugin?: string; params: Array<[string, number, number]>; reduction?: number; transport: EngineTransportPoint[] } = { loaded: new Map<number, string>(), midi: [], shown: [], mix: [], buses: [], inserts: new Map(), shownInserts: [], params: [], transport: [] };
   let pluginDirs: string[] = [];
   let soundPrefs: SoundPrefs = structuredClone(NO_SOUND_PREFS);
   const pluginState = (): PluginFolders => ({ system: ["C:\\Program Files\\Common Files\\VST3"], user: [...pluginDirs] });
@@ -277,10 +282,12 @@ export function memoryBridge(
     // The pretend engine has no sounds: the interface tests keep the window's synth.
     engineSounds: async () => ({ ok: false, error: "The engine is not built on this computer" }),
     builtinSounds: async () => "app",
-    engineMix: (channels, master) => {
+    engineMix: (channels, master, buses) => {
       engine.mix = structuredClone(channels);
       if (master !== undefined) engine.master = master;
+      if (buses !== undefined) engine.buses = structuredClone(buses);
     },
+    engineRouting: (routing) => void (engine.routing = structuredClone(routing)),
     engineLevels: async () => null,
     // The harness's meters and load: what the test page sets (scripts/interaccion.mjs).
     engineMeters: async () => (engine.meters ? structuredClone(engine.meters) : null),
