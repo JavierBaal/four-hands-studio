@@ -22,6 +22,7 @@ import { type SessionOptions, SongSession } from "./session.js";
 import { PluginWatch } from "./plugin-watch.js";
 import type { PluginStates, Song } from "@fourhands/core";
 import { SoundLibrary } from "./sound-library.js";
+import { LibraryCatalogFile } from "./library-catalog.js";
 import { EngineHost } from "./engine/host.js";
 import { type EngineLevels, type EngineLoad, engineLoad } from "../shared/mix.js";
 import type { EngineLoadResult, EngineMidiEvent, EnginePlugin, EngineSoundsResult } from "../shared/engine.js";
@@ -56,6 +57,9 @@ let skills: SkillLibrary | null = null;
 let engine: EngineHost | null = null;
 /** The plugins the engine knows (fase 2), for the AI's list_instruments. */
 let knownPlugins: EnginePlugin[] = [];
+/** The user's library cards (Fran, 05/11/2026), shared by every song. */
+let libraries: LibraryCatalogFile | null = null;
+const catalog = () => (libraries ??= new LibraryCatalogFile(path.join(dataDir(), "libraries.json")));
 
 // ---------------------------------------------------------------------------
 // Places on disk
@@ -532,6 +536,7 @@ async function startAi(): Promise<void> {
     plugins: () => knownPlugins,
     levels: () => lastLevels,
     analysis: () => lastAnalysis,
+    libraries: () => catalog(),
     load: () => (engine && engine.current.state === "ready" ? lastLoad : null),
     // F2.2 parte C: a plugin effect's parameters, from the engine.
     effectParams: async (id) => {
@@ -953,6 +958,9 @@ function registerIpc(): void {
     writeSettings({ soundPrefs: next });
     return next;
   });
+  ipcMain.handle(CH.libraries, () => catalog().read());
+  ipcMain.handle(CH.librarySave, (_e, card: unknown) => catalog().save(card));
+  catalog().onChange((c) => win?.webContents.send(CH.librariesChanged, c));
   ipcMain.handle(CH.pluginFoldersAdd, async () => {
     if (!win) return pluginFolders();
     const pick = await dialog.showOpenDialog(win, { properties: ["openDirectory"] });

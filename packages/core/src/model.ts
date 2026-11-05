@@ -144,6 +144,12 @@ export interface Track {
   output?: "external" | "plugin";
   /** The plugin that plays the track when `output` is "plugin". */
   plugin?: TrackPlugin;
+  /**
+   * Its library card (Fran, 05/11/2026): what the sample library inside the plugin responds to,
+   * its range and its keyswitches. The card lives in the user's catalog, outside the song, so the
+   * same one serves every song; the track only says which. Absent: none.
+   */
+  library?: TrackLibrary;
   /** Expression (CC11) and modulation (CC1), sorted by tick, one point per tick. Absent: none. */
   curves?: Partial<Record<CurveKind, CcPoint[]>>;
   /** Events of this track the model does not interpret (controllers, pitch bend, text…). */
@@ -216,6 +222,13 @@ export interface TrackPlugin {
   /** The engine's identifier for it (format, name, file and id). */
   id: string;
   /** "Kontakt 8", as the plugin calls itself. */
+  name: string;
+}
+
+export interface TrackLibrary {
+  /** The card's id in the user's catalog. */
+  id: string;
+  /** Its name when it was linked ("Symphonic Strings · Violas"), to name it if the catalog lacks it. */
   name: string;
 }
 

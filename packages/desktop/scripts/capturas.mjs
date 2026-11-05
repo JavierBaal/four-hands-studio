@@ -434,6 +434,32 @@ export const SHOTS = [
     await page.waitForTimeout(500);
   } },
   // The Mezcla / Editor button (Fran, 03/11/2026: at the start of the bar).
+  // Library cards (Fran, 05/11/2026): the violas in Kontakt with their card, without one, editing it.
+  ...[
+    ["ficha_1_llena", true, 52, null],
+    ["ficha_2_vacia", false, 52, null],
+    ["ficha_3_editar", true, 52, "Editar ficha"],
+    ["ficha_4_rango_agudo", true, 92, null],
+    ["ficha_5_articulaciones", true, 39, null],
+    ["ficha_6_otra", true, 52, "Usar otra ficha…"],
+  ].map(([name, linked, top, click]) => ({
+    name,
+    q: `?song=boceto&plugins=fran&fichas=1&view=${view({ startTick: 16 * BAR, pxPerTick: (1440 - 288 - 72) / 12 / BAR, scrollY: (127 - top) * 15, panelOpen: true, panelTab: "track" })}`,
+    act: async (page) => {
+      await page.evaluate(async (linked) => {
+        const r = window.fhTest.replica;
+        const id = r.song.trackOrder[3];
+        const changes = { name: "Violas", output: "plugin", plugin: { id: "VST3-Kontakt 8-1", name: "Kontakt 8" } };
+        if (linked) changes.library = { id: "libviolas", name: "Symphonic Strings · Violas" };
+        await r.run("x", [{ type: "updateTrack", id, changes }]);
+        r.setContext({ activeTrackId: id });
+      }, linked);
+      await page.waitForTimeout(400);
+      await page.evaluate((top) => window.fhTest.view.set({ scrollY: (127 - top) * 15 }), top);
+      if (click) await page.getByRole("button", { name: click }).click();
+      await page.waitForTimeout(400);
+    },
+  })),
   { name: "boton_mezcla_editor", q: `?song=boceto&view=${sketchView(1440 - 288 - 72, 12)}` },
   { name: "boton_mezcla_consola", q: `?song=boceto&view=${view({ bottom: "mix" })}`, act: consoleLevels },
   { name: "boton_mezcla_editor_880", w: 880, h: 800, q: `?song=boceto&view=${sketchView(880 - 48 - 56, 8)}` },

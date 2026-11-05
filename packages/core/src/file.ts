@@ -103,6 +103,7 @@ const track = z.object({
     .optional(),
   output: z.enum(["external", "plugin"]).optional(),
   plugin: z.object({ id: z.string().min(1).max(2000), name: z.string().min(1).max(200) }).optional(),
+  library: z.object({ id: z.string().min(1).max(100), name: z.string().min(1).max(200) }).optional(),
   extraEvents: z.array(passthrough),
   sound: z.object({ bank: z.string().min(1).max(255), program: int.min(0).max(127), bankMSB: int.min(0).max(127), name: z.string().max(100) }).optional(),
   inserts: z.array(insert).max(64).optional(),

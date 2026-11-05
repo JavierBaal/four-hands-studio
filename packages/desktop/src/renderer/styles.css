@@ -759,3 +759,47 @@ input.inline.fxval.bad { border-color: var(--clip); }
 .fader.fxfader { width: 100%; }
 .fxrow .fxval { justify-self: end; }
 .fxdyn.lim .fxgrbar { min-height: 96px; }
+
+/* Library cards (Fran, 05/11/2026; boceto aprobado: bocetos/propuestas/ficha_*.png). */
+.tclib { display: flex; flex-direction: column; gap: 6px; padding: 12px; }
+.tclib.libempty { gap: 8px; }
+.tclibname { font-weight: 600; }
+.tclibrows { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 7px 10px; margin: 8px 0 2px; font-size: 12px; }
+.tclibrow { display: contents; }
+.tclibrows dt { color: var(--text-2); }
+.tclibrows dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.lpill { display: inline-flex; align-items: center; gap: 6px; }
+.ldot { width: 7px; height: 7px; border-radius: 50%; flex: none; display: inline-block; }
+.ldot.yes { background: var(--loop); }
+.ldot.weak { background: var(--flag); }
+.ldot.no { background: var(--text-2); opacity: .6; }
+.ldot.untested { border: 1px dashed var(--line-on); width: 5px; height: 5px; }
+.ldot.ai { background: var(--author-ai); }
+.ldot.user { background: var(--author-user); }
+.lks { display: flex; flex-wrap: wrap; gap: 4px; }
+.lchip { display: inline-block; white-space: nowrap; font-size: 11px; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--line-control); background: var(--bg-chip); color: var(--text); }
+.lchip::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 1px; background: var(--keyswitch); margin-right: 5px; vertical-align: 1px; }
+.lchip.add { border-style: dashed; color: var(--text-2); cursor: pointer; font: inherit; font-size: 11px; }
+.lchip.add::before { display: none; }
+.lchipx { all: unset; cursor: pointer; color: var(--text-2); padding: 0 2px; }
+.lchipx:hover { color: var(--text); }
+.tclibby { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-2); border-top: 1px solid var(--line-soft); padding-top: 8px; margin-top: 4px; }
+.tclib.edit { gap: 10px; }
+.lrow { display: flex; flex-direction: column; align-items: stretch; gap: 5px; font-size: 12px; }
+.lrow > .linput { width: 100%; }
+.lrow .lseg { align-self: flex-start; flex-wrap: nowrap; }
+.lrow > span:first-child { color: var(--text-2); }
+.linput { all: unset; box-sizing: border-box; height: 26px; padding: 0 8px; border-radius: 6px; border: 1px solid var(--line-control); background: var(--bg-app); color: var(--text); font-size: 12px; min-width: 0; }
+.linput:focus-visible { border-color: var(--line-on); }
+.linput.ltext { height: auto; min-height: 52px; padding: 6px 8px; white-space: pre-wrap; }
+.lrange { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.lrange .linput { width: 64px; text-align: center; }
+.lrange .hint { flex-basis: 100%; }
+.lksadd { display: flex; gap: 6px; align-items: center; }
+.lksadd .linput.mono { width: 64px; text-align: center; }
+.lksadd .linput:not(.mono) { flex: 1; }
+.lseg { display: inline-flex; border: 1px solid var(--line-control); border-radius: 6px; overflow: hidden; flex-wrap: wrap; }
+.lsegb { height: 24px; padding: 0 8px; border: 0; background: transparent; color: var(--text-2); font: inherit; font-size: 11px; cursor: pointer; }
+.lsegb.on { background: var(--bg-control-on); color: var(--text); }
+.lproblem { color: var(--rec); }
+.btn.primary { border-color: var(--line-on); color: var(--text); }

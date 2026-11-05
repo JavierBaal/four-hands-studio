@@ -21,6 +21,7 @@ import {
   type Section,
   type TempoPoint,
   type Track,
+  type TrackLibrary,
   type TrackPlugin,
   type TrackSound,
   barTicks,
@@ -232,6 +233,8 @@ export type TrackChanges = Partial<Pick<Track, "name" | "program" | "channel" | 
   output?: "internal" | "external" | "plugin";
   /** The plugin for output "plugin"; null forgets it. */
   plugin?: TrackPlugin | null;
+  /** Its library card in the user's catalog (Fran, 05/11/2026); null unlinks it. */
+  library?: TrackLibrary | null;
 };
 
 export function updateTrack(tx: Transaction, id: string, changes: TrackChanges): void {
@@ -244,7 +247,11 @@ export function updateTrack(tx: Transaction, id: string, changes: TrackChanges):
   if (changes.pan !== undefined) check(changes.pan >= -1 && changes.pan <= 1, "Pan must be between -1 and 1");
   if (changes.name !== undefined) check(changes.name.trim().length > 0, "A track needs a name");
   if (changes.color !== undefined) checkColor(changes.color);
-  const { sound, output, plugin, ...rest } = changes;
+  const { sound, output, plugin, library, ...rest } = changes;
+  if (library) {
+    check(library.id.trim().length > 0 && library.name.trim().length > 0, "A library card needs its id and name");
+    if (JSON.stringify(track.library) !== JSON.stringify(library)) tx.set(["tracks", id, "library"], { id: library.id, name: library.name });
+  } else if (library === null && track.library) tx.remove(["tracks", id, "library"]);
   if (plugin) {
     check(plugin.id.trim().length > 0 && plugin.name.trim().length > 0, "A plugin needs its id and name");
     if (JSON.stringify(track.plugin) !== JSON.stringify(plugin)) tx.set(["tracks", id, "plugin"], { id: plugin.id, name: plugin.name });

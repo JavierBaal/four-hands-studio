@@ -12,6 +12,7 @@ import { HIDDEN_LOOKAHEAD, Player, type Target } from "../audio/player.js";
 import { type EnginePort, type MidiPort, SoundRouter, isOwnLoopback } from "../audio/router.js";
 import { type EngineLevels, type EngineLoad, busChainKey, engineBuses, engineChain, engineRouting, engineStrips, levelsReport, masterGain } from "../shared/mix.js";
 import { BusMap, METRONOME_KEY, StripMap } from "../shared/strips.js";
+import type { LibraryCard, LibraryCatalog } from "../shared/library-cards.js";
 import { type EffectItem, NO_SOUND_PREFS, type SoundItem, type SoundPrefs, buildCatalog, buildEffectCatalog, withRecent } from "../shared/sound-catalog.js";
 import { ENGINE_OFF, type EnginePluginList, type EngineScanProgress, type EngineStatus } from "../shared/engine.js";
 import type { Bridge } from "./bridge.js";
@@ -125,6 +126,8 @@ export class AudioLayer {
   pluginScan: EngineScanProgress | null = null;
   /** The Sonidos browser's marks: favourites, recents, hidden plugins, moved categories. */
   soundPrefs: SoundPrefs = { ...NO_SOUND_PREFS };
+  /** The user's library cards (Fran, 05/11/2026), shared by every song. */
+  libraries: LibraryCatalog = { cards: [] };
   /**
    * F2.1 (Fran, 01/11/2026): the built-in sounds play in the engine once its banks are there (the
    * same banks, at the same bank select offsets as the window's synth). Until then, and if the
@@ -243,10 +246,33 @@ export class AudioLayer {
       this.soundPrefs = p;
       this.changed();
     });
+    void this.bridge.libraries().then((c) => {
+      this.libraries = c;
+      this.changed();
+    });
+    this.bridge.onLibrariesChanged((c) => {
+      this.libraries = c;
+      this.changed();
+    });
     this.bridge.onEngineScanning((p) => {
       this.pluginScan = p;
       this.changed();
     });
+  }
+
+  /** A card of the catalog by id. */
+  libraryCard(id: string | undefined): LibraryCard | undefined {
+    return id ? this.libraries.cards.find((c) => c.id === id) : undefined;
+  }
+
+  /** Saves a card in the user's catalog (the change comes back through onLibrariesChanged). */
+  async saveLibrary(card: LibraryCard): Promise<LibraryCard | null> {
+    const saved = await this.bridge.saveLibrary(card);
+    if (saved) {
+      this.libraries = { cards: [...this.libraries.cards.filter((c) => c.id !== saved.id), saved].sort((a, b) => a.name.localeCompare(b.name)) };
+      this.changed();
+    }
+    return saved;
   }
 
   /** Changes the browser's marks and keeps them (ajustes.json). */

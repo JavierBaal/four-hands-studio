@@ -5,6 +5,7 @@
 import type { EngineBusMix, EngineInsert, EngineLevels, EngineLoad, EngineRouting, EngineStrip } from "../shared/mix.js";
 import { ENGINE_OFF, type EngineLoadResult, type EngineMidiEvent, type EnginePlugin, type EngineTransportPoint, type EnginePluginList, type EngineScanProgress, type EngineSoundsResult, type EngineStatus, type PluginFolders } from "../shared/engine.js";
 import { NO_SOUND_PREFS, type SoundPrefs } from "../shared/sound-catalog.js";
+import { type LibraryCard, type LibraryCatalog, cleanCard } from "../shared/library-cards.js";
 import { SongDocument, USER, runCommands, type Song } from "@fourhands/core";
 import { type AiApply, type AiState, type AiTone, DEFAULT_AI_APPLY, DEFAULT_AI_TONE, type FileState, type FolderKind, type Folders, type MenuAction, type ToolKind, NO_AI, type PatchMessage, type Reply, type Request, type SkillCardInfo, type SkillImportResult, type Snapshot, type SoundBankInfo, type ViewInfo, undoStateOf } from "../shared/protocol.js";
 
@@ -125,6 +126,11 @@ export interface Bridge {
   /** The Sonidos browser: favourites, recents, hidden plugins and moved categories. */
   soundPrefs(): Promise<SoundPrefs>;
   setSoundPrefs(prefs: SoundPrefs): Promise<SoundPrefs>;
+  /** Library cards (Fran, 05/11/2026): the user's catalog, shared by every song (libraries.json). */
+  libraries(): Promise<LibraryCatalog>;
+  /** Adds or replaces a card; gives it as saved (null if it was not valid). */
+  saveLibrary(card: LibraryCard): Promise<LibraryCard | null>;
+  onLibrariesChanged(listener: (catalog: LibraryCatalog) => void): () => void;
 }
 
 export function windowBridge(): Bridge | null {
@@ -144,6 +150,8 @@ export function memoryBridge(
     skills?: SkillCardInfo[];
     /** Plugins of a pretend engine (interface tests); absent: the engine is "missing". */
     enginePlugins?: EnginePlugin[];
+    /** The user's library cards at start. */
+    libraries?: LibraryCard[];
   } = {},
 ): Bridge & { doc: SongDocument; setAi(state: AiState): void; closed: string[]; engine: { loaded: Map<number, string>; midi: EngineMidiEvent[]; shown: number[]; mix: EngineStrip[]; buses: EngineBusMix[]; routing?: EngineRouting; master?: number; meters?: EngineLevels; load?: EngineLoad; inserts: Map<number, EngineInsert[]>; shownInserts: string[]; failPlugin?: string; params: Array<[string, number, number]>; reduction?: number; transport: EngineTransportPoint[] } } {
   const now = options.now ?? Date.now;
@@ -172,6 +180,8 @@ export function memoryBridge(
   const engine: { loaded: Map<number, string>; midi: EngineMidiEvent[]; shown: number[]; mix: EngineStrip[]; buses: EngineBusMix[]; routing?: EngineRouting; master?: number; meters?: EngineLevels; load?: EngineLoad; inserts: Map<number, EngineInsert[]>; shownInserts: string[]; failPlugin?: string; params: Array<[string, number, number]>; reduction?: number; transport: EngineTransportPoint[] } = { loaded: new Map<number, string>(), midi: [], shown: [], mix: [], buses: [], inserts: new Map(), shownInserts: [], params: [], transport: [] };
   let pluginDirs: string[] = [];
   let soundPrefs: SoundPrefs = structuredClone(NO_SOUND_PREFS);
+  let catalog: LibraryCatalog = { cards: structuredClone(options.libraries ?? []) };
+  const libraryListeners = new Set<(c: LibraryCatalog) => void>();
   const pluginState = (): PluginFolders => ({ system: ["C:\\Program Files\\Common Files\\VST3"], user: [...pluginDirs] });
   const on = <T>(set: Set<T>, l: T) => {
     set.add(l);
@@ -312,6 +322,15 @@ export function memoryBridge(
     addPluginFolder: async () => (pluginDirs.includes("D:\\VST3") || pluginDirs.push("D:\\VST3"), pluginState()),
     soundPrefs: async () => structuredClone(soundPrefs),
     setSoundPrefs: async (p) => (soundPrefs = structuredClone(p)),
+    libraries: async () => structuredClone(catalog),
+    saveLibrary: async (input) => {
+      const card = cleanCard(input);
+      if (!card) return null;
+      catalog = { cards: [...catalog.cards.filter((c) => c.id !== card.id), card].sort((a, b) => a.name.localeCompare(b.name)) };
+      queueMicrotask(() => libraryListeners.forEach((l) => l(structuredClone(catalog))));
+      return structuredClone(card);
+    },
+    onLibrariesChanged: (l) => on(libraryListeners, l),
     removePluginFolder: async (dir) => (pluginDirs = pluginDirs.filter((d) => d !== dir), pluginState()),
     save: () => {
       file.savedAt = now();

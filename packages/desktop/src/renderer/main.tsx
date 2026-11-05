@@ -48,6 +48,30 @@ async function start(): Promise<void> {
         })),
         { name: "mi-armonia", description: "Cómo armonizo: pedales largos, nunca doblo la tercera y las cadencias se quedan abiertas.", origin: "user", enabled: true, replacesBuiltIn: false, files: 0 },
       ],
+      // ?fichas=1: a library card in the user's catalog (Fran, 05/11/2026), for the captures and tests.
+      libraries:
+        params.get("fichas") === "1"
+          ? [
+              {
+                id: "libviolas",
+                name: "Symphonic Strings · Violas",
+                host: "Kontakt 8",
+                velocity: { state: "weak", note: "sobre todo de v80 arriba" },
+                expression: { state: "yes" },
+                modulation: { state: "untested" },
+                range: { low: 36, high: 84 },
+                keyswitches: [
+                  { pitch: 24, name: "Sustain" },
+                  { pitch: 25, name: "Staccato" },
+                  { pitch: 26, name: "Pizzicato" },
+                  { pitch: 27, name: "Trémolo" },
+                ],
+                ownReverb: "off",
+                notes: "Los trémolos suenan unos 3 dB más fuertes.",
+                updated: { by: "ai", at: Date.UTC(2026, 10, 5, 12), why: "tras la prueba de dinámica" },
+              },
+            ]
+          : [],
       // A pretend engine with two instruments and an effect (prueba S2); ?engine=0: not built.
       ...(params.get("engine") === "0"
         ? {}

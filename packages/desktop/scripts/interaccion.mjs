@@ -1566,6 +1566,39 @@ await page.keyboard.press("Escape");
 await page.keyboard.press("Escape");
 await page.evaluate(() => window.fhTest.view.set({ bottom: "editor", mixMax: false }));
 
+// Library cards (Fran, 05/11/2026): a plugin track gets a card in the user's catalog, edits it in Pista,
+// and the same card links to another track from «Usar otra ficha…».
+const libTrack = (await song()).trackOrder[0];
+await page.evaluate(async (id) => {
+  const r = window.fhTest.replica;
+  await r.run("x", [{ type: "updateTrack", id, changes: { output: "plugin", plugin: { id: "VST3-Kontakt 8-1", name: "Kontakt 8" } } }]);
+  r.setContext({ activeTrackId: id });
+  window.fhTest.view.set({ panelOpen: true, panelTab: "track" });
+}, libTrack);
+await settle();
+check("a plugin track without a card shows «Sin ficha» in Pista", /Sin ficha/.test(await page.locator(".tclibsec").innerText().catch(() => "")));
+await page.getByRole("button", { name: "Crear ficha" }).click();
+await settle();
+check("«Crear ficha» links a new card (one undo step) and opens it to edit", !!(await song()).tracks[libTrack].library && (await page.locator(".tclib.edit").count()) === 1, JSON.stringify((await song()).tracks[libTrack].library));
+await page.getByRole("radiogroup", { name: "Velocidad" }).getByRole("radio", { name: "Débil" }).click();
+await page.getByLabel("Rango 1").fill("Do2");
+await page.getByLabel("Rango 2").fill("Do6");
+await page.locator(".tclib .lchip.add").click();
+await page.getByLabel("Nota", { exact: true }).fill("Do1");
+await page.getByLabel("Articulación", { exact: true }).fill("Sustain");
+await page.getByLabel("Articulación", { exact: true }).press("Enter");
+await page.getByRole("button", { name: "Guardar" }).click();
+await settle();
+const libText = await page.locator(".tclibsec .tclib").innerText().catch(() => "");
+check("«Guardar» keeps the card: velocity, range and articulations, filled by the user", /Débil/.test(libText) && /Do2\s*–\s*Do6/.test(libText) && /Do1 Sustain/.test(libText) && /en Kontakt, C1\s*–\s*C5/.test(libText) && /Rellenada por ti/.test(libText), libText);
+await page.keyboard.press("Control+z");
+await settle();
+check("undo unlinks the card from the track (the card stays in the catalog)", !(await song()).tracks[libTrack].library && /Sin ficha/.test(await page.locator(".tclibsec").innerText()));
+await page.getByRole("button", { name: "Usar otra ficha…" }).click();
+await menuItem((await page.evaluate(() => window.fhTest.replica.song.tracks[window.fhTest.replica.song.trackOrder[0]].name))).click();
+await settle();
+check("«Usar otra ficha…» lists the catalog's cards and links the chosen one", !!(await song()).tracks[libTrack].library && /Do1 Sustain/.test(await page.locator(".tclibsec").innerText()));
+
 console.log(`${passed} passed, ${failures.length} failed`);
 for (const f of failures) console.log("FAIL", f);
 if (errors.length) console.log("page errors", errors);
