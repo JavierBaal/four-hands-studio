@@ -4,6 +4,8 @@
  * Hosts the song (SongSession), answers the window over IPC, saves to disk, shows the menus and
  * file dialogs. From H3 it will also talk to the AI bridges over a local WebSocket.
  */
+import { parseAnalysis } from "../shared/analysis.js";
+import type { AnalysisContext } from "./ai/listen.js";
 import { BrowserWindow, Menu, app, dialog, ipcMain, session, shell, type MenuItemConstructorOptions } from "electron";
 import fs from "node:fs";
 import os from "node:os";
@@ -184,6 +186,8 @@ function engineHost(): EngineHost {
 
 /** F2.2: the engine's levels in the last playback, for the AI's get_levels. */
 let lastLevels: { levels: EngineLevels; at: number; strips: Record<string, number>; buses?: Record<string, number> } | null = null;
+/** F2.3: what the engine heard in the last playback, for the AI's analyze_mix. */
+let lastAnalysis: AnalysisContext | null = null;
 /** F2.2 parte B: the engine's last load reading (the window asks every second), for get_levels. */
 let lastLoad: EngineLoad | null = null;
 /**
@@ -527,6 +531,7 @@ async function startAi(): Promise<void> {
     builtInSounds: () => library?.defaultPresets() ?? [],
     plugins: () => knownPlugins,
     levels: () => lastLevels,
+    analysis: () => lastAnalysis,
     load: () => (engine && engine.current.state === "ready" ? lastLoad : null),
     // F2.2 parte C: a plugin effect's parameters, from the engine.
     effectParams: async (id) => {
@@ -869,7 +874,19 @@ function registerIpc(): void {
     try {
       const reply = await engine.request({ type: reset ? "resetLevels" : "levels" });
       // What the AI reads with get_levels: the last playback's levels, as the window asked them.
-      if (!reset) lastLevels = { levels: reply as unknown as EngineLevels, at: Date.now(), strips: { ...trackStrips }, buses: { ...busIndexes } };
+      if (!reset) {
+        lastLevels = { levels: reply as unknown as EngineLevels, at: Date.now(), strips: { ...trackStrips }, buses: { ...busIndexes } };
+        // F2.3: and what it sounded like (loudness, bands, stereo), for analyze_mix.
+        void engine
+          .request({ type: "analysis" })
+          .then((a) => {
+            const analysis = parseAnalysis(a);
+            if (!analysis?.master?.frames.length) return;
+            lastAnalysis = { analysis, at: Date.now(), strips: { ...trackStrips }, buses: { ...busIndexes } };
+            appendLog({ type: "engine_analysis", seconds: analysis.master.seconds, lufs: analysis.master.integrated, truePeak: analysis.master.truePeak, strips: analysis.strips.length, buses: analysis.buses.length, gaps: analysis.gaps });
+          })
+          .catch(() => {});
+      }
       return reply;
     } catch {
       return null;

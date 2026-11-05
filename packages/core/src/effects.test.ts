@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { changesText } from "./changes.js";
 import { addTrack } from "./commands.js";
 import { SongDocument } from "./document.js";
-import { OWN_EFFECTS, addInsert, chainOf, defaultParams, findInsert, insertName, moveInsert, paramText, removeInsert, updateInsert } from "./effects.js";
+import { NOTE_VALUES, OWN_EFFECTS, addInsert, parseParamValue, chainOf, defaultParams, findInsert, insertName, moveInsert, paramText, removeInsert, updateInsert } from "./effects.js";
 import { parseSongFile, serializeSong } from "./file.js";
 import { USER, ai, emptySong } from "./model.js";
 
@@ -158,6 +158,21 @@ describe("insert effects (F2.2 parte C)", () => {
     const text = changesText(before, d.song, { since: "r1", history: [] });
     expect(text).toContain("effects: Compressor (x1) threshold −18.0 dB → −24.0 dB");
     expect(text).toContain("master effects: + Limiter (x2)");
+  });
+
+  it("the delay follows the tempo with note values people write in either language (Fran, 04/11/2026)", () => {
+    const note = OWN_EFFECTS.delay.params.find((p) => p.id === "note")!;
+    expect(paramText(note, defaultParams("delay").note!)).toBe("1/4");
+    expect(paramText(note, NOTE_VALUES.findIndex((n) => n.id === "1/8D"), "es")).toBe("Corchea con puntillo");
+    for (const [text, id] of [["1/8 dotted", "1/8D"], ["1/8d", "1/8D"], ["1/8.", "1/8D"], ["1/4 triplet", "1/4T"], ["1/16t", "1/16T"], ["negra", "1/4"], ["Corchea con puntillo", "1/8D"], ["1/2", "1/2"]] as const)
+      expect(NOTE_VALUES[parseParamValue(note, text)!]!.id).toBe(id);
+    expect(parseParamValue(note, "1/7")).toBeNull();
+    const d = doc();
+    d.transact({ actor: CLAUDE, label: "delay" }, (tx) => addInsert(tx, "t1", { kind: "delay", params: { note: 6, feedback: 50, pingPong: 1 } }));
+    expect(chainOf(d.song, "t1")[0]!.params).toMatchObject({ sync: 1, note: 6, feedback: 50, pingPong: 1, mix: 100 });
+    // Out of range: kept inside it.
+    d.transact({ actor: CLAUDE, label: "x" }, (tx) => updateInsert(tx, chainOf(d.song, "t1")[0]!.id, { params: { feedback: 140, note: 40 } }));
+    expect(chainOf(d.song, "t1")[0]!.params).toMatchObject({ feedback: 95, note: NOTE_VALUES.length - 1 });
   });
 
   it("writes values the way people read them", () => {

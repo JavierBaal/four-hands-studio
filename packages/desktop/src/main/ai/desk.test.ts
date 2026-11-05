@@ -1076,3 +1076,29 @@ describe("buses for the AI (F2.2 parte D)", () => {
     expect(text).toContain("Silent in that playback (muted, not playing there, or no notes): bus Voces.");
   });
 });
+
+describe("Four Hands' delay for the AI (Fran, 04/11/2026)", () => {
+  it("makes a delay return in time with the song and sets its note value in words", async () => {
+    const a = async (tool: string, args: Record<string, unknown>) => desk.callAsync("c1", tool, args);
+    const id = begin("Eco en la melodía");
+    const made = ok("add_bus", { intervention_id: id, name: "Delay", delay: true });
+    expect(made).toMatch(/effects: x1 Delay \(neutral\)/);
+    ok("set_mix", { intervention_id: id, mix: "t3 send Delay 25" });
+    const set = await a("set_effect", { intervention_id: id, effect: "x1", settings: "Note: 1/8 dotted\nFeedback: 45 %\nPing-pong: on" });
+    expect(set.ok && set.text).toContain("x1 Delay (note 1/8 dotted, feedback 45 %, ping-pong on)");
+    const bad = await a("set_effect", { intervention_id: id, effect: "x1", settings: "Note: 1/7" });
+    expect(!bad.ok && bad.error).toMatch(/not a note value\. Use one of: 1\/32, 1\/16 triplet/);
+    const list = await a("list_effect_parameters", { effect: "x1" });
+    expect(list.ok && list.text).toMatch(/Note: 1\/8 dotted \(1\/32 to 1\/1\)/);
+    ok("end_intervention", { intervention_id: id });
+  });
+});
+
+describe("analyze_mix for the AI (F2.3)", () => {
+  it("says to play first, and refuses targets and bars it cannot read", () => {
+    expect(ok("analyze_mix")).toMatch(/Nothing measured yet/);
+    expect(fail("analyze_mix", { target: "vinilo" })).toMatch(/Unknown target 'vinilo'/);
+    expect(fail("analyze_mix", { bars: "por ahí" })).toMatch(/is not bars/);
+    expect(fail("analyze_mix", { lufs: -2 })).toMatch(/lufs goes from -40 to -5/);
+  });
+});

@@ -112,6 +112,7 @@ function Window({ audio, insert, target }: { audio: AudioLayer; insert: Insert; 
         {insert.kind === "compressor" && <CompView audio={audio} id={insert.id} params={params} onPreview={preview} onCommit={commit} />}
         {insert.kind === "limiter" && <LimView audio={audio} id={insert.id} params={params} onPreview={preview} onCommit={commit} />}
         {insert.kind === "reverb" && <ReverbView params={params} onPreview={preview} onCommit={commit} />}
+        {insert.kind === "delay" && <DelayView params={params} onPreview={preview} onCommit={commit} />}
       </div>
     </div>
   );
@@ -123,7 +124,7 @@ interface ViewProps {
   onCommit(p: Params): void;
 }
 
-const defOf = (kind: "eq" | "compressor" | "limiter" | "reverb", id: string): ParamDef => paramDefs(kind).find((d) => d.id === id)!;
+const defOf = (kind: "eq" | "compressor" | "limiter" | "reverb" | "delay", id: string): ParamDef => paramDefs(kind).find((d) => d.id === id)!;
 
 /** A value shown as text that becomes a field with one click; out of range or unreadable, it stays open. */
 function TypedValue({ def, value, onCommit }: { def: ParamDef; value: number; onCommit(v: number): void }) {
@@ -191,8 +192,14 @@ const ES_LABELS: Record<string, string> = {
   makeup: "Ganancia",
   gain: "Entrada",
   ceiling: "Techo",
-  // Reverb (F2.2 parte D).
+  // Reverb (F2.2 parte D) and delay.
   mix: "Mezcla",
+  sync: "Al tempo",
+  note: "Figura",
+  feedback: "Repeticiones",
+  lowCut: "Corte graves",
+  highCut: "Corte agudos",
+  pingPong: "Ping-pong",
   time: "Tiempo",
   tone: "Brillo",
   preDelay: "Predelay",
@@ -527,6 +534,43 @@ function ReverbView({ params, onPreview, onCommit }: ViewProps) {
           <ParamRow key={d.id} def={d} value={value(d.id)} onPreview={(v) => onPreview({ [d.id]: v })} onCommit={(v) => onCommit({ [d.id]: v })} />
         ))}
       </div>
+    </div>
+  );
+}
+
+// --- Delay (Fran, 04/11/2026) ----------------------------------------------------------------------
+
+/** An on/off parameter as a button, like «Activo» in the header. */
+function ToggleRow({ def, value, onCommit }: { def: ParamDef; value: number; onCommit(v: number): void }) {
+  const { lang, t } = useApp();
+  const on = value >= 0.5;
+  return (
+    <div className="fxrow">
+      <span className="fxlabel">{paramLabel(def, lang)}</span>
+      <span className="fxtoggle">
+        <button className={on ? "tgl on" : "tgl"} aria-pressed={on} onClick={() => onCommit(on ? 0 : 1)}>
+          {on ? t("fxYes") : t("fxNo")}
+        </button>
+      </span>
+    </div>
+  );
+}
+
+/**
+ * Four Hands' delay: in time with the song (a note value) or in ms, the repeats, the mix, the cuts
+ * that darken the repeats, and ping-pong.
+ */
+function DelayView({ params, onPreview, onCommit }: ViewProps) {
+  const value = (k: string) => params[k] ?? defOf("delay", k).default;
+  const sync = value("sync") >= 0.5;
+  const row = (id: string) => {
+    const d = defOf("delay", id);
+    if (d.unit === "on") return <ToggleRow key={id} def={d} value={value(id)} onCommit={(v) => onCommit({ [id]: v })} />;
+    return <ParamRow key={id} def={d} value={value(id)} onPreview={(v) => onPreview({ [id]: v })} onCommit={(v) => onCommit({ [id]: v })} />;
+  };
+  return (
+    <div className="fxdyn delay">
+      <div className="fxrows">{["sync", sync ? "note" : "time", "feedback", "mix", "lowCut", "highCut", "pingPong"].map(row)}</div>
     </div>
   );
 }

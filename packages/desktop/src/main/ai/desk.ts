@@ -18,7 +18,9 @@
  */
 import type { EngineLevels, EngineLoad } from "../../shared/mix.js";
 import { levelsText } from "./texts.js";
-import { type ChainTarget, type Insert, type InsertKind, type InsertSpec, OWN_EFFECTS, addInsert, chainOf, findInsert, insertName, moveInsert, paramDefs, paramText, removeInsert, updateInsert } from "@fourhands/core";
+import { type AnalysisContext, mixReport } from "./listen.js";
+import { type LoudnessTarget, TARGETS } from "../../shared/analysis.js";
+import { type ChainTarget, type Insert, type InsertKind, type InsertSpec, OWN_EFFECTS, addInsert, chainOf, findInsert, insertName, moveInsert, paramDefs, paramText, removeInsert, updateInsert, parseParamValue, NOTE_VALUES } from "@fourhands/core";
 import { TRACK_PALETTE, trackColorByName, trackColorId } from "../../shared/track-colors.js";
 import {
   type Authorship,
@@ -96,6 +98,7 @@ import {
   removeSend,
   updateBus,
   isBusId,
+  orderedSections,
 } from "@fourhands/core";
 import { NAMED_PROGRAMS, PALETTE } from "../../shared/instruments.js";
 import type { AiApply, AiClientInfo, AiMark, AiRecent, AiState, AiTone, AiWriting, PatchMessage, SoundBankInfo } from "../../shared/protocol.js";
@@ -130,6 +133,8 @@ export interface AiDeskOptions {
   /** F2.2: what the engine measured in the last playback (the window asks it when playback stops). */
   /** The last playback's levels, and the strip each track had then (A2). */
   levels?: () => { levels: EngineLevels; at: number; strips?: Record<string, number>; buses?: Record<string, number> } | null;
+  /** F2.3: what the engine heard in the last playback (analyze_mix). */
+  analysis?: () => AnalysisContext | null;
   /** F2.2 parte B: the engine's last load reading (for get_levels), null without engine. */
   load?: () => EngineLoad | null;
   /**
@@ -834,6 +839,23 @@ export class AiDesk {
       });
     },
 
+    // F2.3, the AI's ear (Fran, 04/11/2026).
+    analyze_mix: (_conn, args) => {
+      const song = this.options.session().snapshot().song;
+      const target = this.loudnessTarget(args);
+      const range = this.str(args, "bars", false);
+      let fromBar: number | undefined;
+      let toBar: number | undefined;
+      if (range) {
+        const section = orderedSections(song).find((s) => fold(s.name) === fold(range));
+        const m = /^(\d+)\s*(?:[-–]\s*(\d+))?$/.exec(range.trim());
+        if (section) [fromBar, toBar] = [section.startBar, section.endBar];
+        else if (m) [fromBar, toBar] = [Number(m[1]), Number(m[2] ?? m[1])];
+        else throw new MusicError(`'${range}' is not bars ('37-44') nor a section of the song`);
+      }
+      return mixReport(song, this.options.analysis?.() ?? null, { target, fromBar, toBar });
+    },
+
     list_skills: () => skillsListText(this.skillList()),
 
     load_skill: (_conn, args) => {
@@ -1436,11 +1458,13 @@ export class AiDesk {
       const to = toText && !/^(master|máster)$/i.test(toText.trim()) ? this.bus(toText) : undefined;
       const tracks = this.tracks(args) ?? [];
       const reverbOn = args.reverb === true;
+      const delayOn = args.delay === true;
       let id = "";
       this.write(iv, (tx) => {
         id = addBus(tx, { name, ...(colorText === undefined ? {} : { color: colorIndex(colorText) }), ...(to ? { bus: to } : {}) });
         for (const t of tracks) setOutput(tx, t, id);
         if (reverbOn) addInsert(tx, id, { kind: "reverb" });
+        if (delayOn) addInsert(tx, id, { kind: "delay" });
       });
       for (const t of tracks) iv.trackIds.add(t);
       iv.other.push(`bus ${name}`);
@@ -1719,6 +1743,20 @@ export class AiDesk {
     return { id, changes };
   }
 
+  /** analyze_mix's target: one of serie, or the user's own (lufs, true_peak). */
+  private loudnessTarget(args: Record<string, unknown>): LoudnessTarget {
+    const name = fold(this.str(args, "target", false) ?? "none");
+    const key = /stream|spotify|youtube|apple/.test(name) ? "streaming" : /cine|cinema|film|tv|broadcast|ebu|r128/.test(name) ? "cinema" : name === "none" || name === "ninguno" || name === "" ? "none" : null;
+    const lufs = this.num(args, "lufs");
+    const truePeak = this.num(args, "true_peak");
+    if (key === null && lufs === undefined) throw new MusicError(`Unknown target '${this.str(args, "target", false)}': 'streaming', 'cinema' or 'none', or give 'lufs' (and 'true_peak') for the user's own`);
+    const base = TARGETS[key ?? "none"]!;
+    if (lufs === undefined && truePeak === undefined) return base;
+    if (lufs !== undefined && !(lufs <= -5 && lufs >= -40)) throw new MusicError("lufs goes from -40 to -5");
+    if (truePeak !== undefined && !(truePeak <= 0 && truePeak >= -6)) throw new MusicError("true_peak goes from -6 to 0 dBTP");
+    return { name: "the user's own", lufs: lufs ?? base.lufs ?? -14, truePeak: truePeak ?? base.truePeak ?? -1 };
+  }
+
   /** A bus by id ("b2") or by name ("Voces", "voces", "Voc"). */
   private bus(text: string): string {
     const buses = busList(this.song);
@@ -1849,7 +1887,7 @@ export class AiDesk {
   /** 'eq', 'compressor', 'limiter' (also in Spanish), or a plugin effect by name. */
   private effectSpec(text: string): InsertSpec {
     const key = fold(text);
-    const own: Record<string, Exclude<InsertKind, "plugin">> = { eq: "eq", ecualizador: "eq", equalizer: "eq", compressor: "compressor", compresor: "compressor", limiter: "limiter", limitador: "limiter", reverb: "reverb", reverberacion: "reverb" };
+    const own: Record<string, Exclude<InsertKind, "plugin">> = { eq: "eq", ecualizador: "eq", equalizer: "eq", compressor: "compressor", compresor: "compressor", limiter: "limiter", limitador: "limiter", reverb: "reverb", reverberacion: "reverb", delay: "delay", eco: "delay" };
     if (own[key]) return { kind: own[key] };
     const list = (this.options.plugins?.() ?? []).filter((p) => !p.instrument);
     const found = list.find((p) => fold(p.name) === key) ?? list.find((p) => fold(p.name).startsWith(key));
@@ -1880,8 +1918,14 @@ export class AiDesk {
         params[def.id] = onOff(value, n) ? 1 : 0;
         continue;
       }
-      const v = readValue(value, def.unit);
-      if (v === null) throw new MusicError(`Line ${n}: '${value}' is not a value for ${def.name} (${paramText(def, def.min)} to ${paramText(def, def.max)})`);
+      // The delay's note value: "1/8 dotted", "1/4 triplet", "1/16".
+      const v = def.unit === "note" ? parseParamValue(def, value) : def.unit === "%" ? readValue(value.replace(/\s*%$/, ""), def.unit) : readValue(value, def.unit);
+      if (v === null)
+        throw new MusicError(
+          def.unit === "note"
+            ? `Line ${n}: '${value}' is not a note value. Use one of: ${NOTE_VALUES.map((x) => x.en).join(", ")}`
+            : `Line ${n}: '${value}' is not a value for ${def.name} (${paramText(def, def.min)} to ${paramText(def, def.max)})`,
+        );
       if (v < def.min - 1e-9 || v > def.max + 1e-9) throw new MusicError(`Line ${n}: ${def.name} goes from ${paramText(def, def.min)} to ${paramText(def, def.max)}`);
       params[def.id] = v;
     }

@@ -41,8 +41,8 @@ const transport = new StdioClientTransport({ command: process.execPath, args: [b
 const client = new Client({ name: "claude-ai", version: "e2e" });
 await client.connect(transport);
 const tools = (await client.listTools()).tools;
-check("the bridge lists the tools, analyze and the skills included", tools.length === 43 && ["analyze", "add_effect", "add_bus", "remove_bus", "set_effect", "list_effect_parameters", "get_levels", "remove_annotations", "list_skills", "load_skill", "get_changes_since", "get_history", "summarize"].every((n) => tools.some((t) => t.name === n)), tools.length);
-check("read tools are read-only for Claude's permissions", tools.filter((t) => t.annotations?.readOnlyHint).length === 13);
+check("the bridge lists the tools, analyze and the skills included", tools.length === 44 && ["analyze", "add_effect", "add_bus", "remove_bus", "analyze_mix", "set_effect", "list_effect_parameters", "get_levels", "remove_annotations", "list_skills", "load_skill", "get_changes_since", "get_history", "summarize"].every((n) => tools.some((t) => t.name === n)), tools.length);
+check("read tools are read-only for Claude's permissions", tools.filter((t) => t.annotations?.readOnlyHint).length === 14);
 const instructions = client.getInstructions() ?? "";
 check("the server instructions ask to load four-hands-basics first", instructions.includes('load_skill("four-hands-basics")'));
 await win.waitForFunction(() => document.querySelector(".aichip")?.textContent?.includes("Claude conectado"), null, { timeout: 8000 }).catch(() => {});
@@ -61,7 +61,7 @@ check("the app serves its built-in skills", skillList.ok && /^- four-hands-basic
 const prompts = (await client.listPrompts()).prompts.map((p) => p.name);
 const juryPrompt = await client.getPrompt({ name: "call_the_jury", arguments: {} });
 check("the jury is in Claude's + menu and loads its skill", prompts.includes("call_the_jury") && /load_skill\("jury"\)/.test(juryPrompt.messages[0]?.content?.text ?? "") && /^- jury \(built in\)/m.test(skillList.text), prompts.join(", "));
-check("the window lists the app's skills in Skills activas", (await win.locator(".actskills .askill").count()) === 6, await win.locator(".actskills").innerText());
+check("the window lists the app's skills in Skills activas", (await win.locator(".actskills .askill").count()) === 7, await win.locator(".actskills").innerText());
 const basics = await call("load_skill", { name: "four-hands-basics" });
 const darkSynth = await call("load_skill", { name: "styles", file: "references/dark-synth.md" });
 check("load_skill gives the instructions and the references", basics.ok && /^Skill four-hands-basics \(built in\)\. Follow it\./.test(basics.text) && darkSynth.ok, `${basics.text.slice(0, 120)} / ${darkSynth.text.slice(0, 120)}`);

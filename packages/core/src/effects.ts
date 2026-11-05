@@ -16,7 +16,7 @@ function check(ok: boolean, message: string): asserts ok {
   if (!ok) throw new EffectError(message);
 }
 
-export type ParamUnit = "Hz" | "dB" | "ms" | ":1" | "Q" | "on" | "%";
+export type ParamUnit = "Hz" | "dB" | "ms" | ":1" | "Q" | "on" | "%" | "note";
 
 /** One parameter of an own effect: its id, the name people read, its range and unit. */
 export interface ParamDef {
@@ -35,6 +35,26 @@ const hz = (id: string, name: string, min: number, max: number, d: number): Para
 const db = (id: string, name: string, min: number, max: number, d: number): ParamDef => ({ id, name, unit: "dB", min, max, default: d });
 const ms = (id: string, name: string, min: number, max: number, d: number): ParamDef => ({ id, name, unit: "ms", min, max, default: d, log: true });
 const on = (id: string, name: string, d: 0 | 1): ParamDef => ({ id, name, unit: "on", min: 0, max: 1, default: d });
+/**
+ * The delay's note values (F2.2, 04/11/2026), shortest first: `beats` in quarter notes. The song's
+ * tempo turns them into time (the engine knows it from the transport).
+ */
+export const NOTE_VALUES: ReadonlyArray<{ id: string; beats: number; es: string; en: string }> = [
+  { id: "1/32", beats: 0.125, es: "Fusa", en: "1/32" },
+  { id: "1/16T", beats: 1 / 6, es: "Tresillo de semicorchea", en: "1/16 triplet" },
+  { id: "1/16", beats: 0.25, es: "Semicorchea", en: "1/16" },
+  { id: "1/16D", beats: 0.375, es: "Semicorchea con puntillo", en: "1/16 dotted" },
+  { id: "1/8T", beats: 1 / 3, es: "Tresillo de corchea", en: "1/8 triplet" },
+  { id: "1/8", beats: 0.5, es: "Corchea", en: "1/8" },
+  { id: "1/8D", beats: 0.75, es: "Corchea con puntillo", en: "1/8 dotted" },
+  { id: "1/4T", beats: 2 / 3, es: "Tresillo de negra", en: "1/4 triplet" },
+  { id: "1/4", beats: 1, es: "Negra", en: "1/4" },
+  { id: "1/4D", beats: 1.5, es: "Negra con puntillo", en: "1/4 dotted" },
+  { id: "1/2", beats: 2, es: "Blanca", en: "1/2" },
+  { id: "1/2D", beats: 3, es: "Blanca con puntillo", en: "1/2 dotted" },
+  { id: "1/1", beats: 4, es: "Redonda", en: "1/1" },
+];
+
 const pct = (id: string, name: string, d: number): ParamDef => ({ id, name, unit: "%", min: 0, max: 100, default: d });
 const q = (id: string, name: string, d: number): ParamDef => ({ id, name, unit: "Q", min: 0.3, max: 10, default: d, log: true });
 
@@ -87,6 +107,22 @@ export const OWN_EFFECTS: Record<Exclude<InsertKind, "plugin">, { name: { es: st
       { id: "preDelay", name: "Pre-delay", unit: "ms", min: 0, max: 200, default: 0 },
     ],
   },
+  delay: {
+    name: { es: "Delay", en: "Delay" },
+    // Fran, 04/11/2026: an own delay, the reverb's partner on a send bus. Its repeats follow the
+    // song's tempo (a note value) or a time in ms; the cuts darken the repeats, as a tape does.
+    params: [
+      on("sync", "Sync", 1),
+      { id: "note", name: "Note", unit: "note", min: 0, max: NOTE_VALUES.length - 1, default: NOTE_VALUES.findIndex((n) => n.id === "1/4") },
+      { id: "time", name: "Time", unit: "ms", min: 1, max: 2000, default: 375, log: true },
+      // Below 100 %: the repeats always die out.
+      { id: "feedback", name: "Feedback", unit: "%", min: 0, max: 95, default: 35 },
+      pct("mix", "Mix", 100),
+      hz("lowCut", "Low cut", 20, 2000, 150),
+      hz("highCut", "High cut", 1000, 20000, 6000),
+      on("pingPong", "Ping-pong", 0),
+    ],
+  },
 };
 
 export const OWN_KINDS = Object.keys(OWN_EFFECTS) as Array<Exclude<InsertKind, "plugin">>;
@@ -125,6 +161,10 @@ export function paramText(def: ParamDef, value: number, lang: "es" | "en" = "en"
       return value >= 0.5 ? "on" : "off";
     case "%":
       return `${Math.round(value)} %`;
+    case "note": {
+      const n = NOTE_VALUES[Math.max(0, Math.min(NOTE_VALUES.length - 1, Math.round(value)))]!;
+      return lang === "es" ? n.es : n.en;
+    }
   }
 }
 
@@ -308,7 +348,7 @@ export function unitToParam(def: ParamDef, unit: number): number {
   if (def.unit === "on") return u >= 0.5 ? 1 : 0;
   if (def.unit === "Hz") return v < 1000 ? Math.round(v) : Math.round(v / 10) * 10;
   if (def.unit === "Q") return Math.round(v * 100) / 100;
-  if (def.unit === "%") return Math.round(v);
+  if (def.unit === "%" || def.unit === "note") return Math.round(v);
   return Math.round(v * 10) / 10;
 }
 
@@ -318,6 +358,7 @@ export function unitToParam(def: ParamDef, unit: number): number {
  */
 export function parseParamValue(def: ParamDef, text: string): number | null {
   const t = text.trim().toLowerCase().replace("−", "-").replace(",", ".");
+  if (def.unit === "note") return parseNote(t);
   if (def.unit === "on") {
     if (["on", "si", "sí", "1", "true"].includes(t)) return 1;
     if (["off", "no", "0", "false"].includes(t)) return 0;
@@ -330,4 +371,19 @@ export function parseParamValue(def: ParamDef, text: string): number | null {
   if (m[2] === "s" && def.unit === "ms") v *= 1000;
   if (!Number.isFinite(v) || v < def.min - 1e-9 || v > def.max + 1e-9) return null;
   return v;
+}
+
+/**
+ * A note value as people write it: "1/8", "1/8 dotted", "1/8d", "1/8.", "1/4 triplet", "1/4t", or
+ * its Spanish name ("corchea con puntillo", "negra"). Its index in NOTE_VALUES, or null.
+ */
+function parseNote(text: string): number | null {
+  const t = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim();
+  const byName = NOTE_VALUES.findIndex((n) => n.es.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() === t || n.en.toLowerCase() === t || n.id.toLowerCase() === t);
+  if (byName >= 0) return byName;
+  const m = /^1\/(\d+)\s*(\.|d|dotted|punt\.?|puntillo|t|triplet|tres\.?|tresillo)?$/.exec(t);
+  if (!m) return null;
+  const suffix = !m[2] ? "" : /^(t|triplet|tres)/.test(m[2]) ? "T" : "D";
+  const i = NOTE_VALUES.findIndex((n) => n.id === `1/${m[1]}${suffix}`);
+  return i >= 0 ? i : null;
 }

@@ -169,6 +169,8 @@ void Engine::prepare (double rate, int block)
             busRate = rate;
         }
     }
+    analyzer.prepare (rate);
+    ensureAnalysisTaps();
     // Plugins are prepared out of the lock: Kontakt takes its time, and the audio is stopped anyway.
     for (auto* p : plugins)
         p->prepareToPlay (rate, block);
@@ -546,6 +548,7 @@ void Engine::process (float* const* outputs, int numOutputs, int numSamples)
         juce::FloatVectorOperations::multiply (master.getWritePointer (1), mg, numSamples);
     }
     meters[(size_t) kStrips].add (master.getReadPointer (0), master.getReadPointer (1), numSamples);
+    analyse (inUse, numSamples);
 
     for (int c = 0; c < numOutputs; ++c)
         if (outputs[c] != nullptr)
@@ -920,6 +923,44 @@ void Engine::rebuildRouting()
     // `old` (and its lines) is released here, out of the audio lock.
 }
 
+void Engine::ensureAnalysisTaps()
+{
+    // The first strips and buses from the start (a track that begins to sound is measured from its
+    // first note); more as the song uses them (every two seconds, from the timer).
+    std::vector<int> keys { kMasterChain };
+    const int strips = juce::jmax (32, used.load() + 8);
+    for (int s = 0; s < juce::jmin (strips, kStrips); ++s)
+        keys.push_back (s);
+    int buses = 16;
+    {
+        const juce::SpinLock::ScopedLockType sl (lock);
+        if (routing != nullptr)
+            buses = juce::jmax (buses, routing->busesInUse + 4);
+    }
+    for (int b = 0; b < juce::jmin (buses, kBuses); ++b)
+        keys.push_back (kBusChain + b);
+    analyzer.ensureTaps (keys);
+}
+
+void Engine::analyse (int inUse, int numSamples)
+{
+    // Only while the song plays (the transport says so), where it is.
+    const auto& info = transport.info;
+    if (! info.getIsPlaying())
+        return;
+    const double bpm = info.getBpm().orFallback (120.0);
+    if (! analyzer.beginBlock (numSamples, info.getPpqPosition().orFallback (0.0), bpm / 60.0 / sampleRate))
+        return;
+    for (int s = 0; s < inUse; ++s)
+        analyzer.write (s, strips.getReadPointer (2 * s), strips.getReadPointer (2 * s + 1), numSamples);
+    if (auto* r = routing.get())
+        for (int b : r->order)
+            if (b < r->busesInUse)
+                analyzer.write (kBusChain + b, busBuffers.getReadPointer (2 * b), busBuffers.getReadPointer (2 * b + 1), numSamples);
+    analyzer.write (kMasterChain, master.getReadPointer (0), master.getReadPointer (1), numSamples);
+    analyzer.endBlock();
+}
+
 int Engine::busDelay (int bus)
 {
     const juce::SpinLock::ScopedLockType sl (lock);
@@ -976,6 +1017,7 @@ void Engine::resetLevels()
         m = {};
     for (auto& m : busMeters)
         m = {};
+    analyzer.reset();
 }
 
 void Engine::prepareOffline (double rate, int block)
@@ -999,11 +1041,14 @@ void Engine::renderOffline (juce::AudioBuffer<float>& out)
 
 void Engine::runChain (Chain& chain, float* L, float* R, int n)
 {
+    // The song's tempo, for the delay's note values (120 until Four Hands sends the transport).
+    const double bpm = transport.info.getBpm().orFallback (120.0);
     for (auto& x : chain.inserts)
     {
         const bool off = x->bypass.load();
         if (x->own != nullptr)
         {
+            x->own->setTempo (bpm);
             x->own->process (L, R, n, off);
             continue;
         }
@@ -1163,6 +1208,7 @@ void Engine::timerTick()
     checkDefaultOutput (true);
     // A track that started to sound after the last chain change gets its delay line here.
     ensureDelays();
+    ensureAnalysisTaps();
 }
 
 int Engine::chainLatency (int strip) const

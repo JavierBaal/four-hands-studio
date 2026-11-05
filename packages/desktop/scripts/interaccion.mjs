@@ -1550,6 +1550,20 @@ await page.getByRole("button", { name: "Añadir bus" }).click();
 await settle();
 check("«Añadir bus» adds a bus after the others", JSON.stringify((await song()).busOrder) === JSON.stringify(["b1", "b2", "b3"]));
 await page.keyboard.press("Escape");
+// Fran, 04/11/2026: Four Hands' delay, in time with the song or in ms.
+await page.locator('.cstrip.bus[data-bus="b1"] button.cslot.add').click();
+await menuItem("Delay").click();
+await settle();
+const dly = (await song()).buses.b1.inserts.find((x) => x.kind === "delay");
+check("«+» › Delay adds the delay, in time with the song (a quarter note)", dly?.params.sync === 1 && dly.params.note === 8, JSON.stringify(dly));
+await page.locator(`.cslot[data-fx="${dly.id}"]`).dblclick();
+await settle();
+check("its window shows the note value", (await page.locator(".fxwin.delay").count()) === 1 && /Negra/.test(await page.locator(".fxwin.delay").innerText()));
+await page.locator(".fxwin.delay .fxrow", { hasText: "Al tempo" }).locator("button.tgl").click();
+await settle();
+check("«Al tempo» off: the time in ms instead of the note", (await song()).buses.b1.inserts.find((x) => x.id === dly.id).params.sync === 0 && /375 ms/.test(await page.locator(".fxwin.delay").innerText()));
+await page.keyboard.press("Escape");
+await page.keyboard.press("Escape");
 await page.evaluate(() => window.fhTest.view.set({ bottom: "editor", mixMax: false }));
 
 console.log(`${passed} passed, ${failures.length} failed`);

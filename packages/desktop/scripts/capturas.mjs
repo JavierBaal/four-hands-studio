@@ -375,6 +375,9 @@ export const SHOTS = [
     ["ventana_eq", { kind: "eq", params: { lowCut: 1, lowCutFreq: 90, lowGain: -2, lowMidFreq: 320, lowMidGain: -3.5, lowMidQ: 1.4, highMidFreq: 3200, highMidGain: 2.5, highMidQ: 0.8, highGain: 3, highFreq: 9000 } }, "EQ medios"],
     ["ventana_compresor", { kind: "compressor", params: { threshold: -24, ratio: 4, attack: 8, release: 140, knee: 6, makeup: 4 } }, null],
     ["ventana_limitador", { kind: "limiter", params: { gain: 4, ceiling: -1, release: 60 } }, null],
+    // Fran, 04/11/2026: the delay, in time with the song, and in ms.
+    ["ventana_delay", { kind: "delay", params: { note: 6, feedback: 45, pingPong: 1 } }, null],
+    ["ventana_delay_ms", { kind: "delay", params: { sync: 0, time: 320, feedback: 30, mix: 25 } }, null],
   ].map(([name, spec, rename]) => ({
     name,
     q: `?song=boceto&view=${view({ bottom: "mix" })}`,

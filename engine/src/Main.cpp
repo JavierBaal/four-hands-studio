@@ -253,6 +253,51 @@ int selfTest (const juce::String& folder)
                 return 30;
             }
         }
+        // The delay (Fran, 04/11/2026): a quarter note at 120 BPM is 24000 samples; at 100 BPM, 28800;
+        // 100 ms without sync, 4800. In ping-pong the first repeat is on the left, the next on the right.
+        {
+            auto echoes = [] (std::vector<std::pair<juce::String, double>> params, double bpm) {
+                const auto fx = fh::makeOwnEffect ("delay");
+                fx->prepare (48000.0, 512);
+                for (const auto& [k, v] : params)
+                    fx->setParam (k, v);
+                std::vector<float> l (72000, 0.0f), r (72000, 0.0f);
+                l[0] = r[0] = 1.0f;
+                for (int i = 0; i < 72000; i += 512)
+                {
+                    fx->setTempo (bpm);
+                    fx->process (l.data() + i, r.data() + i, juce::jmin (512, 72000 - i), false);
+                }
+                return std::make_pair (l, r);
+            };
+            auto peakAt = [] (const std::vector<float>& x, int from, int to) {
+                int at = from;
+                for (int i = from; i < to; ++i)
+                    if (std::abs (x[(size_t) i]) > std::abs (x[(size_t) at]))
+                        at = i;
+                return std::make_pair (at, std::abs (x[(size_t) at]));
+            };
+            const auto [l120, r120] = echoes ({}, 120.0);
+            const auto first = peakAt (l120, 1000, 36000), second = peakAt (l120, 36000, 60000);
+            const auto [l100, r100] = echoes ({}, 100.0);
+            const auto slower = peakAt (l100, 1000, 36000);
+            const auto [lms, rms100] = echoes ({ { "sync", 0 }, { "time", 100 } }, 120.0);
+            const auto fast = peakAt (lms, 100, 9000);
+            const auto [lpp, rpp] = echoes ({ { "pingPong", 1 } }, 120.0);
+            const auto ppFirstL = peakAt (lpp, 1000, 36000), ppFirstR = peakAt (rpp, 1000, 36000), ppSecondR = peakAt (rpp, 36000, 60000);
+            std::cout << "delay: 1/4 at 120 BPM " << first.first << " (" << first.second << "), next " << second.first << " (" << second.second << "), at 100 BPM " << slower.first
+                      << ", 100 ms " << fast.first << ", ping-pong left " << ppFirstL.second << " right " << ppFirstR.second << " then right " << ppSecondR.first << std::endl;
+            if (std::abs (first.first - 24000) > 3 || std::abs (second.first - 48000) > 6 || second.second >= first.second || std::abs (slower.first - 28800) > 3 || std::abs (fast.first - 4800) > 3)
+            {
+                std::cout << "FAIL the delay's time" << std::endl;
+                return 34;
+            }
+            if (ppFirstR.second > ppFirstL.second * 0.01f || std::abs (ppSecondR.first - 48000) > 6)
+            {
+                std::cout << "FAIL the delay's ping-pong" << std::endl;
+                return 35;
+            }
+        }
         auto rms = [&] (double stripGain) {
             engine.setMix (0, stripGain, 0.0);
             const auto b = [&] {
@@ -333,6 +378,58 @@ int selfTest (const juce::String& folder)
         engine.setMix (1, 1.0, 0.0, true);
         engine.unload (1);
     }
+    // F2.3 (04/11/2026), the AI's ear: a 1 kHz sine at -20 dBFS on both sides is -20 LUFS (BS.1770),
+    // its energy is in the mids; a sine at a quarter of the rate, 45° off, peaks 3 dB over its samples.
+    {
+        fh::Analyzer a (4, 3);
+        a.prepare (48000.0);
+        a.ensureTaps ({ 0, 3 });
+        juce::Thread::sleep (100);
+        std::vector<float> sine (480), quarter (480);
+        for (int block = 0; block < 1000; ++block) // 10 s, at 120 BPM (a quarter note every half second)
+        {
+            for (int i = 0; i < 480; ++i)
+            {
+                const double t = (block * 480 + i) / 48000.0;
+                sine[(size_t) i] = (float) (0.1 * std::sin (2 * juce::MathConstants<double>::pi * 1000.0 * t));
+                quarter[(size_t) i] = (float) (0.5 * std::sin (juce::MathConstants<double>::halfPi * (block * 480 + i) + juce::MathConstants<double>::pi / 4));
+            }
+            while (! a.beginBlock (480, block * 480 * 2.0 / 48000.0, 2.0 / 48000.0))
+                juce::Thread::sleep (5);
+            a.write (0, sine.data(), sine.data(), 480);
+            a.write (3, quarter.data(), quarter.data(), 480);
+            a.endBlock();
+        }
+        juce::Thread::sleep (600);
+        const auto res = a.results();
+        const fh::Analyzer::Result* s0 = nullptr;
+        const fh::Analyzer::Result* m = nullptr;
+        for (const auto& r : res)
+            (r.key == 0 ? s0 : m) = &r;
+        if (s0 == nullptr || m == nullptr || s0->frames.size() < 9)
+        {
+            std::cout << "FAIL the analysis measured nothing" << std::endl;
+            return 40;
+        }
+        const auto& f = s0->frames[5];
+        int loudest = 0;
+        for (int b = 1; b < fh::kBands; ++b)
+            if (f.bands[(size_t) b] > f.bands[(size_t) loudest])
+                loudest = b;
+        const double tp = 20 * std::log10 (m->truePeak), sp = 20 * std::log10 (m->peak);
+        std::cout << "analysis: sine " << s0->integrated << " LUFS (range " << s0->range << "), " << s0->frames.size() << " frames, frame 5 at ppq " << f.ppq
+                  << " loudest band " << loudest << "; quarter-rate sine peak " << sp << " dBFS, true peak " << tp << " dBTP, gaps " << a.gaps() << std::endl;
+        if (std::abs (s0->integrated + 20.0) > 0.3 || loudest != 3 || std::abs (f.ppq - 10.0) > 0.01)
+        {
+            std::cout << "FAIL the loudness, the bands or the position" << std::endl;
+            return 41;
+        }
+        if (std::abs (tp - 20 * std::log10 (0.5)) > 0.3 || std::abs (sp - tp + 3.0) > 0.3)
+        {
+            std::cout << "FAIL the true peak" << std::endl;
+            return 42;
+        }
+    }
     // F2.2 (04/11/2026): the plugins read where the song is. Playing from beat 4 at 120 BPM, half
     // a second later it is at beat 5; stopped, it says so.
     {
@@ -358,6 +455,46 @@ int selfTest (const juce::String& folder)
         {
             std::cout << "FAIL the transport does not stop" << std::endl;
             return 19;
+        }
+    }
+    // F2.3: the engine measures what plays while the transport plays, and stops when it stops.
+    {
+        engine.resetLevels();
+        juce::Thread::sleep (100);
+        engine.scheduleTransport (0.0, { true, 0.0, 120.0, 4, 4, 0.0 });
+        for (int k = 0; k < 6; ++k)
+        {
+            engine.schedule (0, k * 0.5, juce::MidiMessage::noteOn (1, 60, (juce::uint8) 100));
+            engine.schedule (0, k * 0.5 + 0.4, juce::MidiMessage::noteOff (1, 60));
+        }
+        juce::AudioBuffer<float> b (2, 480);
+        for (int i = 0; i < 300; ++i) // 3 s, in blocks like a device's, not much faster than one
+        {
+            engine.renderOffline (b);
+            juce::Thread::sleep (2);
+        }
+        engine.scheduleTransport (0.0, { false, 6.0, 120.0, 4, 4, 4.0 });
+        engine.renderOffline (b);
+        juce::Thread::sleep (500);
+        int frames = 0;
+        double loud = -100, masterLoud = -100, lastPpq = -1;
+        for (const auto& r : engine.analysis())
+        {
+            if (r.key == 0)
+            {
+                frames = (int) r.frames.size();
+                loud = r.integrated;
+                if (! r.frames.empty())
+                    lastPpq = r.frames.back().ppq;
+            }
+            if (r.key == fh::Engine::kMasterChain)
+                masterLoud = r.integrated;
+        }
+        std::cout << "engine analysis: strip 0 " << frames << " frames, " << loud << " LUFS, last frame at ppq " << lastPpq << "; master " << masterLoud << " LUFS, gaps " << engine.analysisGaps() << std::endl;
+        if (frames < 2 || loud < -60 || masterLoud < -60 || std::abs (lastPpq - 4.0) > 0.05 || engine.analysisGaps() > 0)
+        {
+            std::cout << "FAIL the engine's analysis" << std::endl;
+            return 43;
         }
     }
     // A2: a strip far past the 16 MIDI channels plays the same as the first one.
@@ -460,7 +597,42 @@ int renderSong (const juce::String& bankPath, const juce::String& midiPath, cons
     }
     juce::AudioBuffer<float> out (2, (int) ((end + 3.0) * rate));
     out.clear();
-    engine.renderOffline (out);
+    // FH_RENDER_ANALYSIS=bpm (F2.3): the transport plays at that tempo and the AI's ear measures it;
+    // rendered in pieces not much faster than real time, so the analysis keeps up.
+    const auto analysisBpm = juce::SystemStats::getEnvironmentVariable ("FH_RENDER_ANALYSIS", "0").getDoubleValue();
+    if (analysisBpm > 0)
+    {
+        engine.resetLevels();
+        juce::Thread::sleep (100);
+        engine.scheduleTransport (0.0, { true, 0.0, analysisBpm, 4, 4, 0.0 });
+        for (int done = 0; done < out.getNumSamples(); done += 4800)
+        {
+            const int n = juce::jmin (4800, out.getNumSamples() - done);
+            juce::AudioBuffer<float> piece (out.getArrayOfWritePointers(), 2, done, n);
+            engine.renderOffline (piece);
+            juce::Thread::sleep (8);
+        }
+        juce::Thread::sleep (800);
+        for (const auto& r : engine.analysis())
+        {
+            std::array<double, fh::kBands> bands {};
+            int active = 0;
+            for (const auto& f : r.frames)
+                if (f.loudness > -50)
+                {
+                    ++active;
+                    for (int b = 0; b < fh::kBands; ++b)
+                        bands[(size_t) b] += std::pow (10.0, f.bands[(size_t) b] / 10.0);
+                }
+            std::cout << "analysis key " << r.key << ": " << r.integrated << " LUFS, range " << r.range << ", true peak " << 20 * std::log10 (juce::jmax (1e-9, r.truePeak)) << ", frames " << r.frames.size() << ", bands";
+            for (double b : bands)
+                std::cout << " " << (active ? std::round (10 * std::log10 (b / active + 1e-12) * 10) / 10 : -120.0);
+            std::cout << std::endl;
+        }
+        std::cout << "analysis gaps " << engine.analysisGaps() << std::endl;
+    }
+    else
+        engine.renderOffline (out);
     std::cout << "rms " << out.getRMSLevel (0, 0, out.getNumSamples()) << " peak " << out.getMagnitude (0, out.getNumSamples()) << std::endl;
 
     juce::File wav (wavPath);
