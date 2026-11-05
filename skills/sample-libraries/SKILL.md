@@ -5,7 +5,9 @@ description: Work with sampled instruments in plugins (Kontakt, Spitfire, BBC Sy
 
 # Sample libraries
 
-A track that plays through a plugin (the overview says "plays through the plugin…") is not the built-in sound: its library decides how it answers velocity and controllers, which keys sound and which switch articulations. You cannot hear it and you cannot see its panel, so **ask and test before you write**, and remember what the user tells you about each library for the rest of the conversation.
+A track that plays through a plugin (the overview says "plays through the plugin…") is not the built-in sound: its library decides how it answers velocity and controllers, which keys sound and which switch articulations. You cannot hear it and you cannot see its panel, so **ask and test before you write**.
+
+**Read its library card first.** The overview shows each plugin track's card (what the library answers to, its range, its keyswitches, its own reverb) or says it has none. A card is the user's, kept in their catalog and shared by every song that uses that library: trust it over your guesses, and do not test again what it already says. When a track has none, or you learn something new, write it with `set_library_card` (in the user's language, with `why`); if the catalog already has the library, link it with `use`.
 
 ## Three controls, three jobs
 
@@ -28,7 +30,7 @@ Propose it when the user loads a library, before writing any ramp. The user list
 3. **CC11.** Write expression 50 for one bar of an existing part and ask whether that bar is quieter. If it is, CC11 works for crescendos.
 4. **CC1.** Ask the user to move the modulation wheel in the plugin's window while a note sounds: does the volume or the timbre change?
 5. **The dynamics control.** Ask the user to right-click the library's "Dynamics" or "Expression" knob: the plugin shows which CC it listens to.
-6. **Say what you learned in one line** ("Trompas: velocity weak under v50, CC11 yes, CC1 untested") and keep it in mind. The user may keep a table of their libraries: ask for it.
+6. **Say what you learned in one line** ("Trompas: velocity weak under v50, CC11 yes, CC1 untested") and write it in the track's library card (`set_library_card`, `why`: "tras la prueba de dinámica"), so no song has to test it again.
 
 ## Recipes that worked
 
@@ -46,10 +48,10 @@ A human roll does not climb in a straight line: vary the velocity steps (+2, +7,
 
 | Problem | Sign | What to do |
 | --- | --- | --- |
-| Out of range | A note does not sound. Kontakt calls middle C "C3"; Four Hands and you call it C4: same key, different name | Ask the user for the playable range (the blue keys in Kontakt) in Four Hands' names, and move the part by an octave if needed. Write the range in an annotation on the track so it is not lost |
-| Keyswitches | Red keys in Kontakt: a note there does not sound and changes the articulation | Ask where they are; never write a note on one unless the user wants that articulation change |
+| Out of range | A note does not sound. Kontakt calls middle C "C3"; Four Hands and you call it C4: same key, different name | Ask the user for the playable range (the blue keys in Kontakt) and convert it to Four Hands' names, then move the part by an octave if needed. Write the range in the library card: Four Hands then warns of notes outside it and dims those keys |
+| Keyswitches | Red keys in Kontakt: a note there does not sound and changes the articulation | Ask where they are and write them in the library card; never write a note on one unless the user wants that articulation change |
 | Repeated notes cut | The same note again with no gap: some libraries take the "release" and the new "press" together and cut the new note | Four Hands already lets go 25 ms early on plugin tracks when the same note follows, without changing the score. If one is still cut, shorten the previous note a little more and say why |
-| Two rooms | The library's own reverb plus the song's reverb bus | Ask the user to switch the library's reverb off |
+| Two rooms | The library's own reverb plus the song's reverb bus | Ask the user to switch the library's reverb off, and note it in the card (`own_reverb`) |
 | Very different levels | Each library comes out at its own level (16 dB louder, 10 dB lower) | Measure with `analyze_mix` and set the faders; not EQ, not compression |
 | Dull after changing library | High cuts set for the built-in sounds remove a sampled library's air | Check and raise or remove those cuts |
 | "I changed it and nothing changed" | A velocity or CC change is not heard | First a compressor on the track; then the library (velocity barely heard: use CC11; CC1 not used) |
