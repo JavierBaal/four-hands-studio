@@ -3,7 +3,7 @@
  * the next ~200 ms to the synth worklet. Reading the replica at every window means notes the AI
  * writes ahead of the playhead simply play when it gets there.
  */
-import { type Song, CURVE_CC, CURVE_DEFAULT, CURVE_KINDS, PPQ, beatTicks, barTicks, curveValueAt, reverbLevel, type Track } from "@fourhands/core";
+import { type Song, CURVE_CC, CURVE_DEFAULT, CURVE_KINDS, PPQ, beatTicks, barTicks, bpmAt, curveValueAt, reverbLevel, type Track } from "@fourhands/core";
 import type { SynthEvent } from "../shared/messages.js";
 
 /** The metronome uses its own channel and a woodblock, so it never clashes with a track. */
@@ -40,11 +40,20 @@ export interface TickEvent {
 export function noteEvents(song: Song, from: number, to: number, cutAt = Infinity, stripOf: StripResolver = byChannel): TickEvent[] {
   const audible = audibleTracks(song);
   const out: TickEvent[] = [];
+  const repeats = repeatedStarts(song, audible);
   for (const n of Object.values(song.notes)) {
     if (n.start < from || n.start >= to || !audible.has(n.trackId)) continue;
     const track = song.tracks[n.trackId]!;
     const strip = stripOf(track);
-    const end = Math.min(n.start + n.duration, cutAt);
+    let end = Math.min(n.start + n.duration, cutAt);
+    // Fran, 05/11/2026: on a plugin, the same note again with no gap can cut the new one (the
+    // library takes the release and the new press together). The sound lets go a little earlier;
+    // the note written does not change.
+    const next = repeats.get(n.trackId)?.get(n.pitch)?.find((s) => s > n.start);
+    if (next !== undefined) {
+      const gap = Math.round((REPEAT_GAP_SECONDS * bpmAt(song, next) * PPQ) / 60);
+      if (end > next - gap) end = Math.max(n.start + Math.ceil((next - n.start) / 2), next - gap);
+    }
     out.push({ tick: n.start, ev: { kind: "on", ch: track.channel, note: n.pitch, vel: n.velocity, strip } });
     out.push({ tick: Math.max(n.start + 1, end), ev: { kind: "off", ch: track.channel, note: n.pitch, strip } });
   }
@@ -63,6 +72,24 @@ export function noteEvents(song: Song, from: number, to: number, cutAt = Infinit
       }
   }
   return out.sort((a, b) => a.tick - b.tick || (a.ev.kind === "off" ? -1 : 0) - (b.ev.kind === "off" ? -1 : 0));
+}
+
+/** The gap a plugin gets between a note and the same note right after it (Fran, 05/11/2026). */
+export const REPEAT_GAP_SECONDS = 0.025;
+
+/** For the tracks that sound through a plugin: each pitch's note starts, sorted. */
+function repeatedStarts(song: Song, audible: ReadonlySet<string>): Map<string, Map<number, number[]>> {
+  const out = new Map<string, Map<number, number[]>>();
+  for (const n of Object.values(song.notes)) {
+    if (song.tracks[n.trackId]?.output !== "plugin" || !audible.has(n.trackId)) continue;
+    let byPitch = out.get(n.trackId);
+    if (!byPitch) out.set(n.trackId, (byPitch = new Map()));
+    const list = byPitch.get(n.pitch);
+    if (list) list.push(n.start);
+    else byPitch.set(n.pitch, [n.start]);
+  }
+  for (const byPitch of out.values()) for (const list of byPitch.values()) list.sort((a, b) => a - b);
+  return out;
 }
 
 /**

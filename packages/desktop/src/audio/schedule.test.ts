@@ -21,6 +21,33 @@ describe("schedule", () => {
     expect(secondsPerTick({ tempo: 500_000 }) * 960).toBeCloseTo(0.5);
   });
 
+  it("on a plugin, lets go of a note a little before the same note again (Fran, 05/11/2026)", () => {
+    const doc = new SongDocument(starterSong());
+    doc.transact({ actor: USER, label: "x" }, (tx) => {
+      addTrack(tx, { name: "Coro" }); // t2
+      updateTrack(tx, "t2", { output: "plugin", plugin: { id: "VST3-Kontakt", name: "Kontakt 8" } });
+      const notes = [
+        { pitch: 60, start: 0, duration: 960, velocity: 80 }, // touches the next C
+        { pitch: 60, start: 960, duration: 1000, velocity: 80 }, // overlaps the next C
+        { pitch: 60, start: 1920, duration: 960, velocity: 80 },
+        { pitch: 64, start: 0, duration: 960, velocity: 80 }, // nothing after it
+        { pitch: 67, start: 0, duration: 20, velocity: 80 }, // very short, then the same note
+        { pitch: 67, start: 20, duration: 960, velocity: 80 },
+      ];
+      addNotes(tx, "t1", notes);
+      addNotes(tx, "t2", notes);
+    });
+    // 120 BPM: 25 ms is 48 ticks.
+    const offs = (track: string) => {
+      const ev = noteEvents(doc.song, 0, 3840, Infinity, (t) => (t.id === track ? 5 : 9)).filter((e) => e.ev.kind === "off" && (e.ev as { strip: number }).strip === 5);
+      return ev.map((e) => `${(e.ev as { note: number }).note}@${e.tick}`).sort();
+    };
+    expect(offs("t2")).toEqual(["60@1872", "60@2880", "60@912", "64@960", "67@10", "67@980"].sort());
+    // The built-in sound plays the notes as written.
+    expect(offs("t1")).toEqual(["60@1960", "60@2880", "60@960", "64@960", "67@20", "67@980"].sort());
+    expect(doc.song.notes).toBeDefined();
+  });
+
   it("sends the notes that start in the window, with their note-offs", () => {
     const doc = song();
     const ev = noteEvents(doc.song, 0, 960);
