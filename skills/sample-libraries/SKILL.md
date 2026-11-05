@@ -48,7 +48,7 @@ A human roll does not climb in a straight line: vary the velocity steps (+2, +7,
 | --- | --- | --- |
 | Out of range | A note does not sound. Kontakt calls middle C "C3"; Four Hands and you call it C4: same key, different name | Ask the user for the playable range (the blue keys in Kontakt) in Four Hands' names, and move the part by an octave if needed. Write the range in an annotation on the track so it is not lost |
 | Keyswitches | Red keys in Kontakt: a note there does not sound and changes the articulation | Ask where they are; never write a note on one unless the user wants that articulation change |
-| Repeated notes cut | The same note again with no gap: some libraries take the "release" and the new "press" together and cut the new note | Shorten the previous note slightly (about 25 ms) and say why |
+| Repeated notes cut | The same note again with no gap: some libraries take the "release" and the new "press" together and cut the new note | Four Hands already lets go 25 ms early on plugin tracks when the same note follows, without changing the score. If one is still cut, shorten the previous note a little more and say why |
 | Two rooms | The library's own reverb plus the song's reverb bus | Ask the user to switch the library's reverb off |
 | Very different levels | Each library comes out at its own level (16 dB louder, 10 dB lower) | Measure with `analyze_mix` and set the faders; not EQ, not compression |
 | Dull after changing library | High cuts set for the built-in sounds remove a sampled library's air | Check and raise or remove those cuts |
