@@ -22,8 +22,14 @@ You cannot hear. Four Hands gives you an ear on the audio instead: `analyze_mix`
 3. **Tonal balance of the master.** More than 4 dB over the reference is a problem: low-mids "muddy" (cut 250–500 Hz on the parts that crowd them, or a subgroup), high-mids "harsh" (cut 2–4 kHz on the brightest parts). Under the reference in sub is normal for orchestral music; dull air may just be the style. Fix on the parts, not on the master, unless everything shares it.
 4. **Space: one room.** Reverb goes on a bus (add_bus with `reverb: true`) and the tracks send to it (`send Reverb 30`): pads, strings and choir further back, bass, drums and fast figures drier. A delay return the same way (`delay: true`), in time with the song. A track with its own reverb or delay effect sounds pasted on: prefer the shared bus.
 5. **Groups.** Parts that move together (strings, choir, drums) go into a subgroup bus (add_bus with `tracks`): one fader, one compressor, one EQ for all of them.
-6. **Dynamics.** A compressor on a part that jumps (threshold where it peaks, ratio 2–4:1, attack 10–30 ms). Loudness range over 15 LU is fine for film, a lot for streaming.
+6. **Dynamics: compress only what really jumps.** Do not put compressors on tracks by default, least of all on sampled orchestral parts (strings, brass, timpani, choir): a compressor erases the dynamics written in the score with velocity and CC11 (in Dilatación, 2:1 compressors on the double bass, the strings and the horns made velocity changes and a horn crescendo inaudible). Before compressing, ask whether the part really jumps when it should not; if it does, threshold where it peaks, ratio 2–3:1, attack 10–30 ms, and listen that the phrasing survives. Loudness range over 15 LU is fine for film, a lot for streaming: lower it with faders and the Master's limiter, not by squashing every track.
 7. **Loudness last, on the Master.** A limiter at the end of the Master's chain: ceiling at the target's true peak (−1 dBTP), input gain until the integrated loudness reaches the target. If it needs more than 6 dB of gain, the mix is too quiet: raise the faders first. If the true peak is over the ceiling, the limiter is missing or its ceiling is too high.
+
+## When a change does not show
+
+- **"I changed the velocity and nothing changed":** first suspect a compressor on the track (set its ratio to 1:1 or bypass it); then the library (many respond to velocity mostly above v80, some barely at all: use CC11). The `sample-libraries` skill has the test.
+- **Levels very different between libraries** (one comes out 16 dB louder than another) are normal: measure and set the faders; do not EQ or compress to fix a level.
+- **Two rooms at once:** a library's own reverb plus the Reverb bus. Ask the user to switch the library's reverb off.
 
 ## Honesty
 
