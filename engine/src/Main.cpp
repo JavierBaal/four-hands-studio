@@ -522,6 +522,26 @@ int selfTest (const juce::String& folder)
         std::cout << "FAIL strip 300" << std::endl;
         return 9;
     }
+
+    // 09/11/2026: the stop silences a plugin on the channel it was played on (panic only goes to the
+    // channels each plugin was sent something on).
+    engine.panic();
+    high.clear();
+    engine.renderOffline (high);
+    engine.schedule (300, 0.0, juce::MidiMessage::noteOn (3, 64, (juce::uint8) 100));
+    high.clear();
+    engine.renderOffline (high);
+    const auto held = high.getRMSLevel (0, 24000, 4800);
+    engine.panic();
+    high.clear();
+    engine.renderOffline (high);
+    const auto stopped = high.getRMSLevel (0, 24000, 4800);
+    std::cout << "panic on channel 3: held " << held << " after " << stopped << std::endl;
+    if (held < 0.001f || stopped > held * 0.05f)
+    {
+        std::cout << "FAIL panic did not silence channel 3" << std::endl;
+        return 36;
+    }
     std::cout << "OK" << std::endl;
     return 0;
 }

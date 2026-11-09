@@ -128,6 +128,7 @@ double Engine::outputLatencySeconds() const
 
 void Engine::audioDeviceAboutToStart (juce::AudioIODevice* d)
 {
+    lastBlockStart = 0;
     prepare (d->getCurrentSampleRate(), d->getCurrentBufferSizeSamples());
 }
 
@@ -367,13 +368,19 @@ void Engine::panic()
     const juce::SpinLock::ScopedLockType sl (lock);
     pending.clear();
     const auto now = position.load();
+    // Only on the channels each plugin was sent something on (09/11/2026): sixteen "all notes off" to
+    // every Kontakt at once cost a block several times its budget when playback stopped.
     for (int s = 0; s < kSlots; ++s)
+    {
         if (live[(size_t) s] != nullptr)
             for (int ch = 1; ch <= 16; ++ch)
-            {
-                pending.push_back ({ now, s, juce::MidiMessage::controllerEvent (ch, 64, 0) });
-                pending.push_back ({ now, s, juce::MidiMessage::allNotesOff (ch) });
-            }
+                if ((channelsSent[(size_t) s] >> (ch - 1)) & 1)
+                {
+                    pending.push_back ({ now, s, juce::MidiMessage::controllerEvent (ch, 64, 0) });
+                    pending.push_back ({ now, s, juce::MidiMessage::allNotesOff (ch) });
+                }
+        channelsSent[(size_t) s] = 0;
+    }
     // The built-in sounds have a channel per strip: all of them at once.
     if (auto* synth = static_cast<SoundFontSynth*> (live[(size_t) kSoundsSlot]))
         synth->releaseAll();
@@ -385,6 +392,8 @@ void Engine::panic()
 void Engine::audioDeviceIOCallbackWithContext (const float* const*, int, float* const* outputs, int numOutputs, int numSamples, const juce::AudioIODeviceCallbackContext&)
 {
     const auto started = juce::Time::getMillisecondCounterHiRes();
+    const auto gap = lastBlockStart > 0 ? started - lastBlockStart : 0.0;
+    lastBlockStart = started;
     process (outputs, numOutputs, numSamples);
     const auto budget = 1000.0 * numSamples / sampleRate;
     const auto load = (juce::Time::getMillisecondCounterHiRes() - started) / budget;
@@ -396,6 +405,10 @@ void Engine::audioDeviceIOCallbackWithContext (const float* const*, int, float* 
     if (load > 1.0)
         stats.overruns++;
     stats.budgetMs = budget;
+    // The device did not ask in time (the system held the audio thread): the engine was not slow, it was not called.
+    stats.gapMax = juce::jmax (stats.gapMax, gap);
+    if (gap > 2.0 * budget)
+        stats.gaps++;
     stats.stripsSeen = juce::jmax (stats.stripsSeen, n);
     for (int s = 0; s < n; ++s)
     {
@@ -472,7 +485,11 @@ void Engine::process (float* const* outputs, int numOutputs, int numSamples)
                 soundsEvents.push_back ({ offset, channel, it->message });
             }
             else
+            {
                 midi[(size_t) it->slot].addEvent (it->message, offset);
+                if (const int ch = it->message.getChannel(); ch > 0)
+                    channelsSent[(size_t) it->slot] = (juce::uint16) (channelsSent[(size_t) it->slot] | (1 << (ch - 1)));
+            }
             it = pending.erase (it);
         }
         else

@@ -238,6 +238,9 @@ public:
         double waitSum = 0, waitMax = 0, soundsSum = 0, soundsMax = 0, mixSum = 0, mixMax = 0, analysisSum = 0, analysisMax = 0;
         /** The block budget in ms (block size over sample rate). */
         double budgetMs = 0;
+        /** The longest time between two blocks starting, in ms, and blocks that started over twice the budget late. */
+        double gapMax = 0;
+        int gaps = 0;
     };
     Stats takeStats();
 
@@ -354,6 +357,9 @@ private:
     // Audio thread only: the block under way's costs, in ms (added to `stats` at its end).
     std::array<double, kStrips> blockStrip {};
     double blockWait = 0, blockSounds = 0, blockMix = 0, blockAnalysis = 0;
+    double lastBlockStart = 0;
+    /** Under `lock`: the MIDI channels each slot has been sent something on since the last panic (09/11/2026). */
+    std::array<juce::uint16, kAllSlots> channelsSent {};
 
     // The plugins' transport, and the points still to come.
     Transport transport;

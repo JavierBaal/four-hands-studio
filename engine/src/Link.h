@@ -21,7 +21,8 @@ private:
     void connectionLost() override;
     void messageReceived (const juce::MemoryBlock& data) override;
     Link& link;
-    bool greeted = false;
+    std::atomic<bool> greeted { false };
+    JUCE_DECLARE_WEAK_REFERENCEABLE (Connection)
 };
 
 class Link final : public juce::InterprocessConnectionServer
@@ -39,6 +40,14 @@ public:
     bool hasConnection() const { return current != nullptr; }
     /** Says something to Four Hands on the engine's own initiative (`{ type: "event", event, … }`). */
     void notify (const juce::var& event);
+    /**
+     * Messages that only feed the audio (notes, transport, faders, panic), handled on the link's own
+     * thread as they arrive (09/11/2026): a plugin window keeping the message thread busy (Kontakt
+     * opening, The God Particle redrawing) must not make the notes late.
+     */
+    static bool isAudioOnly (const juce::String& type);
+    /** The longest the message thread was busy since the last call, in ms. */
+    double takeMessageStall();
 
 private:
     juce::InterprocessConnection* createConnectionObject() override;
@@ -53,6 +62,13 @@ private:
     bool connected = false;
     /** Loads sound banks one at a time, off the message thread (an SF3 takes seconds). */
     juce::ThreadPool loader { 1 };
+    /** Ticks every 10 ms on the message thread; a late tick is how long it was busy. */
+    struct StallWatch final : juce::Timer
+    {
+        double last = 0;
+        std::atomic<double> most { 0 };
+        void timerCallback() override;
+    } stallWatch;
 
     JUCE_DECLARE_WEAK_REFERENCEABLE (Link)
 };

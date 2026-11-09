@@ -929,7 +929,14 @@ function registerIpc(): void {
       const reply = (await engine.request({ type: "stats" })) as Record<string, number>;
       const load = engineLoad(reply);
       lastLoad = load;
-      if (load.dropouts > 0) appendLog({ type: "engine_dropouts", count: load.dropouts, maxLoad: Math.round(load.maxLoad * 100) / 100 });
+      if (load.dropouts > 0 || (load.cost && (load.cost.late > 0 || load.cost.gaps > 0)))
+        appendLog({
+          type: "engine_dropouts",
+          count: load.dropouts,
+          maxLoad: Math.round(load.maxLoad * 100) / 100,
+          // 09/11/2026: notes that came late, blocks the device asked for late, and how busy the message thread was.
+          ...(load.cost ? { late: load.cost.late, gaps: load.cost.gaps, gapMaxMs: Math.round(load.cost.gapMax), messageStallMs: Math.round(load.cost.messageStall) } : {}),
+        });
       return load;
     } catch {
       return null;

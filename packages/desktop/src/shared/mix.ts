@@ -251,6 +251,13 @@ export interface EngineCost {
   overruns: number;
   strips: Record<number, { sum: number; max: number }>;
   stages: Record<"wait" | "sounds" | "mix" | "analysis", { sum: number; max: number }>;
+  /** Notes that reached the engine after their time (they play at once, out of time). */
+  late: number;
+  /** Blocks the device asked for over twice the budget late, and the longest time between two (ms). */
+  gaps: number;
+  gapMax: number;
+  /** The longest the engine's message thread (plugin windows, the link) was busy, in ms. */
+  messageStall: number;
 }
 
 const STAGES = ["wait", "sounds", "mix", "analysis"] as const;
@@ -266,7 +273,17 @@ export function engineLoad(stats: Record<string, unknown>): EngineLoad {
   };
   if (Array.isArray(stats.strips) && num(stats.blocks) > 0) {
     const pair = (v: unknown) => (Array.isArray(v) ? { sum: num(v[0]), max: num(v[1]) } : { sum: 0, max: 0 });
-    const cost: EngineCost = { blocks: num(stats.blocks), budgetMs: num(stats.budgetMs), overruns: num(stats.overruns), strips: {}, stages: { wait: pair(stats.wait), sounds: pair(stats.sounds), mix: pair(stats.mix), analysis: pair(stats.analysis) } };
+    const cost: EngineCost = {
+      blocks: num(stats.blocks),
+      budgetMs: num(stats.budgetMs),
+      overruns: num(stats.overruns),
+      strips: {},
+      stages: { wait: pair(stats.wait), sounds: pair(stats.sounds), mix: pair(stats.mix), analysis: pair(stats.analysis) },
+      late: num(stats.late),
+      gaps: num(stats.gaps),
+      gapMax: num(stats.gapMax),
+      messageStall: num(stats.messageStall),
+    };
     for (const row of stats.strips as unknown[]) if (Array.isArray(row)) cost.strips[num(row[0])] = { sum: num(row[1]), max: num(row[2]) };
     load.cost = cost;
   }
@@ -281,6 +298,10 @@ export function addCost(total: EngineCost | null, next: EngineCost): EngineCost 
   for (const k of STAGES) total.stages[k] = add(total.stages[k], next.stages[k]);
   total.blocks += next.blocks;
   total.overruns += next.overruns;
+  total.late += next.late;
+  total.gaps += next.gaps;
+  total.gapMax = Math.max(total.gapMax, next.gapMax);
+  total.messageStall = Math.max(total.messageStall, next.messageStall);
   total.budgetMs = next.budgetMs || total.budgetMs;
   return total;
 }
@@ -298,6 +319,10 @@ export function costReport(cost: EngineCost, tracks: ReadonlyArray<{ name: strin
     blocks: cost.blocks,
     budgetMs: Math.round(cost.budgetMs * 100) / 100,
     overruns: cost.overruns,
+    late: cost.late,
+    gaps: cost.gaps,
+    gapMaxMs: Math.round(cost.gapMax * 10) / 10,
+    messageStallMs: Math.round(cost.messageStall),
     avgLoad: share(total / Math.max(1, cost.blocks)),
     tracks: Object.entries(cost.strips)
       .map(([k, v]) => ({ track: byStrip.get(Number(k)) ?? `strip ${k}`, avg: avg(v), max: share(v.max) }))

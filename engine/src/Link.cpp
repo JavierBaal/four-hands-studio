@@ -21,7 +21,9 @@ juce::var error (const juce::String& request, const juce::String& message)
 // -----------------------------------------------------------------------------
 // Connection
 
-Connection::Connection (Link& owner) : InterprocessConnection (true), link (owner) {}
+// Callbacks on the connection's own thread (09/11/2026): audio-only messages are handled there, the
+// rest goes to the message thread in the order it came (the app matches replies in order).
+Connection::Connection (Link& owner) : InterprocessConnection (false), link (owner) {}
 
 Connection::~Connection()
 {
@@ -39,26 +41,42 @@ void Connection::connectionMade() {}
 
 void Connection::connectionLost()
 {
-    link.lost (this);
+    juce::MessageManager::callAsync ([self = juce::WeakReference<Connection> (this), owner = &link] {
+        if (self != nullptr)
+            owner->lost (self.get());
+    });
 }
 
 void Connection::messageReceived (const juce::MemoryBlock& data)
 {
     const auto message = juce::JSON::parse (data.toString());
     const auto type = message["type"].toString();
-    if (! greeted)
+    if (! greeted.load())
     {
         if (type != "hello" || ! link.checkToken (message["token"].toString()))
         {
             send (error ("hello", "Wrong or missing token"));
-            disconnect();
+            // Disconnected and deleted on the message thread (not from inside its own thread).
+            juce::MessageManager::callAsync ([self = juce::WeakReference<Connection> (this), owner = &link] {
+                if (self != nullptr)
+                    owner->lost (self.get());
+            });
             return;
         }
         greeted = true;
     }
-    const auto reply = link.handle (message, *this);
-    if (! reply.isVoid())
-        send (reply);
+    if (Link::isAudioOnly (type))
+    {
+        link.handle (message, *this);
+        return;
+    }
+    juce::MessageManager::callAsync ([self = juce::WeakReference<Connection> (this), owner = &link, message] {
+        if (self == nullptr)
+            return;
+        const auto reply = owner->handle (message, *self);
+        if (! reply.isVoid())
+            self->send (reply);
+    });
 }
 
 // -----------------------------------------------------------------------------
@@ -66,6 +84,7 @@ void Connection::messageReceived (const juce::MemoryBlock& data)
 
 Link::Link (Engine& e, juce::String token, juce::File cache) : engine (e), expectedToken (std::move (token)), cacheFile (std::move (cache))
 {
+    stallWatch.startTimer (10);
     if (cacheFile.existsAsFile())
         if (auto xml = juce::parseXML (cacheFile))
             engine.known().recreateFromXml (*xml);
@@ -84,6 +103,29 @@ juce::InterprocessConnection* Link::createConnectionObject()
     current = connections.back().get();
     connected = true;
     return current;
+}
+
+bool Link::isAudioOnly (const juce::String& type)
+{
+    // Engine::schedule, scheduleTransport, panic and the mix setters take the engine's own lock.
+    return type == "midi" || type == "transport" || type == "panic" || type == "mix";
+}
+
+void Link::StallWatch::timerCallback()
+{
+    const auto now = juce::Time::getMillisecondCounterHiRes();
+    if (last > 0)
+    {
+        const auto late = now - last - 10.0;
+        if (late > most.load())
+            most.store (late);
+    }
+    last = now;
+}
+
+double Link::takeMessageStall()
+{
+    return stallWatch.most.exchange (0.0);
 }
 
 void Link::lost (Connection* c)
@@ -400,7 +442,8 @@ juce::var Link::handle (const juce::var& m, Connection& from)
                       { "avgLoad", s.blocks > 0 ? s.sumLoad / (double) s.blocks : 0.0 }, { "late", s.late },
                       { "overruns", s.overruns }, { "xruns", s.xruns }, { "budgetMs", s.budgetMs }, { "strips", strips },
                       { "wait", stage (s.waitSum, s.waitMax) }, { "sounds", stage (s.soundsSum, s.soundsMax) },
-                      { "mix", stage (s.mixSum, s.mixMax) }, { "analysis", stage (s.analysisSum, s.analysisMax) } });
+                      { "mix", stage (s.mixSum, s.mixMax) }, { "analysis", stage (s.analysisSum, s.analysisMax) },
+                      { "gapMax", s.gapMax }, { "gaps", s.gaps }, { "messageStall", takeMessageStall() } });
     }
 
     // --- Insert effects (F2.2 parte C) ---------------------------------------------------------
