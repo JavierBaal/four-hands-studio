@@ -618,7 +618,6 @@ const es = {
   cardSubPlugin: "Plugin · cargado",
   cardSubPluginLoading: "Plugin · cargando en el motor…",
   cardSubDaw: "Suena en tu DAW por el canal {ch}",
-  cardMixLater: "Efectos y envíos: llegan con la mesa de mezcla (F2.2).",
   // Library cards (Fran, 05/11/2026)
   libTitle: "Librería",
   libNone: "Sin ficha",
@@ -1340,7 +1339,6 @@ const en: Strings = {
   cardSubPlugin: "Plugin · loaded",
   cardSubPluginLoading: "Plugin · loading in the engine…",
   cardSubDaw: "Plays in your DAW on channel {ch}",
-  cardMixLater: "Effects and sends: they come with the mixing desk (F2.2).",
   // Library cards (Fran, 05/11/2026)
   libTitle: "Library",
   libNone: "No card",

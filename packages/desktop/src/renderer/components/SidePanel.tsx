@@ -135,7 +135,6 @@ function TrackCard({ audio }: { audio: AudioLayer }) {
         <div className="tcmix">
           <MixRows key={track.id} track={track} />
         </div>
-        <p className="hint">{t("cardMixLater")}</p>
       </section>
       <div className="tcfoot">
         <button className="btn" disabled={i <= 0} onClick={() => actions.moveTrack(track.id, i - 1)}>
