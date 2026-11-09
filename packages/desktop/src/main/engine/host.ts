@@ -5,7 +5,9 @@
  */
 import { type ChildProcess, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
+import fs from "node:fs";
 import net from "node:net";
+import path from "node:path";
 import { ENGINE_OFF, type EngineStatus } from "../../shared/engine.js";
 import { FrameReader, frame } from "./framing.js";
 
@@ -103,6 +105,7 @@ export class EngineHost {
       };
       this.abortStart = fail;
       const timer = setTimeout(() => fail("The engine did not start in time"), this.options.startTimeoutMs ?? 20000);
+      this.keepCrashDump();
       let child: ChildProcess;
       try {
         child = spawn(file!, [...lead, "--port", String(port), "--token", token, "--cache", this.options.cacheFile], { stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
@@ -187,6 +190,7 @@ export class EngineHost {
       });
       socket.on("close", () => {
         if (this.socket !== socket) return;
+        this.options.log({ type: "engine_link_closed", waiting: this.waiting.map((w) => w.request) });
         this.socket = null;
         this.rejectAll("The link with the engine closed");
       });
@@ -248,8 +252,29 @@ export class EngineHost {
     for (const w of waiting) w.reject(new EngineError(why));
   }
 
+  /**
+   * The engine leaves engine-crash.dmp next to its cache when it crashes (Windows, 09/11/2026): kept
+   * with the time in its name, and logged, so the module that crashed can be found.
+   */
+  private keepCrashDump(): void {
+    if (!this.options.cacheFile) return;
+    const dump = path.join(path.dirname(this.options.cacheFile), "engine-crash.dmp");
+    try {
+      const stat = fs.statSync(dump);
+      const kept = path.join(path.dirname(dump), `engine-crash-${stat.mtime.toISOString().replace(/[:.]/g, "-")}.dmp`);
+      fs.renameSync(dump, kept);
+      this.options.log({ type: "engine_crash_dump", file: kept, bytes: stat.size, at: stat.mtime.toISOString() });
+    } catch {
+      // No dump: the usual case.
+    }
+  }
+
   private exited(child: ChildProcess, code: number | null, signal: NodeJS.Signals | null): void {
-    if (this.child !== child) return;
+    if (this.child !== child) {
+      // An engine already replaced (its link closed first and a new one started): still worth knowing how it ended.
+      this.options.log({ type: "engine_exit", code, signal, replaced: true });
+      return;
+    }
     this.child = null;
     if (this.chatterLines > CHATTER_LOGGED) this.options.log({ type: "engine_chatter", lines: this.chatterLines, logged: CHATTER_LOGGED });
     this.chatterLines = 0;

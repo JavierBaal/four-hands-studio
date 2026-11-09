@@ -13,6 +13,7 @@
 //
 // On start it prints "FH_ENGINE_READY <port>" so Four Hands knows where to connect. It quits when
 // Four Hands goes (connection lost) or never comes (30 s): it must not outlive the app.
+#include "CrashDump.h"
 #include "Engine.h"
 #include "Link.h"
 #include "SoundFontSynth.h"
@@ -797,6 +798,8 @@ static int bench (const juce::String& folder, int strips, double seconds)
 
 class EngineApp final : public juce::JUCEApplication, private juce::Timer
 {
+    juce::String crashDumpPath; // must outlive the handler: the app lives as long as the process
+
 public:
     const juce::String getApplicationName() override { return JUCE_APPLICATION_NAME_STRING; }
     const juce::String getApplicationVersion() override { return JUCE_APPLICATION_VERSION_STRING; }
@@ -831,6 +834,10 @@ public:
             quit();
             return;
         }
+        // A crash leaves engine-crash.dmp next to the cache (the app reads it at the next start).
+        if (const auto cacheFile = argAfter (args, "--cache"); cacheFile.isNotEmpty())
+            crashDumpPath = juce::File (cacheFile).getSiblingFile ("engine-crash.dmp").getFullPathName();
+        fh::installCrashDump (crashDumpPath.toWideCharPointer());
         engine = std::make_unique<fh::Engine>();
         const auto deviceError = engine->openDevice();
         if (deviceError.isNotEmpty())
