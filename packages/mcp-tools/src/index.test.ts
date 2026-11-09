@@ -5,6 +5,7 @@ const byName = Object.fromEntries(TOOLS.map((t) => [t.name, t]));
 
 const READ_ONLY = ["analyze_mix", "list_effect_parameters", "get_song_overview", "get_user_context", "read_notes", "analyze", "get_changes_since", "get_history", "summarize", "list_instruments", "get_levels", "list_skills", "load_skill", "point_to"];
 const NEED_INTERVENTION = [
+  "set_library_card",
   "add_effect",
   "set_effect",
   "remove_effect",

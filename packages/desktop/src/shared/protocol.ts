@@ -240,6 +240,9 @@ export const CH = {
   pluginFoldersRemove: "fh:plugin-folders-remove",
   soundPrefs: "fh:sound-prefs",
   soundPrefsSet: "fh:sound-prefs-set",
+  libraries: "fh:libraries",
+  librarySave: "fh:library-save",
+  librariesChanged: "fh:libraries-changed",
 } as const;
 
 /** The user's folders (Ajustes › Carpetas). */

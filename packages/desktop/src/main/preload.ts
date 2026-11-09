@@ -71,6 +71,9 @@ const CH = {
   pluginFoldersRemove: "fh:plugin-folders-remove",
   soundPrefs: "fh:sound-prefs",
   soundPrefsSet: "fh:sound-prefs-set",
+  libraries: "fh:libraries",
+  librarySave: "fh:library-save",
+  librariesChanged: "fh:libraries-changed",
 } as const;
 
 function listen(channel: string, listener: (value: unknown) => void): () => void {
@@ -145,4 +148,7 @@ contextBridge.exposeInMainWorld("fh", {
   removePluginFolder: (dir: string) => ipcRenderer.invoke(CH.pluginFoldersRemove, dir),
   soundPrefs: () => ipcRenderer.invoke(CH.soundPrefs),
   setSoundPrefs: (prefs: unknown) => ipcRenderer.invoke(CH.soundPrefsSet, prefs),
+  libraries: () => ipcRenderer.invoke(CH.libraries),
+  saveLibrary: (card: unknown) => ipcRenderer.invoke(CH.librarySave, card),
+  onLibrariesChanged: (l: (v: unknown) => void) => listen(CH.librariesChanged, l),
 });

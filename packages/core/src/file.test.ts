@@ -172,3 +172,19 @@ describe(".fourhands", () => {
     });
   });
 });
+
+describe("library cards (Fran, 05/11/2026)", () => {
+  it("a track links a card of the user's catalog, saves the link and unlinks it, one undo each", () => {
+    const doc = new SongDocument(emptySong("Fichas"), { now: () => 1 });
+    const t = doc.transact({ actor: USER, label: "Pista" }, (tx) => addTrack(tx, { name: "Violas" }));
+    doc.transact({ actor: claude, label: "ficha" }, (tx) => updateTrack(tx, t, { library: { id: "lib1", name: "Symphonic Strings · Violas" } }));
+    expect(doc.song.tracks[t]!.library).toEqual({ id: "lib1", name: "Symphonic Strings · Violas" });
+    const back = parseSongFile(serializeSong({ song: doc.song, history: [], proposals: [] }));
+    expect(back.song.tracks[t]!.library).toEqual({ id: "lib1", name: "Symphonic Strings · Violas" });
+    doc.transact({ actor: USER, label: "quitar" }, (tx) => updateTrack(tx, t, { library: null }));
+    expect(doc.song.tracks[t]!.library).toBeUndefined();
+    doc.undo(USER);
+    expect(doc.song.tracks[t]!.library?.id).toBe("lib1");
+    expect(() => doc.transact({ actor: USER, label: "x" }, (tx) => updateTrack(tx, t, { library: { id: " ", name: "x" } }))).toThrow(/needs its id/);
+  });
+});

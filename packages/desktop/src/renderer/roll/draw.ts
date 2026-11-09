@@ -44,7 +44,13 @@ function visibleRows(v: RollView): { top: number; bottom: number } {
 // ---------------------------------------------------------------------------
 // Keyboard
 
-export function drawKeyboard(s: Surface, v: RollView, names: NoteNames): void {
+/** What the active track's library card says about the keys (Fran, 05/11/2026). */
+export interface KeyboardCard {
+  range?: { low: number; high: number };
+  keyswitches: ReadonlyArray<{ pitch: number; name: string }>;
+}
+
+export function drawKeyboard(s: Surface, v: RollView, names: NoteNames, card?: KeyboardCard): void {
   const { ctx, width } = s;
   const { top, bottom } = visibleRows(v);
   const ROW = rowH(v);
@@ -64,11 +70,38 @@ export function drawKeyboard(s: Surface, v: RollView, names: NoteNames): void {
       ctx.fillStyle = T.keyWhiteLine;
       ctx.fillRect(0, y + ROW - 1, width, 1);
     }
-    if (p % 12 === 0) {
+    const ks = card?.keyswitches.find((k) => k.pitch === p);
+    if (p % 12 === 0 && !ks) {
       ctx.fillStyle = T.keyWhiteText;
       ctx.fillText(noteName(p, names), 6, y + ROW / 2);
     }
+    if (!card) continue;
+    // Library card: keyswitch keys carry their mark and name; keys outside the range dim; a line at each end.
+    if (ks) {
+      const right = width - (isBlack(p) ? SIZE.blackKeyGap : 0);
+      ctx.fillStyle = T.keyswitch;
+      ctx.fillRect(right - 6, y + 1, 4, ROW - 2);
+      if (ROW >= 10) {
+        ctx.fillStyle = isBlack(p) ? T.keyswitchTextOnBlack : T.keyswitchText;
+        ctx.fillText(fitText(ctx, ks.name, right - 16), 6, y + ROW / 2);
+      }
+    } else if (card.range && (p < card.range.low || p > card.range.high)) {
+      ctx.fillStyle = T.keyOutOfRange;
+      ctx.fillRect(0, y, width, ROW);
+    }
+    if (card.range && (p === card.range.high || p === card.range.low)) {
+      ctx.fillStyle = T.loop;
+      ctx.fillRect(0, p === card.range.high ? y : y + ROW - 2, width, 2);
+    }
   }
+}
+
+/** The text cut with "…" to fit `max` pixels. */
+function fitText(ctx: CanvasRenderingContext2D, text: string, max: number): string {
+  if (ctx.measureText(text).width <= max) return text;
+  let t = text;
+  while (t.length > 1 && ctx.measureText(`${t}…`).width > max) t = t.slice(0, -1);
+  return `${t}…`;
 }
 
 // ---------------------------------------------------------------------------

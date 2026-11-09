@@ -26,6 +26,7 @@ import {
 } from "@fourhands/core";
 import type { AudioLayer } from "./audio-layer.js";
 import type { EffectItem, SoundItem } from "../shared/sound-catalog.js";
+import { type LibraryCard, emptyCard, newCardId } from "../shared/library-cards.js";
 import type { ViewStore } from "./view.js";
 import type { SkillImportResult, SoundBankInfo } from "../shared/protocol.js";
 import type { Bridge } from "./bridge.js";
@@ -1019,6 +1020,41 @@ export class SongActions {
     const c = TRACK_PALETTE[color];
     if (!track || !c || track.color === color) return;
     void this.run(this.h("hColor", { name: track.name, color: (this.lang === "es" ? c.es : c.en).toLowerCase() }), [{ type: "updateTrack", id, changes: { color } }]);
+  }
+
+  // -------------------------------------------------------------------------
+  // Library cards (Fran, 05/11/2026): the card lives in the user's catalog; the track links it.
+
+  /** Links a card of the catalog to the track (one undo step), or unlinks with null. */
+  linkLibrary(id: string, card: { id: string; name: string } | null): void {
+    const track = this.song.tracks[id];
+    if (!track) return;
+    const link = card ? { id: card.id, name: card.name } : null;
+    if (JSON.stringify(track.library ?? null) === JSON.stringify(link)) return;
+    const label = link ? this.h("hLibLink", { name: track.name, card: link.name }) : this.h("hLibUnlink", { name: track.name });
+    void this.run(label, [{ type: "updateTrack", id, changes: { library: link } }]);
+  }
+
+  /** A new, empty card named after the track, saved in the catalog and linked. */
+  async createLibraryCard(id: string): Promise<LibraryCard | null> {
+    const track = this.song.tracks[id];
+    if (!track || !this.audio) return null;
+    const saved = await this.audio.saveLibrary(emptyCard(newCardId(this.audio.libraries, Date.now()), track.name, track.plugin?.name));
+    if (saved) this.linkLibrary(id, saved);
+    return saved;
+  }
+
+  /** The library cards the track can use instead: those of the same plugin first. */
+  libraryMenu(x: number, y: number, id: string): void {
+    const track = this.song.tracks[id];
+    if (!track || !this.audio) return;
+    const host = track.plugin?.name;
+    const cards = this.audio.libraries.cards.filter((c) => c.id !== track.library?.id).sort((a, b) => Number(b.host === host) - Number(a.host === host) || a.name.localeCompare(b.name));
+    const items: MenuItem[] = cards.length
+      ? cards.map((c) => ({ label: c.host && c.host !== host ? `${c.name} · ${c.host}` : c.name, run: () => this.linkLibrary(id, c) }))
+      : [{ label: this.t("libNoOthers"), disabled: true }];
+    if (track.library) items.push({ separator: true }, { label: this.t("libUnlink"), run: () => this.linkLibrary(id, null) });
+    this.menu(x, y, items);
   }
 
   // -------------------------------------------------------------------------

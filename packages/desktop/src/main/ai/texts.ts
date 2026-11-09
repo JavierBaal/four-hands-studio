@@ -28,6 +28,7 @@ import { GM_NOTES, PALETTE, type PaletteItem, instrumentName } from "../../share
 import type { BankPreset, SoundProfile } from "../../shared/soundbank-info.js";
 import type { EnginePlugin } from "../../shared/engine.js";
 import type { AiApply, AiTone, SoundBankInfo } from "../../shared/protocol.js";
+import { type LibraryCard, cardText } from "../../shared/library-cards.js";
 
 /** What the window tells the main process about what the user sees (not part of the song). */
 export interface WindowInfo {
@@ -79,6 +80,8 @@ function percent(part: number, total: number): number {
 export interface OverviewExtras {
   /** Open interventions, for the AI to know whether someone is writing. */
   open: { id: string; who: string; description: string }[];
+  /** Library cards (Fran, 05/11/2026): a plugin track's card from the user's catalog, if it has one there. */
+  card?: (track: Track) => LibraryCard | undefined;
 }
 
 export function overviewText(song: Song, extras: OverviewExtras = { open: [] }): string {
@@ -121,7 +124,15 @@ export function overviewText(song: Song, extras: OverviewExtras = { open: [] }):
     if (track.solo) parts.push("solo (the user is listening to it alone)");
     if (track.pedal.length) parts.push(`${track.pedal.length} pedal spans`);
     if (track.output === "external") parts.push("sounds outside Four Hands (MIDI out to the user's DAW, e.g. Studio One with Kontakt): the built-in sound and its profile do not apply, ask what instrument plays it");
-    if (track.output === "plugin" && track.plugin) parts.push(`plays through the plugin ${track.plugin.name} (hosted by Four Hands): the built-in sound and its profile do not apply, ask what instrument is loaded in it`);
+    if (track.output === "plugin" && track.plugin) {
+      const card = extras.card?.(track);
+      if (card) parts.push(`plays through the plugin ${track.plugin.name} (hosted by Four Hands) · ${cardText(card)}`);
+      else
+        parts.push(
+          `plays through the plugin ${track.plugin.name} (hosted by Four Hands): the built-in sound and its profile do not apply, ask what instrument is loaded in it` +
+            (track.library ? `; its library card '${track.library.name}' is not on this computer (set_library_card)` : "; no library card yet (set_library_card once you know what it responds to)"),
+        );
+    }
     if (track.curves?.expression?.length) parts.push("expression curve (CC11)");
     if (track.curves?.modulation?.length) parts.push("modulation curve (CC1)");
     lines.push(parts.join(" · "));

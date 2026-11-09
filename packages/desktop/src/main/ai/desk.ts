@@ -105,6 +105,7 @@ import type { AiApply, AiClientInfo, AiMark, AiRecent, AiState, AiTone, AiWritin
 import type { SongSession } from "../session.js";
 import type { EnginePlugin } from "../../shared/engine.js";
 import type { BankPreset } from "../../shared/soundbank-info.js";
+import { type LibraryCard, type LibraryStore, cardText, emptyCard, newCardId, parseKeyswitches, parseRange, parseResponse } from "../../shared/library-cards.js";
 import { SkillError, type SkillSource, skillText, skillsFooter, skillsListText } from "./skills.js";
 import { DEFAULT_WINDOW, type WindowInfo, bankText, chainText, effectText, instrumentsText, mixText, overviewText, paletteItem, spanText, userContextText } from "./texts.js";
 
@@ -135,6 +136,8 @@ export interface AiDeskOptions {
   levels?: () => { levels: EngineLevels; at: number; strips?: Record<string, number>; buses?: Record<string, number> } | null;
   /** F2.3: what the engine heard in the last playback (analyze_mix). */
   analysis?: () => AnalysisContext | null;
+  /** The user's library cards (Fran, 05/11/2026). */
+  libraries?: () => LibraryStore;
   /** F2.2 parte B: the engine's last load reading (for get_levels), null without engine. */
   load?: () => EngineLoad | null;
   /**
@@ -683,9 +686,19 @@ export class AiDesk {
    * The range a track's notes should stay in: the usual range of a built-in instrument, or the keys a
    * bank's sound has samples for (outside them it is silent).
    */
-  private rangeOfTrack(trackId: string): { range: readonly [number, number]; what: string } | undefined {
+  /** The library card of a plugin track, from the user's catalog (Fran, 05/11/2026). */
+  private cardOf(trackId: string): LibraryCard | undefined {
+    const track = this.song.tracks[trackId];
+    if (!track?.library || track.output !== "plugin") return undefined;
+    return this.options.libraries?.().card(track.library.id);
+  }
+
+  private rangeOfTrack(trackId: string): { range: readonly [number, number]; what: string; skip?: ReadonlySet<number> } | undefined {
     const track = this.song.tracks[trackId];
     if (!track) return undefined;
+    const card = this.cardOf(trackId);
+    if (card?.range)
+      return { range: [card.range.low, card.range.high], what: `the range of its library card '${card.name}' (they will not sound)`, skip: new Set(card.keyswitches.map((k) => k.pitch)) };
     if (track.sound) {
       const { bank, program, bankMSB, name } = track.sound;
       const preset = this.options.banks?.().find((b) => b.id === bank)?.presets.find((p) => p.program === program && p.bankMSB === bankMSB);
@@ -702,7 +715,7 @@ export class AiDesk {
     const [low, high] = known.range;
     const out = ids.filter((id) => {
       const p = this.song.notes[id]?.pitch;
-      return p !== undefined && (p < low || p > high);
+      return p !== undefined && !known.skip?.has(p) && (p < low || p > high);
     });
     if (out.length === 0) return "";
     const range = `${formatPitch(low)}–${formatPitch(high)}`;
@@ -716,6 +729,7 @@ export class AiDesk {
     get_song_overview: () => {
       const text = overviewText(this.song, {
         open: [...this.interventions.values()].filter((iv) => !iv.closed).map((iv) => ({ id: iv.id, who: this.nameOf(iv.owner), description: iv.description })),
+        card: (track) => this.cardOf(track.id),
       });
       const footer = skillsFooter(this.skillList());
       return footer ? `${text}\n${footer}` : text;
@@ -1395,6 +1409,73 @@ export class AiDesk {
       iv.other.push(`track ${this.song.tracks[trackId]!.name}`);
       this.emit();
       return `Track ${trackId}: ${describeTrack(this.song, trackId)}. ${this.rev()}`;
+    },
+
+    // Library cards (Fran, 05/11/2026): the card lives in the user's catalog; the song only links it.
+    set_library_card: (conn, args) => {
+      const iv = this.intervention(conn, args);
+      const store = this.options.libraries?.();
+      if (!store) throw new MusicError("Library cards are not available in this Four Hands");
+      const trackId = this.track(this.str(args, "track")!);
+      const track = this.song.tracks[trackId]!;
+      if (track.output !== "plugin" || !track.plugin) throw new MusicError(`${track.name} does not sound through a plugin: library cards are for sample libraries inside plugins (Kontakt and the like)`);
+      const names = () => store.read().cards.map((c) => `'${c.name}'`).join(", ") || "none yet";
+      const useName = this.str(args, "use", false);
+      const newName = this.str(args, "name", false)?.trim();
+      let card: LibraryCard | undefined;
+      let created = false;
+      if (useName !== undefined) {
+        card = store.read().cards.find((c) => fold(c.name) === fold(useName));
+        if (!card) throw new MusicError(`No card called '${useName}' in the catalog. Cards: ${names()}`);
+      } else if (track.library) card = store.card(track.library.id);
+      if (!card) {
+        if (!newName) throw new MusicError(`${track.name} has no library card yet: give it a 'name' (the library and instrument, e.g. 'Symphonic Strings · Violas'), or 'use' one of the catalog: ${names()}`);
+        card = emptyCard(newCardId(store.read(), this.now()), newName, track.plugin.name);
+        created = true;
+      }
+      const next: LibraryCard = structuredClone(card);
+      let changed = created;
+      if (newName && !created && newName !== next.name) [next.name, changed] = [newName, true];
+      for (const field of ["velocity", "expression", "modulation"] as const) {
+        const value = this.str(args, field, false);
+        if (value !== undefined) [next[field], changed] = [parseResponse(value, field), true];
+      }
+      const range = this.str(args, "range", false);
+      if (range !== undefined) {
+        const r = parseRange(range);
+        if (r) next.range = r;
+        else delete next.range;
+        changed = true;
+      }
+      const keyswitches = this.str(args, "keyswitches", false);
+      if (keyswitches !== undefined) [next.keyswitches, changed] = [parseKeyswitches(keyswitches), true];
+      const reverb = this.str(args, "own_reverb", false);
+      if (reverb !== undefined) {
+        if (reverb !== "off" && reverb !== "on" && reverb !== "none") throw new MusicError("own_reverb is 'off', 'on' or 'none'");
+        [next.ownReverb, changed] = [reverb, true];
+      }
+      const notes = this.str(args, "notes", false);
+      if (notes !== undefined) {
+        if (notes.trim()) next.notes = notes.trim();
+        else delete next.notes;
+        changed = true;
+      }
+      if (!changed && useName === undefined) throw new MusicError("Say what to write: velocity, expression, modulation, range, keyswitches, own_reverb, notes or name");
+      let saved = card;
+      if (changed) {
+        const why = this.str(args, "why", false)?.trim();
+        next.updated = why ? { by: "ai", at: this.now(), why } : { by: "ai", at: this.now() };
+        saved = store.save(next) ?? card;
+      }
+      const link = { id: saved.id, name: saved.name };
+      const linked = track.library?.id !== link.id;
+      if (linked) {
+        this.write(iv, (tx) => updateTrack(tx, trackId, { library: link }));
+        iv.trackIds.add(trackId);
+      }
+      iv.other.push(`library card of ${track.name}`);
+      this.emit();
+      return `${track.name} (${trackId}) → ${cardText(saved)}.${linked ? " Linked to the track (one undo step)." : ""}${changed ? " Saved in the user's catalog: it serves every song that uses this library." : ""} ${this.rev()}`;
     },
 
     set_mix: (conn, args) => {

@@ -72,6 +72,11 @@ export const T = {
   keyWhiteText: "#2a2622",
   keyBlack: "#2c2824",
   keyBlackLine: "#1b1916",
+  // Library cards (Fran, 05/11/2026): keyswitch keys and keys outside the library's range.
+  keyswitch: "#c9826f",
+  keyswitchText: "#7a3e30",
+  keyswitchTextOnBlack: "#e8c3b8",
+  keyOutOfRange: "rgba(23,21,19,.62)",
 } as const;
 
 export { TRACK_PALETTE, type TrackColor } from "../shared/track-colors.js";

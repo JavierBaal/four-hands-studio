@@ -7,6 +7,7 @@ import type { AiState, PatchMessage, SoundBankInfo } from "../../shared/protocol
 import { SongSession } from "../session.js";
 import { AiDesk, type ToolReply } from "./desk.js";
 import { SkillLibrary } from "./skills.js";
+import { LibraryCatalogFile } from "../library-catalog.js";
 import { TRACK_COLOR_NAMES } from "@fourhands/mcp-tools";
 import { TRACK_PALETTE } from "../../shared/track-colors.js";
 
@@ -20,6 +21,7 @@ let clock: number;
 let timers: { fn: () => void; at: number; done: boolean }[];
 let states: AiState[];
 let logs: Record<string, unknown>[];
+let cards: LibraryCatalogFile | undefined;
 
 const BANKS: SoundBankInfo[] = [
   {
@@ -55,6 +57,7 @@ async function open(file = DILATACION): Promise<void> {
       { program: 46, bankMSB: 0, name: "Harp", profile: { low: 0, high: 108, attack: 0, release: 9.6, sustain: "fades", fade: 10.2 } },
     ],
     skills: new SkillLibrary({ builtIn: REPO_SKILLS, user: path.join(root, "Four Hands", "Skills") }),
+    libraries: () => (cards ??= new LibraryCatalogFile(path.join(root, "libraries.json"))),
     now: () => clock,
     setTimer: (fn, ms) => {
       const t = { fn, at: clock + ms, done: false };
@@ -105,6 +108,7 @@ beforeEach(async () => {
   timers = [];
   states = [];
   logs = [];
+  cards = undefined;
   apply = "direct";
   await open();
 });
@@ -1100,5 +1104,53 @@ describe("analyze_mix for the AI (F2.3)", () => {
     expect(fail("analyze_mix", { target: "vinilo" })).toMatch(/Unknown target 'vinilo'/);
     expect(fail("analyze_mix", { bars: "por ahí" })).toMatch(/is not bars/);
     expect(fail("analyze_mix", { lufs: -2 })).toMatch(/lufs goes from -40 to -5/);
+  });
+});
+
+describe("library cards (Fran, 05/11/2026)", () => {
+  it("fills a plugin track's card in the user's catalog, links it, shows it in the overview and warns of notes outside its range", () => {
+    const id = begin("Ficha de las violas");
+    ok("add_track", { intervention_id: id, name: "Violas K", sound: "plugin / kontakt" });
+    expect(ok("get_song_overview")).toMatch(/Violas K.*no library card yet \(set_library_card/);
+    expect(fail("set_library_card", { intervention_id: id, track: "Violas K", velocity: "weak" })).toMatch(/has no library card yet: give it a 'name'/);
+    expect(fail("set_library_card", { intervention_id: id, track: "Violas K", name: "Violas", velocity: "loud" })).toMatch(/start with yes, weak, no or untested/);
+    const text = ok("set_library_card", {
+      intervention_id: id,
+      track: "Violas K",
+      name: "Symphonic Strings · Violas",
+      velocity: "weak: mostly from v80 up",
+      expression: "yes",
+      range: "C2-C6",
+      keyswitches: "C1 Sustain, C#1 Staccato",
+      own_reverb: "off",
+      why: "after the dynamics test",
+    });
+    expect(text).toContain("library card 'Symphonic Strings · Violas': velocity responds weakly (mostly from v80 up); expression CC11 responds; modulation CC1 untested; plays C2–C6: nothing outside");
+    expect(text).toContain("Linked to the track (one undo step)");
+    const track = trackByName("Violas K");
+    expect(track.library?.name).toBe("Symphonic Strings · Violas");
+    const saved = cards!.card(track.library!.id)!;
+    expect(saved).toMatchObject({ host: "Kontakt 8", keyswitches: [{ pitch: 24, name: "Sustain" }, { pitch: 25, name: "Staccato" }], updated: { by: "ai", why: "after the dynamics test" } });
+    expect(ok("get_song_overview")).toMatch(/Violas K.*plays through the plugin Kontakt 8 \(hosted by Four Hands\) · library card 'Symphonic Strings · Violas'/);
+    // Only what is passed changes; it is not linked again.
+    const second = ok("set_library_card", { intervention_id: id, track: "Violas K", modulation: "no" });
+    expect(second).toContain("modulation CC1 does not respond");
+    expect(second).not.toContain("Linked");
+    expect(cards!.card(track.library!.id)!.velocity.state).toBe("weak");
+    // Notes outside the range warn; keyswitches do not.
+    const added = ok("add_notes", { intervention_id: id, track: "Violas K", notes: "C1 1.1 1/4\nC7 1.2 1/4\nE4 1.3 1/4" });
+    expect(added).toMatch(/1 note is outside the range of its library card 'Symphonic Strings · Violas' \(they will not sound\) \(C2–C6\)/);
+  });
+
+  it("links an existing card by its name in another track, and refuses tracks without a plugin", () => {
+    const id = begin("Fichas");
+    ok("add_track", { intervention_id: id, name: "Violas A", sound: "plugin / kontakt" });
+    ok("add_track", { intervention_id: id, name: "Violas B", sound: "plugin / kontakt" });
+    ok("set_library_card", { intervention_id: id, track: "Violas A", name: "Symphonic Strings · Violas", expression: "yes" });
+    expect(fail("set_library_card", { intervention_id: id, track: "Violas B", use: "Cellos" })).toMatch(/No card called 'Cellos'.*'Symphonic Strings · Violas'/);
+    expect(ok("set_library_card", { intervention_id: id, track: "Violas B", use: "symphonic strings · violas" })).toContain("Linked to the track");
+    expect(trackByName("Violas B").library).toEqual(trackByName("Violas A").library);
+    expect(cards!.read().cards).toHaveLength(1);
+    expect(fail("set_library_card", { intervention_id: id, track: orderedTracks(session.song)[0]!.name, name: "x" })).toMatch(/does not sound through a plugin/);
   });
 });

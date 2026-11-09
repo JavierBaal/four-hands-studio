@@ -13,6 +13,7 @@ import { ActivityContent } from "./ActivityPanel.js";
 import { SoundsBrowser } from "./SoundsBrowser.js";
 import { AiIcon, BankIcon, LibraryIcon, ChevronRight, KeysIcon, MidiIcon, PlugIcon, TrackIcon, WindowIcon } from "./Icons.js";
 import { MixRows } from "./Mixer.js";
+import { LibrarySection } from "./LibrarySection.js";
 
 /** The icon of where a track's sound comes from (header, card, toolbar). */
 export function SoundOriginIcon({ origin }: { origin: "builtin" | "bank" | "plugin" | "daw" }) {
@@ -112,6 +113,7 @@ function TrackCard({ audio }: { audio: AudioLayer }) {
           )}
         </div>
       </section>
+      {track.output === "plugin" && track.plugin && <LibrarySection track={track} audio={audio} />}
       <section>
         <p className="ah">{t("trackMenuOutput")}</p>
         <div className="seg tcout" role="radiogroup" aria-label={t("trackMenuOutput")}>

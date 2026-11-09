@@ -129,7 +129,7 @@ export function RollArea({ v, editor, audio, playhead, onResize, onWheel, onKeyP
     let frame = 0;
     const draw = () => {
       const keys = keysRef.current && prepare(keysRef.current);
-      if (keys) drawKeyboard(keys, v, view.noteNames);
+      if (keys) drawKeyboard(keys, v, view.noteNames, track?.output === "plugin" ? audio.libraryCard(track.library?.id) : undefined);
       const notes = notesRef.current && prepare(notesRef.current);
       const now = performance.now();
       const fresh = new Map<string, number>();

@@ -15,7 +15,7 @@
 import { z } from "zod";
 
 /** Bumped whenever a tool, its parameters or its meaning changes. The app refuses other bridges. */
-export const TOOLS_VERSION = 23;
+export const TOOLS_VERSION = 24;
 
 /**
  * Track colours by name (H3.2). The app's palette (desktop/src/shared/track-colors.ts) has the same
@@ -612,6 +612,34 @@ export const TOOLS: readonly ToolDefinition[] = [
     inputSchema: {
       intervention_id: INTERVENTION,
       mix: z.string().describe("One track or bus per line, e.g. 't1 vol 65 pan -40' or 'Cuerdas to Mix bus'"),
+    },
+    annotations: write,
+  },
+  // Library cards (Fran, 05/11/2026): what a sample library responds to, in the user's catalog.
+  {
+    name: "set_library_card",
+    title: "Fill a library card",
+    description:
+      "Write what the sample library a plugin track plays responds to, so you (and the user) know it in every song that uses it: the card lives in the user's catalog, " +
+      "outside the song, and the track links it. The overview shows each plugin track's card, or that it has none. Fill it from what you measured or the user told you " +
+      "(after a dynamics test: velocity layers, CC11, CC1), never from guesses. Only the fields you pass change. " +
+      "velocity / expression / modulation: 'yes', 'weak', 'no' or 'untested', then optionally ': ' and a short note ('weak: only from v80 up'). " +
+      "range: the keys that sound, in Four Hands' scientific pitch (middle C = C4): 'C2-C6'. Kontakt numbers octaves one lower (its C3 is C4 here): convert what its keyboard shows. " +
+      "keyswitches: 'C1 Sustain, C#1 Staccato' (same numbering; 'none' clears them). own_reverb: 'off', 'on' or 'none' (it has none). " +
+      "The user reads the card: write names, notes and 'why' in the user's language. A track without a card gets a new one named 'name' (required then); 'use' links an existing card of the catalog by its name instead. Linking is one undo step in the song; the card's content is not undone.",
+    inputSchema: {
+      intervention_id: INTERVENTION,
+      track: z.string().describe("A track that sounds through a plugin: id or name"),
+      use: z.string().optional().describe("Link this existing card (its name) instead of creating one"),
+      name: z.string().optional().describe("The library and instrument, e.g. 'Symphonic Strings · Violas'"),
+      velocity: z.string().optional(),
+      expression: z.string().optional().describe("CC11"),
+      modulation: z.string().optional().describe("CC1"),
+      range: z.string().optional().describe("e.g. 'C2-C6' (middle C = C4), or 'none'"),
+      keyswitches: z.string().optional().describe("e.g. 'C1 Sustain, C#1 Staccato', or 'none'"),
+      own_reverb: z.enum(["off", "on", "none"]).optional(),
+      notes: z.string().optional().describe("Anything else worth knowing when writing for it"),
+      why: z.string().optional().describe("What you based it on, shown to the user in their language: 'tras la prueba de dinámica'"),
     },
     annotations: write,
   },
