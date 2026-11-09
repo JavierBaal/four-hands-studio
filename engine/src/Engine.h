@@ -230,6 +230,14 @@ public:
         int overruns = 0;
         /** What the driver counted as dropouts since the last call (-1: it does not say). */
         int xruns = -1;
+        // Where the time goes (09/11/2026), in ms summed over the blocks, and the worst block.
+        /** Each strip: its plugin, its effects and its delay line. */
+        std::array<double, kStrips> stripSum {}, stripMax {};
+        int stripsSeen = 0;
+        /** Waiting for the lock the app also takes; the built-in sounds; buses and master; the analysis. */
+        double waitSum = 0, waitMax = 0, soundsSum = 0, soundsMax = 0, mixSum = 0, mixMax = 0, analysisSum = 0, analysisMax = 0;
+        /** The block budget in ms (block size over sample rate). */
+        double budgetMs = 0;
     };
     Stats takeStats();
 
@@ -343,6 +351,9 @@ private:
 
     juce::SpinLock statsLock;
     Stats stats;
+    // Audio thread only: the block under way's costs, in ms (added to `stats` at its end).
+    std::array<double, kStrips> blockStrip {};
+    double blockWait = 0, blockSounds = 0, blockMix = 0, blockAnalysis = 0;
 
     // The plugins' transport, and the points still to come.
     Transport transport;

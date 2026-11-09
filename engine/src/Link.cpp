@@ -390,9 +390,17 @@ juce::var Link::handle (const juce::var& m, Connection& from)
     if (type == "stats")
     {
         const auto s = engine.takeStats();
+        // Where the time goes (09/11/2026): [strip, ms summed, worst ms] for strips that cost anything.
+        juce::Array<juce::var> strips;
+        for (int i = 0; i < s.stripsSeen; ++i)
+            if (s.stripSum[(size_t) i] > 0)
+                strips.add (juce::Array<juce::var> { i, s.stripSum[(size_t) i], s.stripMax[(size_t) i] });
+        const auto stage = [] (double sum, double most) { return juce::var (juce::Array<juce::var> { sum, most }); };
         return obj ({ { "type", "stats" }, { "blocks", (juce::int64) s.blocks }, { "maxLoad", s.maxLoad },
                       { "avgLoad", s.blocks > 0 ? s.sumLoad / (double) s.blocks : 0.0 }, { "late", s.late },
-                      { "overruns", s.overruns }, { "xruns", s.xruns } });
+                      { "overruns", s.overruns }, { "xruns", s.xruns }, { "budgetMs", s.budgetMs }, { "strips", strips },
+                      { "wait", stage (s.waitSum, s.waitMax) }, { "sounds", stage (s.soundsSum, s.soundsMax) },
+                      { "mix", stage (s.mixSum, s.mixMax) }, { "analysis", stage (s.analysisSum, s.analysisMax) } });
     }
 
     // --- Insert effects (F2.2 parte C) ---------------------------------------------------------

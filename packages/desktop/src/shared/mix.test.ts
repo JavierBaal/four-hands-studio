@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { dbToVolume, formatDb, formatPan, formatReverb, parseDb, parsePan, parseReverb, volumeToDb } from "./mix.js";
 import { SongDocument, USER, addBus, addTrack, audible, setOutput, setSend, starterSong, updateBus, updateTrack, withDefaultBuses } from "@fourhands/core";
-import { busChainKey, engineBuses, engineLoad, engineRouting, engineStrips, levelDb, levelsReport, masterGain, stripGain } from "./mix.js";
+import { busChainKey, engineBuses, engineLoad, addCost, costReport, engineRouting, engineStrips, levelDb, levelsReport, masterGain, stripGain } from "./mix.js";
 import { trackColorByName, trackColorId, TRACK_PALETTE } from "./track-colors.js";
 import { TRACK_COLOR_COUNT } from "@fourhands/core";
 
@@ -133,6 +133,18 @@ describe("mute, solo and the master in the engine (F2.2 parte B)", () => {
     expect(engineLoad({ avgLoad: 0.23, maxLoad: 0.4, overruns: 1, xruns: 1 })).toEqual({ avgLoad: 0.23, maxLoad: 0.4, dropouts: 1 });
     expect(engineLoad({ avgLoad: 0.1, maxLoad: 0.2, overruns: 0, xruns: -1 }).dropouts).toBe(0);
     expect(engineLoad({}).avgLoad).toBe(0);
+  });
+
+  it("adds up where a playback's time went, per track and stage, as shares of a block (09/11/2026)", () => {
+    const reading = (kontakt: number, worst: number) =>
+      engineLoad({ blocks: 100, budgetMs: 10, overruns: 1, avgLoad: 0.5, maxLoad: 1.2, strips: [[0, kontakt, worst], [3, 50, 1]], wait: [10, 0.5], sounds: [40, 0.6], mix: [20, 0.3], analysis: [5, 0.1] }).cost!;
+    const total = addCost(addCost(null, reading(300, 4)), reading(500, 9));
+    const report = costReport(total, [{ name: "Violas", strip: 0 }, { name: "Arpa", strip: 3 }]);
+    expect(report).toMatchObject({ blocks: 200, budgetMs: 10, overruns: 2 });
+    expect(report.tracks[0]).toEqual({ track: "Violas", avg: 0.4, max: 0.9 });
+    expect(report.tracks[1]).toEqual({ track: "Arpa", avg: 0.05, max: 0.1 });
+    expect(report.stages.wait).toEqual({ avg: 0.01, max: 0.05 });
+    expect(report.avgLoad).toBeCloseTo(0.525, 3);
   });
 });
 

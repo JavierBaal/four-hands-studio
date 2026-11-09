@@ -10,7 +10,7 @@ import { Engine } from "../audio/engine.js";
 import { INITIAL_KEYBOARD, type KeyboardState, keyAction } from "../audio/keyboard.js";
 import { HIDDEN_LOOKAHEAD, Player, type Target } from "../audio/player.js";
 import { type EnginePort, type MidiPort, SoundRouter, isOwnLoopback } from "../audio/router.js";
-import { type EngineLevels, type EngineLoad, busChainKey, engineBuses, engineChain, engineRouting, engineStrips, levelsReport, masterGain } from "../shared/mix.js";
+import { type EngineCost, type EngineLevels, type EngineLoad, addCost, costReport, busChainKey, engineBuses, engineChain, engineRouting, engineStrips, levelsReport, masterGain } from "../shared/mix.js";
 import { BusMap, METRONOME_KEY, StripMap } from "../shared/strips.js";
 import type { LibraryCard, LibraryCatalog } from "../shared/library-cards.js";
 import { type EffectItem, NO_SOUND_PREFS, type SoundItem, type SoundPrefs, buildCatalog, buildEffectCatalog, withRecent } from "../shared/sound-catalog.js";
@@ -67,6 +67,8 @@ export class AudioLayer {
    * the audio was last cut (the indicator says so for a while).
    */
   engineLoad: EngineLoad | null = null;
+  /** What the engine spent on this playback, per track (09/11/2026; logged at the stop). */
+  private playCost: EngineCost | null = null;
   lastDropoutAt = 0;
   private loadTimer: ReturnType<typeof setInterval> | null = null;
   /**
@@ -159,10 +161,18 @@ export class AudioLayer {
     this.player.subscribe(() => this.changed());
     this.player.onLive = (kind, n) => this.recordLive(kind, n.pitch, n.velocity, n.tick);
     this.player.onLiveCc = (cc, value, tick) => this.recordCc(cc, value, tick);
-    this.player.onStart = () => void this.bridge.engineLevels(true);
+    this.player.onStart = () => {
+      this.playCost = null;
+      void this.bridge.engineLevels(true);
+    };
     this.player.onStop = () => {
       this.finishTake();
       if (this.status === "ready") this.bridge.log({ type: "playback_stats", ...this.stats });
+      if (this.playCost && this.playCost.blocks > 0) {
+        const tracks = this.replica.song.trackOrder.map((id) => this.replica.song.tracks[id]!).filter(Boolean);
+        this.bridge.log({ type: "engine_cost", ...costReport(this.playCost, tracks.map((t) => ({ name: t.name, strip: this.stripOf(t) }))) });
+      }
+      this.playCost = null;
       // F2.2: what each track measured in the engine while it played (tails included).
       setTimeout(() => {
         void this.bridge.engineLevels(false).then((levels) => {
@@ -528,6 +538,7 @@ export class AudioLayer {
         const shown = (l: EngineLoad | null) => (l ? Math.round(l.avgLoad * 100) : -1);
         const before = shown(this.engineLoad);
         this.engineLoad = load;
+        if (load.cost && this.player.playing) this.playCost = addCost(this.playCost, load.cost);
         if (load.dropouts > 0) this.lastDropoutAt = Date.now();
         if (shown(load) !== before || load.dropouts > 0) this.changed();
       });

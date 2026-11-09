@@ -5,6 +5,11 @@
 //                                                          offline and checks it sounds (exit code)
 //   FourHandsEngine --render <bank> <song.mid> <out.wav>   plays a MIDI file with the built-in sounds
 //                                                          offline, to compare them with the app's
+//   FourHandsEngine --bench <folder with VST3> [strips] [seconds]
+//                                                          the load test (09/11/2026): many plugin tracks
+//                                                          with effects, in real time, with a thread that
+//                                                          talks to the engine like the app; prints where
+//                                                          the time goes
 //
 // On start it prints "FH_ENGINE_READY <port>" so Four Hands knows where to connect. It quits when
 // Four Hands goes (connection lost) or never comes (30 s): it must not outlive the app.
@@ -14,6 +19,7 @@
 
 #include <cmath>
 #include <iostream>
+#include <thread>
 
 namespace
 {
@@ -650,6 +656,125 @@ int renderSong (const juce::String& bankPath, const juce::String& midiPath, cons
 }
 } // namespace
 
+/**
+ * The load test (09/11/2026): `strips` instances of the instrument, each with an EQ, a compressor
+ * and a reverb, chords and a CC11 curve on all of them, blocks of 512 at 48 kHz paced in real time,
+ * and a second thread doing what the app does while it plays (notes 200 ms ahead, meters, faders).
+ */
+static int bench (const juce::String& folder, int strips, double seconds)
+{
+    fh::Engine engine;
+    const auto pedal = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("fh-engine-bench-scan.txt");
+    engine.scan (juce::FileSearchPath (folder), pedal, [] (const juce::String&, float) {});
+    juce::PluginDescription chosen;
+    bool found = false;
+    for (const auto& d : engine.known().getTypes())
+        if (d.isInstrument && ! found)
+            chosen = d, found = true;
+    if (! found)
+    {
+        std::cout << "FAIL no instrument found" << std::endl;
+        return 2;
+    }
+    constexpr double rate = 48000.0;
+    constexpr int block = 512;
+    engine.prepareOffline (rate, block);
+    for (int s = 0; s < strips; ++s)
+    {
+        if (const auto problem = engine.load (s, chosen); problem.isNotEmpty())
+        {
+            std::cout << "FAIL load " << problem << std::endl;
+            return 3;
+        }
+        std::vector<fh::Engine::InsertSpec> chain (3);
+        chain[0].id = "eq" + juce::String (s), chain[0].kind = "eq";
+        chain[1].id = "comp" + juce::String (s), chain[1].kind = "compressor";
+        chain[2].id = "rev" + juce::String (s), chain[2].kind = "reverb";
+        engine.setChain (s, chain);
+        engine.setMix (s, 0.3, 0.0);
+    }
+    std::atomic<bool> running { true };
+    const auto t0 = juce::Time::getMillisecondCounterHiRes();
+    // The app: every 20 ms, what falls in the next 200 ms that it has not sent; meters at 30 Hz; a fader.
+    std::thread app ([&] {
+        double sentUntil = 0; // seconds of song
+        int tick = 0;
+        while (running.load())
+        {
+            const double now = (juce::Time::getMillisecondCounterHiRes() - t0) / 1000.0;
+            const double until = now + 0.2;
+            for (double t = std::ceil (sentUntil * 100.0) / 100.0; t < until; t += 0.01)
+            {
+                const int step = (int) std::llround (t * 100.0);
+                for (int s = 0; s < strips; ++s)
+                {
+                    const int ch = 1 + s % 16;
+                    if (step % 25 == 0)
+                        for (int n = 0; n < 4; ++n)
+                        {
+                            engine.schedule (s, t - now, juce::MidiMessage::noteOn (ch, 48 + 7 * n + s % 5, (juce::uint8) 90), s);
+                            engine.schedule (s, t + 0.24 - now, juce::MidiMessage::noteOff (ch, 48 + 7 * n + s % 5), s);
+                        }
+                    engine.schedule (s, t - now, juce::MidiMessage::controllerEvent (ch, 11, 64 + (step + s) % 64), s);
+                }
+            }
+            sentUntil = until;
+            if (tick % 2 == 0)
+            {
+                engine.takeMeters (false);
+                engine.takeBusMeters (false);
+            }
+            if (tick % 5 == 0)
+                engine.setMix (tick % strips, 0.3, 0.0);
+            ++tick;
+            std::this_thread::sleep_for (std::chrono::milliseconds (20));
+        }
+    });
+    juce::AudioBuffer<float> out (2, block);
+    const double budgetMs = 1000.0 * block / rate;
+    const int blocks = (int) (seconds * rate / block);
+    double next = juce::Time::getMillisecondCounterHiRes();
+    std::vector<double> loads;
+    fh::Engine::Stats total;
+    for (int b = 0; b < blocks; ++b)
+    {
+        std::array<float*, 2> ptrs { out.getWritePointer (0), out.getWritePointer (1) };
+        engine.audioDeviceIOCallbackWithContext (nullptr, 0, ptrs.data(), 2, block, {});
+        next += budgetMs;
+        const double wait = next - juce::Time::getMillisecondCounterHiRes();
+        if (wait > 0)
+            juce::Thread::sleep ((int) wait);
+        if ((b + 1) % 94 == 0) // about a second, as the app asks
+        {
+            const auto s = engine.takeStats();
+            total.blocks += s.blocks;
+            total.sumLoad += s.sumLoad;
+            total.maxLoad = juce::jmax (total.maxLoad, s.maxLoad);
+            total.overruns += s.overruns;
+            total.waitSum += s.waitSum, total.waitMax = juce::jmax (total.waitMax, s.waitMax);
+            total.soundsSum += s.soundsSum;
+            total.mixSum += s.mixSum, total.mixMax = juce::jmax (total.mixMax, s.mixMax);
+            total.analysisSum += s.analysisSum;
+            for (int i = 0; i < strips; ++i)
+                total.stripSum[(size_t) i] += s.stripSum[(size_t) i], total.stripMax[(size_t) i] = juce::jmax (total.stripMax[(size_t) i], s.stripMax[(size_t) i]);
+        }
+    }
+    running = false;
+    app.join();
+    if (total.blocks == 0)
+        return 4;
+    double stripsMs = 0, worstStrip = 0;
+    for (int i = 0; i < strips; ++i)
+        stripsMs += total.stripSum[(size_t) i], worstStrip = juce::jmax (worstStrip, total.stripMax[(size_t) i]);
+    const auto per = [&] (double sum) { return sum / (double) total.blocks / budgetMs; };
+    std::cout << "BENCH strips " << strips << " blocks " << total.blocks << " budget " << budgetMs << " ms" << std::endl;
+    std::cout << "BENCH load avg " << total.sumLoad / (double) total.blocks << " max " << total.maxLoad << " overruns " << total.overruns << std::endl;
+    std::cout << "BENCH tracks avg " << per (stripsMs) << " (one track " << per (stripsMs) / strips << ", worst block of one " << worstStrip / budgetMs << ")" << std::endl;
+    std::cout << "BENCH wait avg " << per (total.waitSum) << " max " << total.waitMax / budgetMs << " | mix avg " << per (total.mixSum) << " max " << total.mixMax / budgetMs
+              << " | analysis avg " << per (total.analysisSum) << std::endl;
+    return 0;
+}
+
 class EngineApp final : public juce::JUCEApplication, private juce::Timer
 {
 public:
@@ -667,6 +792,15 @@ public:
             for (int k = i + 4; k < args.size(); ++k)
                 extra.add (args[k].unquoted());
             setApplicationReturnValue (renderSong (args[i + 1].unquoted(), args[i + 2].unquoted(), args[i + 3].unquoted(), extra));
+            quit();
+            return;
+        }
+        if (args.contains ("--bench"))
+        {
+            const auto i = args.indexOf ("--bench");
+            const int strips = juce::jlimit (1, 256, args[i + 2].getIntValue() > 0 ? args[i + 2].getIntValue() : 20);
+            const double seconds = args[i + 3].getDoubleValue() > 0 ? args[i + 3].getDoubleValue() : 10.0;
+            setApplicationReturnValue (bench (args[i + 1].unquoted(), strips, seconds));
             quit();
             return;
         }

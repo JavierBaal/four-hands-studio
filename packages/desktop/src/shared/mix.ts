@@ -240,15 +240,69 @@ export interface EngineLoad {
   maxLoad: number;
   /** Times the audio was cut since the last reading (blocks over budget, or the driver's count). */
   dropouts: number;
+  /** Where the time went (09/11/2026), if the engine says: blocks, budget and ms per strip and stage. */
+  cost?: EngineCost;
 }
 
+/** ms summed over `blocks` blocks and the worst block, per strip and per stage of the engine. */
+export interface EngineCost {
+  blocks: number;
+  budgetMs: number;
+  overruns: number;
+  strips: Record<number, { sum: number; max: number }>;
+  stages: Record<"wait" | "sounds" | "mix" | "analysis", { sum: number; max: number }>;
+}
+
+const STAGES = ["wait", "sounds", "mix", "analysis"] as const;
+
 /** From the engine's `stats` reply. */
-export function engineLoad(stats: { avgLoad?: number; maxLoad?: number; overruns?: number; xruns?: number }): EngineLoad {
-  return {
-    avgLoad: Math.max(0, stats.avgLoad ?? 0),
-    maxLoad: Math.max(0, stats.maxLoad ?? 0),
+export function engineLoad(stats: Record<string, unknown>): EngineLoad {
+  const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
+  const load: EngineLoad = {
+    avgLoad: Math.max(0, num(stats.avgLoad)),
+    maxLoad: Math.max(0, num(stats.maxLoad)),
     // The driver's count and ours often see the same cut: take the larger, not the sum.
-    dropouts: Math.max(0, stats.overruns ?? 0, stats.xruns ?? 0),
+    dropouts: Math.max(0, num(stats.overruns), num(stats.xruns)),
+  };
+  if (Array.isArray(stats.strips) && num(stats.blocks) > 0) {
+    const pair = (v: unknown) => (Array.isArray(v) ? { sum: num(v[0]), max: num(v[1]) } : { sum: 0, max: 0 });
+    const cost: EngineCost = { blocks: num(stats.blocks), budgetMs: num(stats.budgetMs), overruns: num(stats.overruns), strips: {}, stages: { wait: pair(stats.wait), sounds: pair(stats.sounds), mix: pair(stats.mix), analysis: pair(stats.analysis) } };
+    for (const row of stats.strips as unknown[]) if (Array.isArray(row)) cost.strips[num(row[0])] = { sum: num(row[1]), max: num(row[2]) };
+    load.cost = cost;
+  }
+  return load;
+}
+
+/** Adds a reading to what a playback has cost so far. */
+export function addCost(total: EngineCost | null, next: EngineCost): EngineCost {
+  if (!total) return structuredClone(next);
+  const add = (a: { sum: number; max: number } | undefined, b: { sum: number; max: number }) => ({ sum: (a?.sum ?? 0) + b.sum, max: Math.max(a?.max ?? 0, b.max) });
+  for (const [k, v] of Object.entries(next.strips)) total.strips[Number(k)] = add(total.strips[Number(k)], v);
+  for (const k of STAGES) total.stages[k] = add(total.stages[k], next.stages[k]);
+  total.blocks += next.blocks;
+  total.overruns += next.overruns;
+  total.budgetMs = next.budgetMs || total.budgetMs;
+  return total;
+}
+
+/**
+ * What a playback cost, for the log: the average share of the budget, then per track (and the
+ * engine's stages) the average and the worst block, as shares of one block's budget (1 = all of it).
+ */
+export function costReport(cost: EngineCost, tracks: ReadonlyArray<{ name: string; strip: number }>) {
+  const share = (ms: number) => Math.round((ms / Math.max(1e-9, cost.budgetMs)) * 1000) / 1000;
+  const avg = (v: { sum: number }) => share(v.sum / Math.max(1, cost.blocks));
+  const total = Object.values(cost.strips).reduce((s, v) => s + v.sum, 0) + STAGES.reduce((s, k) => s + cost.stages[k].sum, 0);
+  const byStrip = new Map(tracks.map((t) => [t.strip, t.name]));
+  return {
+    blocks: cost.blocks,
+    budgetMs: Math.round(cost.budgetMs * 100) / 100,
+    overruns: cost.overruns,
+    avgLoad: share(total / Math.max(1, cost.blocks)),
+    tracks: Object.entries(cost.strips)
+      .map(([k, v]) => ({ track: byStrip.get(Number(k)) ?? `strip ${k}`, avg: avg(v), max: share(v.max) }))
+      .sort((a, b) => b.avg - a.avg),
+    stages: Object.fromEntries(STAGES.map((k) => [k, { avg: avg(cost.stages[k]), max: share(cost.stages[k].max) }])),
   };
 }
 

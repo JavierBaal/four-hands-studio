@@ -388,13 +388,35 @@ void Engine::audioDeviceIOCallbackWithContext (const float* const*, int, float* 
     process (outputs, numOutputs, numSamples);
     const auto budget = 1000.0 * numSamples / sampleRate;
     const auto load = (juce::Time::getMillisecondCounterHiRes() - started) / budget;
+    const int n = used.load();
     const juce::SpinLock::ScopedLockType sl (statsLock);
     stats.blocks++;
     stats.maxLoad = juce::jmax (stats.maxLoad, load);
     stats.sumLoad += load;
     if (load > 1.0)
         stats.overruns++;
+    stats.budgetMs = budget;
+    stats.stripsSeen = juce::jmax (stats.stripsSeen, n);
+    for (int s = 0; s < n; ++s)
+    {
+        stats.stripSum[(size_t) s] += blockStrip[(size_t) s];
+        stats.stripMax[(size_t) s] = juce::jmax (stats.stripMax[(size_t) s], blockStrip[(size_t) s]);
+    }
+    const auto add = [] (double& sum, double& most, double v) { sum += v; most = juce::jmax (most, v); };
+    add (stats.waitSum, stats.waitMax, blockWait);
+    add (stats.soundsSum, stats.soundsMax, blockSounds);
+    add (stats.mixSum, stats.mixMax, blockMix);
+    add (stats.analysisSum, stats.analysisMax, blockAnalysis);
 }
+
+namespace
+{
+/** Milliseconds since `from` (high resolution ticks). */
+double msSince (juce::int64 from)
+{
+    return juce::Time::highResolutionTicksToSeconds (juce::Time::getHighResolutionTicks() - from) * 1000.0;
+}
+} // namespace
 
 Engine::Stats Engine::takeStats()
 {
@@ -423,7 +445,9 @@ void Engine::process (float* const* outputs, int numOutputs, int numSamples)
         if (outputs[c] != nullptr)
             juce::FloatVectorOperations::clear (outputs[c], numSamples);
 
+    auto tick = juce::Time::getHighResolutionTicks();
     const juce::SpinLock::ScopedLockType sl (lock);
+    blockWait = msSince (tick);
     const auto start = position.load();
     const auto end = start + numSamples;
 
@@ -491,6 +515,7 @@ void Engine::process (float* const* outputs, int numOutputs, int numSamples)
         strips.clear (2 * s, 0, numSamples);
         strips.clear (2 * s + 1, 0, numSamples);
         sends.clear (s, 0, numSamples);
+        blockStrip[(size_t) s] = 0;
     }
     master.clear (0, numSamples);
     busIn.clear (0, numSamples);
@@ -500,6 +525,13 @@ void Engine::process (float* const* outputs, int numOutputs, int numSamples)
         auto* plugin = live[(size_t) s];
         if (plugin == nullptr)
             continue;
+        tick = juce::Time::getHighResolutionTicks();
+        const struct Charge
+        {
+            double& to;
+            juce::int64 from;
+            ~Charge() { to += msSince (from); }
+        } charge { blockStrip[(size_t) s], tick };
         const auto channels = juce::jmax (plugin->getTotalNumInputChannels(), plugin->getTotalNumOutputChannels());
         juce::AudioBuffer<float> buffer (scratch.getArrayOfWritePointers(), juce::jmin (channels, scratch.getNumChannels()), numSamples);
         buffer.clear();
@@ -511,14 +543,23 @@ void Engine::process (float* const* outputs, int numOutputs, int numSamples)
         for (int c = 0; c < 2; ++c)
             strips.addFrom (2 * s + c, 0, buffer, juce::jmin (c, outChannels - 1), 0, numSamples);
     }
+    tick = juce::Time::getHighResolutionTicks();
     if (auto* sounds = static_cast<SoundFontSynth*> (live[(size_t) kSoundsSlot]))
         sounds->processSplit (soundsEvents, numSamples, strips.getArrayOfWritePointers(), sends.getArrayOfWritePointers(),
                               (r != nullptr ? masterIn : master).getWritePointer (0), (r != nullptr ? masterIn : master).getWritePointer (1));
 
+    blockSounds = msSince (tick);
     // Insert effects (F2.2 parte C), then the delay that lines every strip up with the slowest one.
     const int comp = maxLatency.load();
     for (int ch = 0; ch < inUse; ++ch)
     {
+        tick = juce::Time::getHighResolutionTicks();
+        const struct Charge
+        {
+            double& to;
+            juce::int64 from;
+            ~Charge() { to += msSince (from); }
+        } charge { blockStrip[(size_t) ch], tick };
         float* L = strips.getWritePointer (2 * ch);
         float* R = strips.getWritePointer (2 * ch + 1);
         auto* chain = chains[(size_t) ch].get();
@@ -536,6 +577,7 @@ void Engine::process (float* const* outputs, int numOutputs, int numSamples)
         }
     }
 
+    tick = juce::Time::getHighResolutionTicks();
     if (r != nullptr)
         mixRouted (*r, inUse, numSamples);
     else
@@ -548,7 +590,10 @@ void Engine::process (float* const* outputs, int numOutputs, int numSamples)
         juce::FloatVectorOperations::multiply (master.getWritePointer (1), mg, numSamples);
     }
     meters[(size_t) kStrips].add (master.getReadPointer (0), master.getReadPointer (1), numSamples);
+    blockMix = msSince (tick);
+    tick = juce::Time::getHighResolutionTicks();
     analyse (inUse, numSamples);
+    blockAnalysis = msSince (tick);
 
     for (int c = 0; c < numOutputs; ++c)
         if (outputs[c] != nullptr)
