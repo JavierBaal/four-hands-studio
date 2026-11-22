@@ -1,0 +1,20 @@
+name: Idea or feature request
+description: Something Four Hands could do, or do better
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: The situation and the need, in a composer's words, before any solution.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help
+  - type: textarea
+    id: context
+    attributes:
+      label: How you work today
+      description: Your DAW, your libraries, how you use your AI. Optional, but it helps.

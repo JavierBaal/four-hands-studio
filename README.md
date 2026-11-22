@@ -1,56 +1,70 @@
 # Four Hands Studio
 
-Herramienta de composición MIDI multipista en la que compones de forma visual y tu propia IA compone contigo vía MCP, sobre la misma partitura y viendo en directo los cambios del otro.
+**Compose MIDI four-handed with your own AI.** You and your AI work on the same score at the same time: you play and edit in a piano roll, it reads and writes through MCP, and each of you sees the other's notes appear live. Every note shows who wrote it.
 
-**Estado:** prototipo en construcción (fase 1). Hechos el núcleo (H1) y la edición (H2): la app abre *Dilatación*, se edita con los gestos de `ESPEC_PIANO_ROLL.md`, suena, graba y guarda sola. Falta la mano de la IA (H3). Repositorio privado.
+[Leer en español](README.es.md)
 
-## Dónde está cada cosa
+![Four Hands Studio with the demo song: the arrangement on top, the piano roll with the user's notes in amber and the AI's in blue, and the song's concept in the AI panel](docs/images/four-hands-studio.png)
 
-| Qué | Dónde |
-|---|---|
-| Código | Este repositorio. Es la única fuente de verdad del código |
-| Documentos del proyecto (PRD, arquitectura, especificaciones, dirección artística) | Carpeta `H:\SALA_CREATIVA\Four Hands Studio` de Fran, con copia en el proyecto "Four Hands Studio" de claude.ai. El punto de entrada es `INICIO.md` |
-| Arquitectura del prototipo | `ARQUITECTURA.md` en esa carpeta |
+> **Status: early.** Four Hands is a working prototype, built and used daily on Windows by one composer. It has not been tested on macOS or with many users yet. Expect rough edges, and please report them.
 
-## Paquetes
+## What it is
 
-| Paquete | Contenido |
-|---|---|
-| `packages/core` | Núcleo: modelo de la canción, comandos, deshacer, autoría, propuestas, formato compacto, MIDI y análisis. TypeScript puro, sin interfaz ni E/S |
-| `packages/mcp-tools` | Definiciones de las herramientas MCP, compartidas por el puente y la app |
-| `packages/bridge` | El puente `.mcpb` para Claude Desktop |
-| `packages/desktop` | La app Electron: la canción en el proceso principal (`src/main`), la ventana en React y canvas (`src/renderer`), el sonido (`src/audio`, `src/worklet`), la prueba de sonido S0 (`src/s0`) y la escucha a ciegas (`src/escucha`) |
-| `tools/prueba-mcpb` | Fuente de la app de la prueba de instalación del 13/10/2026 (referencia) |
+- **A composition tool, not a generator.** There is no music model inside. The AI is the one you already use (Claude, through Claude Desktop), connected over MCP. It composes with you the way a human arranger sitting next to you would: it reads the score, asks, proposes, writes and explains, and you decide.
+- **A shared score.** The AI writes in its own colour, in small interventions you can hear with and without (key B) and undo in one step. It never moves your view, your selection or your playback. When you move notes you played, they keep their timing; quantizing is always your call.
+- **A piano roll that behaves like the DAWs composers know**, based on what Cubase, Logic and Studio One have in common: arrangement, form, harmony, tempo and key changes, velocity, pedal and expression curves, recording from a MIDI keyboard or the computer keyboard.
+- **Your instruments and a real mix.** A native audio engine hosts VST3 instruments and effects (Kontakt, Vital…), with a mixing console, buses, sends and Four Hands' own EQ, compressor, limiter, reverb and delay. It measures what it plays (loudness, spectrum, masking), so the AI can mix with you by measuring, not guessing.
+- **Honest.** The AI is told to give opinions backed by the score, to name what does not work even if you like it, and not to praise its own work. You choose the tone, not the honesty.
 
-## Comandos
+It is aimed at composers who write slowly and on purpose (film, series, concert, game music), whether they have formal training or not, and want a co-author to think with rather than a button that produces a track.
 
-Requiere Node 24 o superior (trae npm 11; npm 10 falla al instalar este repositorio).
+## How it works
 
-```bash
-npm install
-npm run check          # tipos y pruebas
-npm run app            # abre la app
-npm run s0             # solo la prueba de sonido y latencia
-npm run escucha        # solo la escucha a ciegas de SoundFonts
-npm run build:bridge   # genera packages/bridge/dist/fourhands-mcp-<versión>.mcpb
+```
+Claude Desktop ──stdio──▶ Four Hands bridge (.mcpb) ──local WebSocket──▶ Four Hands app ──▶ audio engine (JUCE)
 ```
 
-El SoundFont se busca en `recursos/soundfonts/MuseScore_General.sf3` junto a la carpeta del repositorio, o en la ruta de la variable `FH_SOUNDFONT`. Sin él, la app funciona sin sonido.
+The app holds the song. Your mouse and keyboard and the AI's tools go through the same command layer, so every change, yours or the AI's, is a signed, undoable step. The AI has 45 tools to read, write, analyze and measure, and none of them composes: composing is up to you and your AI. More in [docs/architecture.md](docs/architecture.md) and [docs/mcp.md](docs/mcp.md).
 
-### Pruebas de la interfaz (necesitan Chromium o Electron)
+The first time you open Four Hands, it opens **Invasion**, a demo song with fourteen tracks, group buses, reverbs and a delay, written four-handed with Claude. Its history shows each of Claude's interventions.
+
+## Getting started
+
+**Requirements:** Windows 10 or 11 (macOS is planned but untested), and [Claude Desktop](https://claude.ai/download) for the AI. Any MCP client that runs local stdio servers can use the bridge.
+
+**From source** (there is no packaged installer yet):
 
 ```bash
-npm run capturas -- <chromium>     # capturas para comparar con bocetos/capturas (carpeta capturas/)
-npm run interaccion -- <chromium>  # gestos del piano roll, transporte y grabación, en un navegador real
-npm run arranque                   # la app Electron de verdad: primera vez, guardado, cierre y reapertura
+git clone https://github.com/JavierBaal/four-hands-studio.git
+cd four-hands-studio
+npm install        # needs Node 24 (npm 11)
+npm run app
 ```
 
-La ventana también funciona en un navegador normal (`npm run build -w @fourhands/desktop -- --harness`, carpeta `packages/desktop/dist/harness`): sin Electron, con la canción en memoria. `?song=boceto` carga los datos del boceto aprobado; `?sf=<archivo>` carga un SoundFont servido al lado.
+To play plugins and use the mixer, build the audio engine too, and put the sound banks next to the repository. Step by step: [BUILDING.md](BUILDING.md).
 
-## Pruebas automáticas
+**Connecting your AI:** in the app, *Help > How to connect your AI*, then *Connect with Claude*. Claude Desktop shows its installation window for the Four Hands extension; confirm it. Then ask Claude to compose with you: it will load the Four Hands skills by itself.
 
-`npm run check` se ejecuta antes de cada subida. La configuración de GitHub Actions (`.github/workflows/ci.yml`) está lista para Windows, Mac y Linux, pero de momento solo se lanza a mano: Actions no está disponible en esta cuenta.
+## Documentation
 
-## Copia en el ordenador de Fran
+| Document | What it covers |
+|---|---|
+| [docs/architecture.md](docs/architecture.md) | How the app is built and why |
+| [docs/mcp.md](docs/mcp.md) | What the AI can see and do: the musical text format, the tools, interventions |
+| [docs/piano-roll.md](docs/piano-roll.md) | Gestures and shortcuts |
+| [docs/design.md](docs/design.md) | The visual design: tokens, type, layout, components |
+| [docs/audio-engine.md](docs/audio-engine.md) | The native audio engine |
+| [skills/](skills/README.md) | The craft the AI loads while composing |
+| [BUILDING.md](BUILDING.md) | Building the app, the bridge and the engine |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | How to help |
 
-La carpeta `codigo/` dentro de `H:\SALA_CREATIVA\Four Hands Studio` es una copia de trabajo de este repositorio. Solo se actualiza con git (`git pull` o GitHub Desktop), nunca copiando archivos a mano.
+## Roadmap
+
+- **Next:** automation, export to WAV (mix and stems), a Windows installer.
+- **Later:** macOS, keyswitch writing for orchestral libraries, a plugin that links Four Hands with your DAW.
+
+## Licence
+
+The app, the bridge, the core, the MCP tools and the skills are [MIT](LICENSE). The audio engine in [`engine/`](engine) is [AGPLv3](engine/LICENSE), because it is built on [JUCE](https://juce.com), which is available under the AGPLv3 or a commercial licence. Third-party components and sound banks are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+Made by [Fran Barbero](https://github.com/JavierBaal) with Claude, four-handed.

@@ -3,8 +3,8 @@
   "name": "fourhands-mcp",
   "display_name": "Four Hands Studio",
   "version": "__VERSION__",
-  "description": "Conecta tu IA con la partitura abierta en Four Hands Studio.",
-  "long_description": "Puente de Four Hands Studio para Claude Desktop. Habla con la app abierta en este ordenador por WebSocket local (127.0.0.1) con token. No envía nada a internet.",
+  "description": "Connect your AI with the score open in Four Hands Studio.",
+  "long_description": "The Four Hands Studio bridge for Claude Desktop. It talks to the app open on this computer over a local WebSocket (127.0.0.1) with a token. It sends nothing to the internet.",
   "author": { "name": "Fran Barbero" },
   "icon": "icon.png",
   "server": {
@@ -18,7 +18,9 @@
   "tools": "__TOOLS__",
   "prompts": "__PROMPTS__",
   "keywords": ["music", "midi", "composition", "piano roll"],
-  "license": "Proprietary",
+  "license": "MIT",
+  "homepage": "https://github.com/JavierBaal/four-hands-studio",
+  "repository": { "type": "git", "url": "https://github.com/JavierBaal/four-hands-studio" },
   "compatibility": {
     "platforms": ["win32", "darwin"],
     "runtimes": { "node": ">=18.0.0" }

@@ -1,0 +1,29 @@
+name: Bug report
+description: Something does not work as it should
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: "1. Open the demo song\n2. …"
+  - type: input
+    id: system
+    attributes:
+      label: System
+      placeholder: "Windows 11, Four Hands from main (commit…), Claude Desktop version…"
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: The relevant lines of registro-app.jsonl (in %APPDATA%\Four Hands Studio on Windows), if any.
+      render: text

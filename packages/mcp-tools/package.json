@@ -1,6 +1,7 @@
 {
   "name": "@fourhands/mcp-tools",
   "version": "0.0.0",
+  "license": "MIT",
   "private": true,
   "description": "Single source of the MCP tool definitions (names, descriptions, parameters, annotations) shared by the bridge and the app.",
   "type": "module",

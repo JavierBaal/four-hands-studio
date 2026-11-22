@@ -70,13 +70,18 @@ await win.waitForTimeout(100);
 await app.close();
 saved = JSON.parse(fs.readFileSync(file, "utf8"));
 check("saves on quit", Object.keys(saved.song.notes).length === 1024 && saved.history.length === 2);
+// The note was added and undone: on saving, that step is marked dropped (docs/architecture.md, 5.1).
+check("the undone step is saved as dropped", saved.history.some((h) => h.kind === "edit" && h.dropped));
 app = await launch();
 win = await app.firstWindow();
 await win.waitForSelector(".topbar", { timeout: 30000 });
 await win.waitForTimeout(800);
-check("reopens the last song with its history", (await win.locator(".hist .hi").count()) === 2, `${await title(app)}: ${await win.locator(".hist .hi").count()}`);
+check("reopens the last song", (await title(app)) === "Dilatacion · Four Hands Studio", await title(app));
+check("a dropped step is not listed in the next session", (await win.locator(".hist .hi").count()) === 0, await win.locator(".hist .hi").count());
 await app.close();
-const log = fs.readFileSync(path.join(home, ".config", "Four Hands Studio", "registro-app.jsonl"), "utf8");
+// The log goes next to recursos/ in a development checkout that has it, otherwise to the app's data folder.
+const logFiles = [path.join(home, ".config", "Four Hands Studio", "registro-app.jsonl"), path.resolve(appDir, "..", "..", "..", "registro-app.jsonl")];
+const log = fs.readFileSync(logFiles.find((f) => fs.existsSync(f)), "utf8");
 if (process.argv[2]) check("sound loads", /"type":"sound_ready"/.test(log));
 check("no page errors", errors.length === 0, errors.join("\n"));
 fs.rmSync(home, { recursive: true, force: true });

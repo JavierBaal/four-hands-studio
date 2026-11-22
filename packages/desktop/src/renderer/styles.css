@@ -305,7 +305,7 @@ input.inline.mixval { height: 16px; padding: 0 2px; font-size: 10px; text-align:
 .soundshelp li { margin: 3px 0; }
 .soundshelp .hint { color: var(--text-2); font-size: 12px; }
 /* The song concept, at the top of the activity panel */
-.concept .cbody { padding: 10px 12px; }
+.concept .cbody { display: block; flex: none; padding: 10px 12px; }
 .concept .cline { margin: 0; color: var(--text); font-size: 13px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
 .concept .cmeta { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 11px; color: var(--text-2); }
 .concept .cmeta .linkbtn { margin-left: auto; font-size: 11px; }

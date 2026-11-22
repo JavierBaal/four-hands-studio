@@ -1,6 +1,7 @@
 {
   "name": "@fourhands/desktop",
   "version": "0.0.1",
+  "license": "MIT",
   "private": true,
   "description": "Four Hands desktop app (Electron): the song in the main process, the window, sound and recording.",
   "type": "module",

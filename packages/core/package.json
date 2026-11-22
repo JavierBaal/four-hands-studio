@@ -1,6 +1,7 @@
 {
   "name": "@fourhands/core",
   "version": "0.0.0",
+  "license": "MIT",
   "private": true,
   "description": "Four Hands core: song model, commands, undo, authorship, proposals, compact format, MIDI and analysis. Pure TypeScript, no UI, no I/O.",
   "type": "module",

@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "description": "Four Hands Studio: compose MIDI side by side with your own AI (prototype).",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "type": "module",
   "workspaces": [
     "packages/*"
