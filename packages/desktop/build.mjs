@@ -61,8 +61,8 @@ for (const entry of fs.readdirSync(skillsSrc, { withFileTypes: true })) {
   }
 }
 
-// The song the app opens the first time (ESTUDIO_INTERFAZ.md, 8.6).
-fs.copyFileSync(path.join(here, "..", "core", "test-data", "Dilatacion.mid"), path.join(out, "Dilatacion.mid"));
+// The demo song: what the app opens the first time, and Help > Open the demo song (src/main/demo.ts).
+fs.copyFileSync(path.join(here, "demo", "Invasion.fourhands"), path.join(out, "Invasion.fourhands"));
 
 if (harness) {
   const dir = path.join(out, "harness");

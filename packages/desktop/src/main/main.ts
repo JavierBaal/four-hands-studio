@@ -19,6 +19,7 @@ import { SkillImportError, SkillLibrary, importSkillZip } from "./ai/skills.js";
 import { AiServer } from "./ai/server.js";
 import { connectClaude, findMcpb } from "./ai/connect.js";
 import { type SessionOptions, SongSession } from "./session.js";
+import { DEMO_FILE, copyDemo } from "./demo.js";
 import { PluginWatch } from "./plugin-watch.js";
 import type { PluginStates, Song } from "@fourhands/core";
 import { SoundLibrary } from "./sound-library.js";
@@ -365,7 +366,7 @@ function sessionOptions(): SessionOptions {
   };
 }
 
-/** A file passed on the command line (double-clicking a song), the last song, or Dilatación the first time. */
+/** A file passed on the command line (double-clicking a song), the last song, or the demo the first time. */
 async function openInitialSong(): Promise<SongSession> {
   const settings = readSettings();
   const fromArgs = process.argv.slice(1).find((a) => /\.(fourhands|mid|midi)$/i.test(a) && fs.existsSync(a));
@@ -379,8 +380,16 @@ async function openInitialSong(): Promise<SongSession> {
   }
   if (!settings.firstRunDone) {
     writeSettings({ firstRunDone: true });
-    const dilatacion = path.join(here, "Dilatacion.mid");
-    if (fs.existsSync(dilatacion)) return SongSession.open(sessionOptions(), dilatacion);
+    try {
+      const demo = copyDemo(path.join(here, DEMO_FILE), songsDir());
+      if (demo) {
+        const opened = await SongSession.open(sessionOptions(), demo);
+        writeSettings({ lastFile: demo });
+        return opened;
+      }
+    } catch (error) {
+      appendLog({ type: "open_failed", file: DEMO_FILE, error: (error as Error).message });
+    }
   }
   return SongSession.createNew(sessionOptions());
 }
@@ -388,6 +397,20 @@ async function openInitialSong(): Promise<SongSession> {
 function updateTitle(): void {
   if (!win || !songs) return;
   win.setTitle(`${songs.fileState().name} · Four Hands Studio`);
+}
+
+/** Help > Open the demo song: a fresh copy, so the user's earlier copy keeps their changes. */
+async function openDemo(): Promise<void> {
+  if (!win || !songs) return;
+  try {
+    const demo = copyDemo(path.join(here, DEMO_FILE), songsDir());
+    if (!demo) return;
+    await songs.load(demo);
+    writeSettings({ lastFile: songs.path });
+  } catch (error) {
+    dialog.showErrorBox(t("openFailed"), (error as Error).message);
+    appendLog({ type: "open_failed", file: DEMO_FILE, error: (error as Error).message });
+  }
 }
 
 async function openWith(kind: "song" | "midi"): Promise<void> {
@@ -511,6 +534,7 @@ function buildMenu(): void {
       submenu: [
         // Only help (ESTUDIO_INTERFAZ_2.md, 5.4); settings, folders and test tools are in Ajustes.
         { label: t("menuConnectAi"), click: () => sendMenu("skills") },
+        { label: t("menuOpenDemo"), click: () => void openDemo() },
         { type: "separator" },
         { label: t("menuAbout"), click: () => void about() },
       ],

@@ -11,3 +11,5 @@ registro-prueba.jsonl
 .env.*
 capturas/
 puente/
+*.dmp
+registro*.jsonl

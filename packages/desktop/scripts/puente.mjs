@@ -27,7 +27,9 @@ const check = (name, ok, detail = "") => {
 };
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
-const app = await electron.launch({ executablePath: electronPath, args: [".", "--no-sandbox"], cwd: appDir, env });
+// Dilatación, not the demo the first run opens: the routes below check its bars and sections.
+const dilatacion = path.join(appDir, "..", "core", "test-data", "Dilatacion.mid");
+const app = await electron.launch({ executablePath: electronPath, args: [".", "--no-sandbox", dilatacion], cwd: appDir, env });
 const win = await app.firstWindow();
 await win.setViewportSize({ width: 1440, height: 900 }).catch(() => {});
 const errors = [];
