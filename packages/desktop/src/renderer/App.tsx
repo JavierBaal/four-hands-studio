@@ -28,6 +28,8 @@ import { Splitter } from "./components/Splitter.js";
 
 /** The piano roll keeps at least this much height when the arrangement grows. */
 const ROLL_MIN = 220;
+/** The arrangement's share of the height by default when its tracks do not fit. */
+const ARR_SHARE = 0.4;
 /** F2.2 parte B: what the console keeps at least, below the arrangement (a fader that can be used). */
 const CONSOLE_MIN = 420;
 import { type Action, DEFAULT_SHORTCUTS, PIANO_MODE_ALLOWED, actionFor } from "./shortcuts.js";
@@ -353,11 +355,14 @@ export function App({ audio, onEditor }: AppProps) {
   );
 
   // Arrangement height (splitter): as tall as the tracks need by default; the piano roll keeps at
-  // least ROLL_MIN pixels; at least one track stays in sight.
+  // least ROLL_MIN pixels; at least one track stays in sight. When the tracks do not fit, the
+  // default is ARR_SHARE of the height: the arrangement scrolls and the roll keeps room for notes
+  // (its toolbar, strips and velocity lane alone take about ROLL_MIN).
   const laneH = compact ? SIZE.arrangeLaneCompact : SIZE.arrangeLane;
   const arrNatural = SIZE.arrangeStrip + song.trackOrder.length * laneH + 27;
   const arrMin = SIZE.arrangeStrip + laneH + 4;
   const arrMax = Math.max(arrMin, (workSize.height || 800) - ROLL_MIN);
+  const arrDefault = arrNatural <= arrMax ? arrNatural : Math.min(arrMax, Math.max(arrMin, Math.round((workSize.height || 800) * ARR_SHARE)));
   useEffect(() => {
     // Saved once the view settles (a vertical zoom glides through in-between heights).
     // A column opened only for a moment (panelPeek) is remembered folded.
@@ -384,7 +389,7 @@ export function App({ audio, onEditor }: AppProps) {
   const mixing = v.bottom === "mix";
   const mixArrMax = Math.max(arrMin, (workSize.height || 800) - CONSOLE_MIN);
   const mixArrDefault = Math.min(arrNatural, mixArrMax);
-  const arrShown = mixing ? Math.min(v.mixArrHeight ?? mixArrDefault, mixArrMax) : Math.min(v.arrHeight ?? arrNatural, arrMax);
+  const arrShown = mixing ? Math.min(v.mixArrHeight ?? mixArrDefault, mixArrMax) : Math.min(v.arrHeight ?? arrDefault, arrMax);
 
   useSyncExternalStore(editor.subscribe, editor.getVersion);
   const overlayMenus = editor.overlay;
@@ -433,7 +438,7 @@ export function App({ audio, onEditor }: AppProps) {
                 onPan={pan}
                 onToggle={toggleTrack}
                 audio={audio}
-                height={mixing ? arrShown : v.arrHeight !== null ? Math.min(v.arrHeight, arrMax) : null}
+                height={mixing || v.arrHeight !== null || arrDefault < arrNatural ? arrShown : null}
               />
               <Splitter
                 dir="row"
@@ -446,7 +451,7 @@ export function App({ audio, onEditor }: AppProps) {
                 onChange={(h) =>
                   mixing
                     ? view.set({ mixArrHeight: h >= mixArrDefault - 2 && h <= mixArrDefault + 2 ? null : h })
-                    : view.set({ arrHeight: h >= arrNatural - 2 && h <= arrNatural + 2 ? null : h })
+                    : view.set({ arrHeight: h >= arrDefault - 2 && h <= arrDefault + 2 ? null : h })
                 }
                 onReset={() => view.set(mixing ? { mixArrHeight: null } : { arrHeight: null })}
               />

@@ -3,6 +3,10 @@
   "version": 2,
   "song": {
     "title": "Invasion",
+    "concept": {
+      "text": "An original score for the opening titles of the series Invasion: a creative exercise grown from the piano sketch Dilatación. A piano ostinato and solo strings open, an analog pulse creeps in like the invader, and the orchestra, choir and brass rise once, from bar 17 to 28, to a single climax that dissolves. 1:17 long at 140 BPM, like the series' titles; it ends on a single bar of A.",
+      "author": {"by":"user"}
+    },
     "tempo": 428571,
     "meter": {"numerator":4,"denominator":4},
     "key": {"fifths":0,"mode":"minor"},
@@ -1997,46 +2001,53 @@
     "midiFile": {"ticksPerBeat":960,"runningStatus":true,"noteOffAsNoteOn":false,"releaseVelocity":0}
   },
   "history": [
-    {"revision":3,"kind":"edit","actor":{"by":"ai","client":"claude-ai"},"author":{"by":"ai","client":"claude-ai"},"label":"1. Limpiar el grave: Invasor y trombones fuera del barro","at":1792084739836},
+    {
+      "revision": 3,
+      "kind": "edit",
+      "actor": {"by":"ai","client":"claude-ai"},
+      "author": {"by":"ai","client":"claude-ai"},
+      "label": "1. Clean up the low end: Invader and trombones out of the mud",
+      "at": 1792084739836
+    },
     {
       "revision": 8,
       "kind": "edit",
       "actor": {"by":"ai","client":"claude-ai"},
       "author": {"by":"ai","client":"claude-ai"},
-      "label": "3. Órgano solo en intro y final; colchón de cuerdas abierto en el resto",
+      "label": "3. Organ only in the intro and the ending; an open string bed everywhere else",
       "at": 1792084771454
     },
-    {"revision":9,"kind":"edit","actor":{"by":"ai","client":"claude-ai"},"author":{"by":"ai","client":"claude-ai"},"label":"2. Despejar el registro medio: piano arriba en c. 25-28","at":1792084777249},
-    {"revision":11,"kind":"edit","actor":{"by":"ai","client":"claude-ai"},"author":{"by":"ai","client":"claude-ai"},"label":"5. Piano de verdad: Steinway con pedal","at":1792084787052},
-    {"revision":12,"kind":"edit","actor":{"by":"ai","client":"claude-ai"},"author":{"by":"ai","client":"claude-ai"},"label":"7. Verso modal: Mi menor en vez de Mi mayor (c. 12 y 16)","at":1792084794291},
-    {"revision":27,"kind":"edit","actor":{"by":"ai","client":"claude-ai"},"author":{"by":"ai","client":"claude-ai"},"label":"6. Una sola subida del 17 al 28, sin caída en el 21","at":1792084833217},
-    {"revision":30,"kind":"edit","actor":{"by":"ai","client":"claude-ai"},"author":{"by":"ai","client":"claude-ai"},"label":"8a. Dinámicas con curva: Invasor y redoble de timbal","at":1792084840500},
-    {"revision":39,"kind":"edit","actor":{"by":"ai","client":"claude-ai"},"author":{"by":"ai","client":"claude-ai"},"label":"8b. Sonidos de Sonatina y mezcla con colocación orquestal","at":1792084860342},
-    {"revision":40,"kind":"edit","actor":{"by":"ai","client":"claude-ai"},"author":{"by":"ai","client":"claude-ai"},"label":"9. Tempo a 140 BPM (dura 1:17, como el original)","at":1792084863788},
-    {"revision":53,"kind":"edit","actor":{"by":"ai","client":"claude-ai"},"author":{"by":"ai","client":"claude-ai"},"label":"4. Capa electrónica: pulso analógico La/Si♭, c. 17-40","at":1792084903123},
-    {"revision":54,"kind":"edit","actor":{"by":"user"},"author":{"by":"user"},"label":"soloed Invasor","at":1792084941675},
-    {"revision":55,"kind":"edit","actor":{"by":"user"},"author":{"by":"user"},"label":"unsoloed Invasor","at":1792084947278},
-    {"revision":62,"kind":"edit","actor":{"by":"ai","client":"claude-ai"},"author":{"by":"ai","client":"claude-ai"},"label":"Salida del clímax: disolución gradual c. 36-38","at":1792085490960},
-    {"revision":65,"kind":"edit","actor":{"by":"ai","client":"claude-ai"},"author":{"by":"ai","client":"claude-ai"},"label":"Recorte: final en un solo compás de La (43-44)","at":1792085501495},
-    {"revision":69,"kind":"edit","actor":{"by":"ai","client":"claude-ai"},"author":{"by":"ai","client":"claude-ai"},"label":"Recorte: intro de 8 a 6 compases (fuera c. 6-7)","at":1792085518078},
-    {"revision":70,"kind":"edit","actor":{"by":"user"},"author":{"by":"user"},"label":"Melodia (cuerdas) plays through Four Hands Test Synth","at":1793217423986},
-    {"revision":71,"kind":"edit","actor":{"by":"user"},"author":{"by":"user"},"label":"soloed Melodia (cuerdas)","at":1793217428740},
-    {"revision":72,"kind":"edit","actor":{"by":"user"},"author":{"by":"user"},"label":"Piano ostinato plays through Kontakt 8","at":1793217481174},
-    {"revision":73,"kind":"edit","actor":{"by":"user"},"author":{"by":"user"},"label":"soloed Piano ostinato","at":1793217540521},
-    {"revision":74,"kind":"edit","actor":{"by":"user"},"author":{"by":"user"},"label":"unsoloed Melodia (cuerdas)","at":1793217542704},
-    {"revision":75,"kind":"edit","actor":{"by":"user"},"author":{"by":"user"},"label":"soloed Melodia (cuerdas)","at":1793217623331},
-    {"revision":76,"kind":"edit","actor":{"by":"user"},"author":{"by":"user"},"label":"Piano ostinato plays in Four Hands again","at":1793217689744},
-    {"revision":77,"kind":"edit","actor":{"by":"user"},"author":{"by":"user"},"label":"Melodia (cuerdas) plays in Four Hands again","at":1793217697387},
-    {"revision":78,"kind":"edit","actor":{"by":"user"},"author":{"by":"user"},"label":"Piano ostinato plays through Kontakt 8","at":1793217738630},
-    {"revision":79,"kind":"edit","actor":{"by":"user"},"author":{"by":"user"},"label":"Piano ostinato plays in Four Hands again","at":1793217794326},
-    {"revision":80,"kind":"edit","actor":{"by":"user"},"author":{"by":"user"},"label":"unsoloed Piano ostinato","at":1795352242903},
-    {"revision":81,"kind":"edit","actor":{"by":"user"},"author":{"by":"user"},"label":"unsoloed Melodia (cuerdas)","at":1795352243512},
+    {"revision":9,"kind":"edit","actor":{"by":"ai","client":"claude-ai"},"author":{"by":"ai","client":"claude-ai"},"label":"2. Clear the midrange: piano higher in bars 25–28","at":1792084777249},
+    {"revision":11,"kind":"edit","actor":{"by":"ai","client":"claude-ai"},"author":{"by":"ai","client":"claude-ai"},"label":"5. A real piano, with sustain pedal","at":1792084787052},
+    {
+      "revision": 12,
+      "kind": "edit",
+      "actor": {"by":"ai","client":"claude-ai"},
+      "author": {"by":"ai","client":"claude-ai"},
+      "label": "7. Modal verse: E minor instead of E major (bars 12 and 16)",
+      "at": 1792084794291
+    },
+    {"revision":27,"kind":"edit","actor":{"by":"ai","client":"claude-ai"},"author":{"by":"ai","client":"claude-ai"},"label":"6. One single rise from bar 17 to 28, no drop at 21","at":1792084833217},
+    {"revision":30,"kind":"edit","actor":{"by":"ai","client":"claude-ai"},"author":{"by":"ai","client":"claude-ai"},"label":"8a. Dynamics with curves: Invader and the timpani roll","at":1792084840500},
+    {"revision":39,"kind":"edit","actor":{"by":"ai","client":"claude-ai"},"author":{"by":"ai","client":"claude-ai"},"label":"8b. Sonatina sounds and a mix with orchestral seating","at":1792084860342},
+    {
+      "revision": 40,
+      "kind": "edit",
+      "actor": {"by":"ai","client":"claude-ai"},
+      "author": {"by":"ai","client":"claude-ai"},
+      "label": "9. Tempo at 140 BPM (1:17 long, like the series' opening titles)",
+      "at": 1792084863788
+    },
+    {"revision":53,"kind":"edit","actor":{"by":"ai","client":"claude-ai"},"author":{"by":"ai","client":"claude-ai"},"label":"4. Electronic layer: analog pulse on A/B♭, bars 17–40","at":1792084903123},
+    {"revision":62,"kind":"edit","actor":{"by":"ai","client":"claude-ai"},"author":{"by":"ai","client":"claude-ai"},"label":"Out of the climax: a gradual dissolve, bars 36–38","at":1792085490960},
+    {"revision":65,"kind":"edit","actor":{"by":"ai","client":"claude-ai"},"author":{"by":"ai","client":"claude-ai"},"label":"Trim: the ending in a single bar of A (43–44)","at":1792085501495},
+    {"revision":69,"kind":"edit","actor":{"by":"ai","client":"claude-ai"},"author":{"by":"ai","client":"claude-ai"},"label":"Trim: intro from 8 to 6 bars (bars 6–7 out)","at":1792085518078},
     {
       "revision": 123,
       "kind": "edit",
       "actor": {"by":"ai","client":"local-agent-mode-Four Hands Studio"},
       "author": {"by":"ai","client":"local-agent-mode-Four Hands Studio"},
-      "label": "Mezcla inicial: buses de grupo, reverbs, delay y mix bus",
+      "label": "First mix: group buses, reverbs, delay and mix bus",
       "at": 1795352512783
     },
     {
@@ -2044,7 +2055,7 @@
       "kind": "edit",
       "actor": {"by":"ai","client":"local-agent-mode-Four Hands Studio"},
       "author": {"by":"ai","client":"local-agent-mode-Four Hands Studio"},
-      "label": "Traducción al inglés: pistas, buses, efectos y secciones",
+      "label": "English translation: tracks, buses, effects and sections",
       "at": 1795352757256
     }
   ],
