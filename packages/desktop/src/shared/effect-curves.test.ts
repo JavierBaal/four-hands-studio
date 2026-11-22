@@ -4,7 +4,7 @@ import { compressorOut, eqResponse, logFreqs } from "./effect-curves.js";
 
 const def = (kind: "eq" | "compressor" | "limiter", id: string) => OWN_EFFECTS[kind].params.find((p) => p.id === id)!;
 
-describe("the effect window's curves (F2.2 parte C2)", () => {
+describe("the effect window's curves (F2.2 part C2)", () => {
   it("draws a flat EQ flat, and a bell where it is", () => {
     const flat = eqResponse(defaultParams("eq"), [50, 1000, 10000]);
     for (const v of flat) expect(Math.abs(v)).toBeLessThan(1e-6);

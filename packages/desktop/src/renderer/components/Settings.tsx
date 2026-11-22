@@ -1,5 +1,5 @@
 /**
- * Ajustes (ESTUDIO_INTERFAZ_2.md, 5.4; sketch `interfaz2_4_ajustes.png`): one card with its sections
+ * Ajustes: one card with its sections
  * on the left. What used to hang from the Help menu lives here: Tu IA, the sound banks, the
  * plugins, the MIDI out, the folders and the test tools. The gear in the top bar, File › Ajustes…
  * or Ctrl + , open it; Esc, the cross or a click outside close it.

@@ -21,7 +21,7 @@ describe("schedule", () => {
     expect(secondsPerTick({ tempo: 500_000 }) * 960).toBeCloseTo(0.5);
   });
 
-  it("on a plugin, lets go of a note a little before the same note again (Fran, 05/11/2026)", () => {
+  it("on a plugin, lets go of a note a little before the same note again (05/11/2026)", () => {
     const doc = new SongDocument(starterSong());
     doc.transact({ actor: USER, label: "x" }, (tx) => {
       addTrack(tx, { name: "Coro" }); // t2

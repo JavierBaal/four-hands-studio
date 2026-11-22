@@ -1,5 +1,5 @@
 /**
- * Names the user reads: notes in Do Re Mi or C D E with middle C = 4 (DIRECCION_ARTISTICA.md, 10),
+ * Names the user reads: notes in Do Re Mi or C D E with middle C = 4 (docs/design.md, 10),
  * key names and the transport position. The AI always reads scientific pitch (compact format).
  */
 import { type KeySignature, type Meter, PPQ, barAt, barStart, beatTicks } from "@fourhands/core";

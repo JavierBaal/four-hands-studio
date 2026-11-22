@@ -1,5 +1,5 @@
 /**
- * Compact read format (ESQUEMA_MCP.md, 3.1 and 3.3): what the AI reads instead of ticks.
+ * Compact read format (docs/mcp.md, 3.1 and 3.3): what the AI reads instead of ticks.
  *
  *   Four Hands · r1532 · Violines (t3) · c. 17–18
  *   c17 · Am

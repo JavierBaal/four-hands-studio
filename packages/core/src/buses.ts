@@ -1,10 +1,10 @@
 /**
- * Buses and sends (F2.2 parte D, Fran 04/11/2026).
+ * Buses and sends (F2.2 part D, 04/11/2026).
  *
  * A bus is a channel fed by tracks and by other buses: their output (`bus`: where the sound goes
  * after the fader) or their sends (a copy at a level, after the fader or before it). Buses chain
  * (Voces → Mix bus → Máster) and never loop. Reverb is a bus with Four Hands' reverb (or a plugin)
- * on it, or an effect on the track (Fran, 04/11/2026: no per-track reverb knob). A song from before
+ * on it, or an effect on the track (04/11/2026: no per-track reverb knob). A song from before
  * that used H4's per-track reverb opens with the «Reverb» bus (file.ts). Deleting a bus sends what
  * went through it on to the next bus, or the Master, and drops the sends to it (the window warns).
  */
@@ -62,7 +62,7 @@ export function reverbLevel(song: Song, source: Pick<Track, "sends">): number {
 
 /**
  * Gives a song that has no buses the «Reverb» bus, with Four Hands' reverb (a file from before
- * parte D whose tracks had reverb). In place, outside the history.
+ * part D whose tracks had reverb). In place, outside the history.
  */
 export function withDefaultBuses(song: Song): Song {
   if (song.buses) return song;

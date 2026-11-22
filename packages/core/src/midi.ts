@@ -1,5 +1,5 @@
 /**
- * MIDI import and export (ARQUITECTURA.md, 9), with `midi-file` (MIT), which reads and writes
+ * MIDI import and export (docs/architecture.md, 9), with `midi-file` (MIT), which reads and writes
  * events without interpreting them.
  *
  * Import turns what the model understands into model data (title, tempo, meter, key, markers on

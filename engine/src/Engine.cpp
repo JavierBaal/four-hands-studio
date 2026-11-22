@@ -175,7 +175,7 @@ void Engine::prepare (double rate, int block)
     // Plugins are prepared out of the lock: Kontakt takes its time, and the audio is stopped anyway.
     for (auto* p : plugins)
         p->prepareToPlay (rate, block);
-    // The effects too (F2.2 parte C): their filters and look-ahead depend on the rate.
+    // The effects too (F2.2 part C): their filters and look-ahead depend on the rate.
     for (auto& c : chains)
         if (c != nullptr)
             for (auto& x : c->inserts)
@@ -312,7 +312,7 @@ namespace
 /**
  * A plugin track's reverb at 100% sounds as much as a built-in sound's at its top (CC91 = 127).
  * Measured on 03/11/2026 with MuseScore strings: (L + R) / 2 into the bus gave 5 dB less reverb
- * than the built-in send (Fran: «muy sutil, casi apenas perceptible al 100%»); 10^(5.1/20).
+ * than the built-in send (in testing it was "very subtle, barely noticeable at 100%"); 10^(5.1/20).
  */
 constexpr double kPluginSendMatch = 1.8;
 } // namespace
@@ -521,7 +521,7 @@ void Engine::process (float* const* outputs, int numOutputs, int numSamples)
         masterIn.setSize (2, numSamples, false, false, true);
         edgeBuffer.setSize (2, numSamples, false, false, true);
     }
-    // F2.2 parte D: with Four Hands' routing, strips go to buses or to the master's input.
+    // F2.2 part D: with Four Hands' routing, strips go to buses or to the master's input.
     auto* r = routing.get();
     masterIn.clear (0, numSamples);
     masterIn.clear (1, numSamples);
@@ -566,7 +566,7 @@ void Engine::process (float* const* outputs, int numOutputs, int numSamples)
                               (r != nullptr ? masterIn : master).getWritePointer (0), (r != nullptr ? masterIn : master).getWritePointer (1));
 
     blockSounds = msSince (tick);
-    // Insert effects (F2.2 parte C), then the delay that lines every strip up with the slowest one.
+    // Insert effects (F2.2 part C), then the delay that lines every strip up with the slowest one.
     const int comp = maxLatency.load();
     for (int ch = 0; ch < inUse; ++ch)
     {
@@ -702,7 +702,7 @@ inline void applyFader (float* L, float* R, int n, double gain, double pan)
 }
 
 /**
- * What a plugin track's strip sent to the GS reverb before parte D, against the built-in sounds'
+ * What a plugin track's strip sent to the GS reverb before part D, against the built-in sounds'
  * own CC91 send (measured 03/11/2026, see ReverbFx): only for renders without Four Hands' routing.
  */
 constexpr double kLegacySendMatch = 1.8;
@@ -710,7 +710,7 @@ constexpr double kLegacySendMatch = 1.8;
 
 void Engine::mixLegacy (int inUse, int numSamples)
 {
-    // Before parte D: strips into the master; the built-in sounds' CC91 send into the GS reverb.
+    // Before part D: strips into the master; the built-in sounds' CC91 send into the GS reverb.
     float* busData = busIn.getWritePointer (0);
     for (int ch = 0; ch < inUse; ++ch)
     {
@@ -779,7 +779,7 @@ void Engine::mixRouted (Routing& r, int inUse, int numSamples)
                 addTo (send.bus, L, R, send.level);
         // What a built-in instrument sends to reverb on its own (its SoundFont's setting: 264 of the
         // 309 presets of MuseScore_General; CC91 is 0 now), after the fader. It is part of the
-        // sound (Fran, 04/11/2026): the GS reverb inside the engine, into the master, as always;
+        // sound (04/11/2026): the GS reverb inside the engine, into the master, as always;
         // or a bus, if Four Hands names one.
         if (r.instrumentReverb >= 0 && r.instrumentReverb < nb)
         {
@@ -1099,7 +1099,7 @@ void Engine::renderOffline (juce::AudioBuffer<float>& out)
 
 
 // -----------------------------------------------------------------------------
-// Insert effects (F2.2 parte C)
+// Insert effects (F2.2 part C)
 
 void Engine::runChain (Chain& chain, float* L, float* R, int n)
 {

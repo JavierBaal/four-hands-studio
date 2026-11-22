@@ -1,5 +1,5 @@
 /**
- * Blind listening of SoundFonts (ARQUITECTURA.md, 7.2; H2): the same passages of Dilatación with
+ * Blind listening of SoundFonts (docs/architecture.md, 7.2; H2): the same passages of Dilatación with
  * every candidate in recursos/soundfonts, in random order and unnamed, rated 1–5. The choice of
  * sound becomes a decision by ear, not by catalogue. Results go to the app log.
  */

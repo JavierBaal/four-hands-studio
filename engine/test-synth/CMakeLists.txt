@@ -1,4 +1,4 @@
-# A sine instrument as a VST3, only to test hosting (prueba S2): no third-party plugin needed.
+# A sine instrument as a VST3, only to test hosting (test S2): no third-party plugin needed.
 juce_add_plugin(FourHandsTestSynth
   PRODUCT_NAME "Four Hands Test Synth"
   COMPANY_NAME "Four Hands Studio"

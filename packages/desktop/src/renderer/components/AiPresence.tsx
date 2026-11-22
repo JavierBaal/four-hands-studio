@@ -1,6 +1,6 @@
 /**
- * The AI in the window (H3), as capture 07 shows it (DIRECCION_ARTISTICA.md, 11;
- * bocetos/lienzo/Estados.dc.html):
+ * The AI in the window (H3), as capture 07 shows it (docs/design.md, 11;
+ * sketches/lienzo/Estados.dc.html):
  * - the AI status chip in the top bar: not connected, connected, reading, writing (with "Ir allí");
  * - the bar "Claude está escribiendo" with "Cerrar intervención", where the proposal bar goes;
  * - the "señalar" flag over the piano roll, and the edge tab when the AI writes out of view.
@@ -46,7 +46,7 @@ export function AiChip() {
   if (ai.clients.length === 0) {
     return (
       <span className="aichip">
-        {/* "Cómo conectarla" moved to Help and Ajustes › Tu IA (ESTUDIO_INTERFAZ_2.md): the chip opens it. */}
+        {/* "Cómo conectarla" moved to Help and Ajustes › Tu IA: the chip opens it. */}
         <button className="chip chipbtn" title={t("menuConnectAi")} onClick={() => actions.openSkills(true)}>
           <span className="dot off" />
           {t("aiOff")}
@@ -103,7 +103,7 @@ export function AiWritingBar() {
 }
 
 /**
- * H4, Con / Sin (decided with Fran, 20/10/2026): the AI's changes go straight into the song, and
+ * H4, Con / Sin (decided with 20/10/2026): the AI's changes go straight into the song, and
  * after each intervention this bar lets the user hear the song with and without it (B), or undo
  * it. No accepting or discarding: it is gone as soon as anything else changes the song. Same look
  * as the proposal bar of sketches 01 and 07, without Aceptar and Descartar.

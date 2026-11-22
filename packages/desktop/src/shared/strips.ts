@@ -1,5 +1,5 @@
 /**
- * A2 (F2.2, Fran 03/11/2026): each track plays on a strip of its own in the engine, numbered here
+ * A2 (F2.2, 03/11/2026): each track plays on a strip of its own in the engine, numbered here
  * and not by MIDI channel, so a song is not held to 16 tracks (or 15: the metronome had one).
  *
  * A track keeps its strip while it exists, whatever happens around it (reordering, other tracks
@@ -72,7 +72,7 @@ export class StripMap {
 export const MAX_BUSES = 128;
 
 /**
- * F2.2 parte D: each bus has its place in the engine while it exists, so its effects stay loaded
+ * F2.2 part D: each bus has its place in the engine while it exists, so its effects stay loaded
  * when other buses come, go or move in the console. The lowest free place for a new one.
  */
 export class BusMap {

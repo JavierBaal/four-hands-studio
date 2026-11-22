@@ -3,7 +3,7 @@ import { INITIAL_KEYBOARD, isPianoToggle, keyAction, noteNameEs } from "./keyboa
 
 const none = { ctrl: false, meta: false, alt: false };
 
-describe("computer keyboard as piano (ESPEC_PIANO_ROLL.md, 8.2)", () => {
+describe("computer keyboard as piano (docs/piano-roll.md, 8.2)", () => {
   it("A is middle C and L is the D above the next C", () => {
     expect(keyAction("KeyA", INITIAL_KEYBOARD, none)).toEqual({ type: "note", note: 60 });
     expect(keyAction("KeyK", INITIAL_KEYBOARD, none)).toEqual({ type: "note", note: 72 });

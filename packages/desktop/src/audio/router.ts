@@ -1,5 +1,5 @@
 /**
- * MIDI out (H4, Fran 20/10/2026): tracks set to sound in another program (Studio One, through a
+ * MIDI out (H4, 20/10/2026): tracks set to sound in another program (Studio One, through a
  * virtual port such as loopMIDI) send their events out on their own channel instead of playing
  * the built-in sound. The player keeps scheduling as always; this sits between it and the synth
  * and splits by track (A2: by the track's strip, `ev.strip`, or its channel without one). Program changes never go out (they would change the preset loaded in the
@@ -61,7 +61,7 @@ export function silenceBytes(ch: number): number[][] {
 }
 
 /**
- * The native engine (fase 2, prueba S2): a track that sounds through a plugin plays in the slot of
+ * The native engine (phase 2, test S2): a track that sounds through a plugin plays in the slot of
  * its strip (A2; before, of its channel). The plugin always hears MIDI channel 1 (a Kontakt instrument listens there, or on
  * all of them).
  */
@@ -93,7 +93,7 @@ export function engineBytes(ev: SynthEvent): number[] | null {
 export function soundsBytes(ev: SynthEvent): number[][] {
   if (ev.kind === "prog") return ev.bank === undefined ? [[0xc0 | ev.ch, ev.prog & 0x7f]] : [[0xb0 | ev.ch, 0, ev.bank & 0x7f], [0xc0 | ev.ch, ev.prog & 0x7f]];
   const bytes = midiBytes(ev);
-  // F2.2 parte D: in the engine the track's fader is its strip (the synth stays at full volume, so
+  // F2.2 part D: in the engine the track's fader is its strip (the synth stays at full volume, so
   // a send before the fader still gets the sound) and its reverb is a send to the «Reverb» bus.
   if (bytes && ev.kind === "cc" && ev.cc === 7) bytes[2] = 127;
   if (bytes && ev.kind === "cc" && ev.cc === 91) bytes[2] = 0;

@@ -68,9 +68,9 @@ function MixerCard({ track, x, y }: { track: Track; x: number; y: number }) {
 
 /**
  * Volume and pan of a track, each a slider whose value can also be typed: in the mixer card and in
- * the Pista tab (ESTUDIO_INTERFAZ_2.md, 5.2). The sound follows while dragging; the song gets the
+ * the Pista tab. The sound follows while dragging; the song gets the
  * value on release (one undo step). Values the AI or an undo change come in. (The reverb row is
- * gone, Fran 04/11/2026: reverb is a bus or an effect on the track.)
+ * gone, 04/11/2026: reverb is a bus or an effect on the track.)
  */
 export function MixRows({ track, onValues }: { track: Track; onValues?: (v: { volume: number; pan: number }) => void }) {
   const { t, lang } = useApp();

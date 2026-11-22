@@ -1,5 +1,5 @@
 /**
- * What sounds when (ARQUITECTURA.md, 7.1): pure functions the player calls every 25 ms to send
+ * What sounds when (docs/architecture.md, 7.1): pure functions the player calls every 25 ms to send
  * the next ~200 ms to the synth worklet. Reading the replica at every window means notes the AI
  * writes ahead of the playhead simply play when it gets there.
  */
@@ -46,7 +46,7 @@ export function noteEvents(song: Song, from: number, to: number, cutAt = Infinit
     const track = song.tracks[n.trackId]!;
     const strip = stripOf(track);
     let end = Math.min(n.start + n.duration, cutAt);
-    // Fran, 05/11/2026: on a plugin, the same note again with no gap can cut the new one (the
+    // 05/11/2026: on a plugin, the same note again with no gap can cut the new one (the
     // library takes the release and the new press together). The sound lets go a little earlier;
     // the note written does not change.
     const next = repeats.get(n.trackId)?.get(n.pitch)?.find((s) => s > n.start);
@@ -74,7 +74,7 @@ export function noteEvents(song: Song, from: number, to: number, cutAt = Infinit
   return out.sort((a, b) => a.tick - b.tick || (a.ev.kind === "off" ? -1 : 0) - (b.ev.kind === "off" ? -1 : 0));
 }
 
-/** The gap a plugin gets between a note and the same note right after it (Fran, 05/11/2026). */
+/** The gap a plugin gets between a note and the same note right after it (05/11/2026). */
 export const REPEAT_GAP_SECONDS = 0.025;
 
 /** For the tracks that sound through a plugin: each pitch's note starts, sorted. */
@@ -135,7 +135,7 @@ export type SoundResolver = (track: Track) => { bank: number; prog: number } | n
 
 /**
  * Programs (with their bank), volume, pan and reverb send of every track, to send before playing.
- * The reverb is the track's send to the «Reverb» bus (F2.2 parte D): CC91 for the window's synth
+ * The reverb is the track's send to the «Reverb» bus (F2.2 part D): CC91 for the window's synth
  * and for a DAW; in the engine the bus does it (router.ts turns CC91 off there).
  */
 export function setupEvents(song: Song, soundFor: SoundResolver = () => null, stripOf: StripResolver = byChannel, metronomeStrip = METRONOME_CHANNEL): SynthEvent[] {

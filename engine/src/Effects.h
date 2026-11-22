@@ -1,4 +1,4 @@
-// Four Hands Engine: insert effects (F2.2 parte C, 03/11/2026).
+// Four Hands Engine: insert effects (F2.2 part C, 03/11/2026).
 //
 // A chain per strip (after its sound, before its fader) and one on the master (before its fader).
 // Each link is one of Four Hands' own effects (EQ, compressor, limiter: their parameters live in the

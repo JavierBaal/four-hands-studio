@@ -113,7 +113,7 @@ int selfTest (const juce::String& folder)
         std::cout << "FAIL no reverb from the send" << std::endl;
         return 7;
     }
-    // F2.2 parte B: a strip that goes off is silent at once, in the middle of a note (its plugin's
+    // F2.2 part B: a strip that goes off is silent at once, in the middle of a note (its plugin's
     // own tail stops; what it already sent to the Reverb bus rings out there, as in the DAWs).
     {
         engine.setMix (0, 1.0, 0.0, true);
@@ -152,7 +152,7 @@ int selfTest (const juce::String& folder)
             return 11;
         }
     }
-    // F2.2 parte C: insert effects on strip 0.
+    // F2.2 part C: insert effects on strip 0.
     {
         using Spec = fh::Engine::InsertSpec;
         auto rmsWith = [&] (std::vector<Spec> chain) {
@@ -226,7 +226,7 @@ int selfTest (const juce::String& folder)
             return 16;
         }
     }
-    // F2.2 parte D: buses.
+    // F2.2 part D: buses.
     {
         using Spec = fh::Engine::InsertSpec;
         using Route = fh::Engine::Route;
@@ -260,7 +260,7 @@ int selfTest (const juce::String& folder)
                 return 30;
             }
         }
-        // The delay (Fran, 04/11/2026): a quarter note at 120 BPM is 24000 samples; at 100 BPM, 28800;
+        // The delay (04/11/2026): a quarter note at 120 BPM is 24000 samples; at 100 BPM, 28800;
         // 100 ms without sync, 4800. In ping-pong the first repeat is on the left, the next on the right.
         {
             auto echoes = [] (std::vector<std::pair<juce::String, double>> params, double bpm) {
@@ -593,7 +593,7 @@ int renderSong (const juce::String& bankPath, const juce::String& midiPath, cons
     // FH_RENDER_STRIP=n (A2): MIDI channel c plays on strip n + c instead of on its own channel (tests:
     // the strip must not change the sound).
     const int stripBase = juce::SystemStats::getEnvironmentVariable ("FH_RENDER_STRIP", "-1").getIntValue();
-    // FH_RENDER_ROUTED=1: with Four Hands' routing and no buses (a new song since parte D): it must
+    // FH_RENDER_ROUTED=1: with Four Hands' routing and no buses (a new song since part D): it must
     // sound as without routing (tests: the bank's own reverb stays).
     if (juce::SystemStats::getEnvironmentVariable ("FH_RENDER_ROUTED", "0") == "1")
         engine.setRouting ({}, {}, {}, -1);

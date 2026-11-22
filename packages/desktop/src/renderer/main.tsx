@@ -48,7 +48,7 @@ async function start(): Promise<void> {
         })),
         { name: "mi-armonia", description: "Cómo armonizo: pedales largos, nunca doblo la tercera y las cadencias se quedan abiertas.", origin: "user", enabled: true, replacesBuiltIn: false, files: 0 },
       ],
-      // ?fichas=1: a library card in the user's catalog (Fran, 05/11/2026), for the captures and tests.
+      // ?fichas=1: a library card in the user's catalog (05/11/2026), for the captures and tests.
       libraries:
         params.get("fichas") === "1"
           ? [
@@ -72,7 +72,7 @@ async function start(): Promise<void> {
               },
             ]
           : [],
-      // A pretend engine with two instruments and an effect (prueba S2); ?engine=0: not built.
+      // A pretend engine with two instruments and an effect (test S2); ?engine=0: not built.
       ...(params.get("engine") === "0"
         ? {}
         : {
@@ -80,7 +80,7 @@ async function start(): Promise<void> {
               { id: "VST3-Kontakt 8-1", name: "Kontakt 8", vendor: "Native Instruments", category: "Instrument|Sampler", format: "VST3", instrument: true },
               { id: "VST3-Four Hands Test Synth-2", name: "Four Hands Test Synth", vendor: "Four Hands", category: "Instrument|Synth", format: "VST3", instrument: true },
               { id: "VST3-Ozone 11-3", name: "Ozone 11", vendor: "iZotope", category: "Fx|Mastering", format: "VST3", instrument: false },
-              // ?plugins=fran: instruments like the ones on Fran's computer (prueba S2), for the captures.
+              // ?plugins=fran: a typical set of instruments (test S2), for the captures.
               ...(params.get("plugins") === "fran"
                 ? (
                     [
@@ -99,7 +99,7 @@ async function start(): Promise<void> {
                   )
                     .map(([name, vendor, category], i): EnginePlugin => ({ id: `VST3-${name}-${i + 10}`, name, vendor, category, format: "VST3", instrument: true }))
                     .concat(
-                      // Effect plugins like a working studio's (F2.2 parte C: the organised browser).
+                      // Effect plugins like a working studio's (F2.2 part C: the organised browser).
                       (
                         [
                           ["Pro-Q 3", "FabFilter", "Fx|EQ"], ["Pro-C 2", "FabFilter", "Fx|Dynamics"], ["Pro-L 2", "FabFilter", "Fx|Mastering"], ["Pro-R", "FabFilter", "Fx|Reverb"], ["Saturn 2", "FabFilter", "Fx|Distortion"],

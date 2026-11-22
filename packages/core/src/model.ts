@@ -1,5 +1,5 @@
 /**
- * The song model (ARQUITECTURA.md, 4).
+ * The song model (docs/architecture.md, 4).
  *
  * Plain JSON-friendly data: records keyed by id, no classes, no Maps. The same object
  * is saved in `.fourhands` files, patched by commands and diffed for the window.
@@ -62,7 +62,7 @@ export interface Note {
   /** Who created the note. Never changes. */
   createdBy: Authorship;
   /**
-   * Who decided its current pitch, position and duration (PRD_MVP.md, 4.5).
+   * Who decided its current pitch, position and duration.
    * This is the note's author: what `@u` / `@ai` show and what the authorship layer colours.
    */
   shapedBy: Authorship;
@@ -74,7 +74,7 @@ export interface PedalSpan {
 }
 
 /**
- * A controller curve (H4, Fran 15/10/2026): CC11 expression and CC1 modulation. Points are MIDI
+ * A controller curve (H4, 15/10/2026): CC11 expression and CC1 modulation. Points are MIDI
  * events: each value holds until the next point. A ramp is many points (one per 16th by default).
  */
 export interface CcPoint {
@@ -122,30 +122,30 @@ export interface Track {
   /** -1 (left) to 1 (right). */
   pan: number;
   /**
-   * Where its sound goes after its fader (F2.2 parte D): a bus id. Absent: the Master.
-   * (H4's per-track reverb is gone, Fran 04/11/2026: reverb is a bus or an effect on the track.)
+   * Where its sound goes after its fader (F2.2 part D): a bus id. Absent: the Master.
+   * (H4's per-track reverb is gone, 04/11/2026: reverb is a bus or an effect on the track.)
    */
   bus?: string;
-  /** Sends to buses (F2.2 parte D), one per bus at most, in the order they were added. Absent: none. */
+  /** Sends to buses (F2.2 part D), one per bus at most, in the order they were added. Absent: none. */
   sends?: Send[];
   mute: boolean;
   solo: boolean;
-  /** Index in the track palette (DIRECCION_ARTISTICA.md, 2.7), 0 to TRACK_COLOR_COUNT - 1. */
+  /** Index in the track palette (docs/design.md, 2.7), 0 to TRACK_COLOR_COUNT - 1. */
   color: number;
-  /** Insert effects after its sound, in order (F2.2 parte C, effects.ts). Absent: none. */
+  /** Insert effects after its sound, in order (F2.2 part C, effects.ts). Absent: none. */
   inserts?: Insert[];
   /** Sustain pedal. */
   pedal: PedalSpan[];
   /**
-   * Where the track sounds (H4, Fran 20/10/2026): "external" sends its MIDI out (to Studio One
-   * through a virtual port) instead of playing the built-in sound. "plugin" (fase 2, prueba S2):
+   * Where the track sounds (H4, 20/10/2026): "external" sends its MIDI out (to Studio One
+   * through a virtual port) instead of playing the built-in sound. "plugin" (phase 2, test S2):
    * a plugin hosted by the native engine plays it (`plugin` says which). Absent: inside Four Hands.
    */
   output?: "external" | "plugin";
   /** The plugin that plays the track when `output` is "plugin". */
   plugin?: TrackPlugin;
   /**
-   * Its library card (Fran, 05/11/2026): what the sample library inside the plugin responds to,
+   * Its library card (05/11/2026): what the sample library inside the plugin responds to,
    * its range and its keyswitches. The card lives in the user's catalog, outside the song, so the
    * same one serves every song; the track only says which. Absent: none.
    */
@@ -162,7 +162,7 @@ export interface Track {
 }
 
 /**
- * A send to a bus (F2.2 parte D, Fran 04/11/2026): a copy of the sound at `level` (0–1, linear;
+ * A send to a bus (F2.2 part D, 04/11/2026): a copy of the sound at `level` (0–1, linear;
  * 1 = as loud as the strip), after the fader unless `pre`.
  */
 export interface Send {
@@ -173,7 +173,7 @@ export interface Send {
 }
 
 /**
- * A bus (F2.2 parte D): a channel fed by tracks (their output or their sends) and by other buses,
+ * A bus (F2.2 part D): a channel fed by tracks (their output or their sends) and by other buses,
  * with its own effects, fader and output. Buses chain (Voces → Mix bus → Máster), never in a loop.
  */
 export interface Bus {
@@ -193,14 +193,14 @@ export interface Bus {
   inserts?: Insert[];
 }
 
-/** An insert effect (F2.2 parte C): one of Four Hands' own, or a plugin (VST3). */
+/** An insert effect (F2.2 part C): one of Four Hands' own, or a plugin (VST3). */
 export type InsertKind = "eq" | "compressor" | "limiter" | "reverb" | "delay" | "plugin";
 
 export interface Insert {
   /** "x12": never reused in the song. */
   id: string;
   kind: InsertKind;
-  /** The user's own name for it ("EQ graves"), Fran 04/11/2026. Absent: the effect's name. */
+  /** The user's own name for it ("EQ graves"), 04/11/2026. Absent: the effect's name. */
   name?: string;
   /** Off: the sound goes through untouched. Absent: on. */
   bypass?: boolean;
@@ -211,7 +211,7 @@ export interface Insert {
   /**
    * A plugin effect's parameters the AI set (by the plugin's parameter index, normalised 0–1), and
    * what each one was before the AI first touched it: undoing that puts the plugin back. What the
-   * user turns in the plugin's own window is not here (Fran, 03/11/2026: it is only saved).
+   * user turns in the plugin's own window is not here (03/11/2026: it is only saved).
    */
   pluginParams?: Record<string, number>;
   pluginBase?: Record<string, number>;
@@ -268,7 +268,7 @@ export interface TickRange {
 
 /**
  * Selection, loop, cursor, active track and visible area live in the model, not only in the
- * window, so that "this" and "here" mean the same for the user and the AI (ESTUDIO_INTERFAZ.md, 8.7).
+ * window, so that "this" and "here" mean the same for the user and the AI.
  * They are not undoable and do not bump the revision.
  */
 export interface SharedContext {
@@ -298,7 +298,7 @@ export interface MidiFileSettings {
 
 export type IdPrefix = "n" | "t" | "s" | "a" | "p" | "i" | "x" | "b";
 
-/** The song concept (ESTUDIO_SKILLS_COMPOSICION.md, 6.3): the intention and the limits, in words. */
+/** The song concept: the intention and the limits, in words. */
 export interface SongConcept {
   /** "Orquesta infectada. Dura 1:12, como los créditos; se exportará a Vital y Kontakt." */
   text: string;
@@ -314,30 +314,30 @@ export interface Song {
    * Later changes are in `tempoChanges` (tempo.ts reads both).
    */
   tempo: number;
-  /** Tempo changes after the start (H4, Fran 26/10/2026), sorted by tick. Absent: one tempo. */
+  /** Tempo changes after the start (H4, 26/10/2026), sorted by tick. Absent: one tempo. */
   tempoChanges?: TempoPoint[];
   meter: Meter;
   /** The key at the start. Later changes are in `keyChanges`. */
   key: KeySignature;
-  /** Key changes after the start (H4, Fran 26/10/2026), sorted by tick, on bar lines. Absent: one key. */
+  /** Key changes after the start (H4, 26/10/2026), sorted by tick, on bar lines. Absent: one key. */
   keyChanges?: KeyChange[];
   /**
-   * The master fader (F2.2 parte B, Fran 03/11/2026), with the tracks' scale: 0–1 and the CC7 curve,
+   * The master fader (F2.2 part B, 03/11/2026), with the tracks' scale: 0–1 and the CC7 curve,
    * 1 = 0 dB. Absent: 0 dB, so songs from before sound the same.
    */
   masterVolume?: number;
-  /** Insert effects on the Master, before its fader (F2.2 parte C). Absent: none. */
+  /** Insert effects on the Master, before its fader (F2.2 part C). Absent: none. */
   masterInserts?: Insert[];
   /**
-   * Buses (F2.2 parte D) by id, and their order in the console. Absent: none yet. A song starts
-   * without buses (Fran, 04/11/2026); one from before them with reverb on its tracks opens with the
+   * Buses (F2.2 part D) by id, and their order in the console. Absent: none yet. A song starts
+   * without buses (04/11/2026); one from before them with reverb on its tracks opens with the
    * «Reverb» bus (file.ts), so it sounds the same.
    */
   buses?: Record<string, Bus>;
   busOrder?: string[];
   /** Current revision (`r1532`). Every transaction, undo and redo increases it. */
   revision: number;
-  /** Next number per id prefix. Ids are never reused within a song (ARQUITECTURA.md, 4.3). */
+  /** Next number per id prefix. Ids are never reused within a song (docs/architecture.md, 4.3). */
   counters: Record<IdPrefix, number>;
   trackOrder: string[];
   tracks: Record<string, Track>;

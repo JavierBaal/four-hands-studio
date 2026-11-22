@@ -1,5 +1,5 @@
 /**
- * Sample-accurate event queue for the audio thread (ARQUITECTURA.md, 7.1).
+ * Sample-accurate event queue for the audio thread (docs/architecture.md, 7.1).
  * Events are kept sorted by frame; equal frames keep their arrival order.
  */
 export interface Timed<T> {

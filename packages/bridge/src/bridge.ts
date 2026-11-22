@@ -3,9 +3,9 @@
  *
  * Claude Desktop (or any MCP client) starts this process; it forwards every tool
  * call to the Four Hands app running on the same computer and returns the answer.
- * It keeps no musical state (ESQUEMA_MCP.md, 2; ARQUITECTURA.md, 6).
+ * It keeps no musical state (docs/mcp.md, 2; docs/architecture.md, 6).
  *
- * Proven in the installation test of 13/10/2026 (PRUEBA_MCPB.md).
+ * Proven in the installation test of 13/10/2026.
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -124,7 +124,7 @@ async function callApp(tool: string, args: unknown): Promise<AppResult> {
   });
 }
 
-// Only the compact text goes back: no structuredContent (ARQUITECTURA.md, 6.2).
+// Only the compact text goes back: no structuredContent (docs/architecture.md, 6.2).
 function toResult(m: AppResult) {
   if (!m.ok) return { content: [{ type: "text" as const, text: m.error ?? "Error" }], isError: true };
   return { content: [{ type: "text" as const, text: m.text ?? "" }] };

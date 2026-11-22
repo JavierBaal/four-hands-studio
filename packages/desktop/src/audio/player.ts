@@ -1,5 +1,5 @@
 /**
- * Transport and live input (ARQUITECTURA.md, 7): plays the replica through the synth worklet with
+ * Transport and live input (docs/architecture.md, 7): plays the replica through the synth worklet with
  * a 200 ms lookahead, loops, clicks the metronome, counts in before recording, and sends what the
  * user plays (computer keyboard or MIDI) straight to the synth.
  *
@@ -73,7 +73,7 @@ export class Player {
   private transportJump = false;
   /**
    * How far ahead the notes go out. Longer while the window is hidden (minimised): a second safety
-   * net if the system still slows its timers down (Fran, 03/11/2026: stutters after Alt+Tab).
+   * net if the system still slows its timers down (03/11/2026: stutters after Alt+Tab).
    */
   lookahead = LOOKAHEAD;
   private listeners = new Set<() => void>();

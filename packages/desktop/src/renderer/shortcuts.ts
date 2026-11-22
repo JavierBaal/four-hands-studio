@@ -1,5 +1,5 @@
 /**
- * Keyboard shortcuts in one table that can be changed (ESPEC_PIANO_ROLL.md, 6.4).
+ * Keyboard shortcuts in one table that can be changed (docs/piano-roll.md, 6.4).
  * `mod` is Ctrl on Windows and Cmd on Mac, resolved in one place (ESPEC, 9).
  * Letters match the character typed; digits, arrows and space match the physical key.
  */
@@ -60,7 +60,7 @@ export const DEFAULT_SHORTCUTS: Record<Action, Combo[]> = {
   panelTrack: [{ code: "F4" }],
   panelSounds: [{ code: "F5" }],
   panelAi: [{ code: "F6" }],
-  // F2.2 parte B: as in Studio One, F2 the editor and F3 the console where the piano roll is.
+  // F2.2 part B: as in Studio One, F2 the editor and F3 the console where the piano roll is.
   showEditor: [{ code: "F2" }],
   showMix: [{ code: "F3" }],
   undo: [{ key: "z", mod: true }],
@@ -86,7 +86,7 @@ export const DEFAULT_SHORTCUTS: Record<Action, Combo[]> = {
   toggleGrid: [{ key: "n" }],
   zoomOut: [{ key: "g" }],
   zoomIn: [{ key: "h" }],
-  // Vertical zoom (ESPEC_PIANO_ROLL.md, 6.2): taller or shorter rows, by comfortable steps.
+  // Vertical zoom (docs/piano-roll.md, 6.2): taller or shorter rows, by comfortable steps.
   zoomRowsOut: [{ key: "g", shift: true }],
   zoomRowsIn: [{ key: "h", shift: true }],
   toolArrow: [{ code: "Digit1" }, { code: "Numpad1" }],
@@ -99,7 +99,7 @@ export const DEFAULT_SHORTCUTS: Record<Action, Combo[]> = {
   pianoMode: [{ code: "KeyK", mod: true }],
 };
 
-/** Actions that keep working while the computer keyboard plays notes (ESPEC_PIANO_ROLL.md, 8.2). */
+/** Actions that keep working while the computer keyboard plays notes (docs/piano-roll.md, 8.2). */
 export const PIANO_MODE_ALLOWED: ReadonlySet<Action> = new Set<Action>([
   "playStop",
   "compare",

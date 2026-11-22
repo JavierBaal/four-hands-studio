@@ -9,7 +9,7 @@ import type { GridValue } from "../roll/geometry.js";
 
 /**
  * Keeps a floating card inside the window: it moves up or left if it would leave it, and a list
- * taller than the window scrolls (Fran, 14/10/2026: the bank lists went off the bottom). Fits again
+ * taller than the window scrolls (14/10/2026: the bank lists went off the bottom). Fits again
  * when its content changes (the palette and a bank's list open at the same point) and on resize.
  */
 function useFit(x: number, y: number, content?: unknown): [React.RefObject<HTMLDivElement>, { left: number; top: number; maxHeight: number }] {

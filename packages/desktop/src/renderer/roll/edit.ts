@@ -1,5 +1,5 @@
 /**
- * What each gesture of ESPEC_PIANO_ROLL.md does to the notes, as pure functions: hit testing,
+ * What each gesture of docs/piano-roll.md does to the notes, as pure functions: hit testing,
  * moving with a relative grid, resizing and creating with an absolute grid, rubber band, eraser,
  * quantizing with strength, clipboard, duplicate, transpose. The window turns their results into
  * one command list per gesture (one undo step).
@@ -7,7 +7,7 @@
 import type { CommandData, Note } from "@fourhands/core";
 import { type RollView, rowH, pitchToY, snapFloor, snapNearest, tickToX, xToTick, yToPitch } from "./geometry.js";
 
-/** Edges are grabbed within 6 px; notes under 18 px only have a right edge (ESPEC_PIANO_ROLL.md, 4). */
+/** Edges are grabbed within 6 px; notes under 18 px only have a right edge (docs/piano-roll.md, 4). */
 export const EDGE_PX = 6;
 export const SMALL_NOTE_PX = 18;
 /** A press is a drag only after the mouse moves more than 3 px. */
@@ -48,7 +48,7 @@ export interface GridSetting {
 
 /**
  * Moving: the grid is relative — what snaps is the displacement, so each note keeps its own
- * deviation (ESPEC_PIANO_ROLL.md, 5.3). Shift limits the move to its first direction.
+ * deviation (docs/piano-roll.md, 5.3). Shift limits the move to its first direction.
  */
 export function moveDelta(
   rawTicks: number,
@@ -146,7 +146,7 @@ export function inRect(notes: readonly Note[], v: RollView, r: { x0: number; y0:
 
 /**
  * Quantize: moves the start (and optionally the end) towards the grid. Strength 0–1 lets a
- * phrase get closer to the grid without losing its life (ESPEC_PIANO_ROLL.md, 8.1).
+ * phrase get closer to the grid without losing its life (docs/piano-roll.md, 8.1).
  */
 export function quantize(notes: readonly Note[], step: number, strength: number, ends: boolean): Note[] {
   const k = Math.max(0, Math.min(1, strength));
@@ -174,7 +174,7 @@ export function toClipboard(notes: readonly Note[]): ClipNote[] {
   return [...notes].sort((a, b) => a.start - b.start || a.pitch - b.pitch).map((n) => ({ offset: n.start - first, pitch: n.pitch, duration: n.duration, velocity: n.velocity }));
 }
 
-/** Pasted at the cursor, at the same pitch (ESPEC_PIANO_ROLL.md, 6.1). */
+/** Pasted at the cursor, at the same pitch (docs/piano-roll.md, 6.1). */
 export function pasteAt(clip: readonly ClipNote[], at: number): { pitch: number; start: number; duration: number; velocity: number }[] {
   return clip.map((c) => ({ pitch: c.pitch, start: Math.max(0, at + c.offset), duration: c.duration, velocity: c.velocity }));
 }

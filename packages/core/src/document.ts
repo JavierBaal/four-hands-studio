@@ -1,5 +1,5 @@
 /**
- * The command layer (ARQUITECTURA.md, 5).
+ * The command layer (docs/architecture.md, 5).
  *
  * - Every change to the song is a list of small operations, each with its inverse.
  * - A transaction groups the commands of one user gesture or one AI intervention.
@@ -166,7 +166,7 @@ export interface TransactionMeta {
   /**
    * Joins this transaction to the previous one if it had the same group and nothing happened in
    * between (no other edit, undo or redo): one AI intervention = one undo step = one history entry,
-   * even though it arrives in several calls (ESQUEMA_MCP.md, 5.1). If the user edits in the
+   * even though it arrives in several calls (docs/mcp.md, 5.1). If the user edits in the
    * middle, the next call starts a new step, so linear undo stays correct.
    */
   group?: string;
@@ -386,7 +386,7 @@ export class SongDocument {
 
   /**
    * The steps of this session, oldest first: done ones, then undone ones (the next to redo last).
-   * What the history panel shows as reachable (ESTUDIO_INTERFAZ_2.md, 9).
+   * What the history panel shows as reachable.
    */
   get steps(): StepState[] {
     return [...this.undoStack.map((s) => ({ revision: s.revision, undone: false })), ...[...this.redoStack].reverse().map((s) => ({ revision: s.revision, undone: true }))];

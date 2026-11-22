@@ -1,4 +1,4 @@
-/** Line icons from the sketches: 16 × 16, 1.4–1.5 px stroke, round caps (DIRECCION_ARTISTICA.md, 8). */
+/** Line icons from the sketches: 16 × 16, 1.4–1.5 px stroke, round caps (docs/design.md, 8). */
 import { T } from "../theme.js";
 import { ERASER_PATH, PENCIL_PATH } from "../cursors.js";
 
@@ -57,7 +57,7 @@ export const KeyboardIcon = () => (
     <path d="M4.5 3.5v5M8 3.5v5M11.5 3.5v5M3.5 10.5h9" fill="none" stroke={T.text} strokeWidth="1.4" strokeLinecap="round" />
   </svg>
 );
-/** Tools of the piano roll bar (Fran, 14/10/2026: icons instead of words). */
+/** Tools of the piano roll bar (14/10/2026: icons instead of words). */
 export const ArrowToolIcon = () => (
   <svg {...svg}>
     <path d="M4 2.5v10.5l2.8-2.6 1.9 4.1 1.7-.8-1.9-4.1 3.8-.2z" fill="none" stroke={T.text} strokeWidth="1.4" strokeLinejoin="round" />
@@ -87,7 +87,7 @@ export const ToStartIcon = () => (
   </svg>
 );
 
-// ESTUDIO_INTERFAZ_2.md: Ajustes and its sections. Drawn in the current colour, so the button decides it.
+// Ajustes and its sections. Drawn in the current colour, so the button decides it.
 const line = { fill: "none", stroke: "currentColor", strokeWidth: 1.5, strokeLinecap: "round", strokeLinejoin: "round" } as const;
 export const GearIcon = () => (
   <svg {...svg}>
@@ -190,7 +190,7 @@ export const LibraryIcon = () => (
   </svg>
 );
 
-/** The console (F2.2 parte B): three faders. */
+/** The console (F2.2 part B): three faders. */
 export const MixIcon = () => (
   <svg {...svg}>
     <path d="M4 2.5v11M8 2.5v11M12 2.5v11" fill="none" stroke={T.text} strokeWidth="1.4" strokeLinecap="round" opacity=".55" />
@@ -199,7 +199,7 @@ export const MixIcon = () => (
     <rect x="10.5" y="10" width="3" height="2.5" rx=".8" fill={T.text} />
   </svg>
 );
-/** The editor (F2.2 parte B): notes on a piano roll. */
+/** The editor (F2.2 part B): notes on a piano roll. */
 export const EditorIcon = () => (
   <svg {...svg}>
     <rect x="2" y="2.5" width="12" height="11" rx="1.5" fill="none" stroke={T.text} strokeWidth="1.4" opacity=".55" />

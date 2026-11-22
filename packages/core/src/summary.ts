@@ -1,5 +1,5 @@
 /**
- * summarize (ESQUEMA_MCP.md, 4): the song by section and track without reading every note.
+ * summarize (docs/mcp.md, 4): the song by section and track without reading every note.
  * For each section (or blocks of 8 bars when there are none) and each track: how many notes and
  * how dense, register (whole range and where most notes sit), the usual figure and how much falls
  * on the beat, the contour of the top line, dynamics, and who wrote it; plus the written chords.

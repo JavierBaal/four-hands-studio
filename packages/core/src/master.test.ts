@@ -7,7 +7,7 @@ import { USER, ai, emptySong } from "./model.js";
 
 const CLAUDE = ai("claude-ai");
 
-describe("the master fader (F2.2 parte B)", () => {
+describe("the master fader (F2.2 part B)", () => {
   it("is absent at 0 dB, is one undo step, and 0 dB removes the field again", () => {
     const d = new SongDocument(emptySong("Máster"), { now: () => 0 });
     expect(d.song.masterVolume).toBeUndefined();

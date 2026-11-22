@@ -1,5 +1,5 @@
 /**
- * Interface texts, Spanish and English (ESTUDIO_INTERFAZ.md, decision 6). Used by the window and
+ * Interface texts, Spanish and English. Used by the window and
  * by the main process (menus, dialogs). Spanish from Spain; plain words, no judgement (6.5).
  *
  * History labels are predicates: the window shows them after the subject ("Tú" / "Claude").
@@ -619,7 +619,7 @@ const es = {
   cardSubPlugin: "Plugin · cargado",
   cardSubPluginLoading: "Plugin · cargando en el motor…",
   cardSubDaw: "Suena en tu DAW por el canal {ch}",
-  // Library cards (Fran, 05/11/2026)
+  // Library cards (05/11/2026)
   libTitle: "Librería",
   libNone: "Sin ficha",
   libMissing: "La ficha «{name}» no está en este ordenador.",
@@ -662,7 +662,7 @@ const es = {
   outputDawChannel: "Tu DAW (canal {ch})",
   hOutputPlugin: "{name} suena con {plugin}",
   pluginsScan: "Buscar plugins en este ordenador",
-  engineMissing: "El motor no está compilado (mira PRUEBA_S2.md)",
+  engineMissing: "El motor no está compilado (mira BUILDING.md)",
   trackMenuPluginWindow: "Abrir ventana de {plugin}",
   pluginLoadFailed: "{plugin} no ha cargado",
   skillsIntro: "Oficio por escrito que tu IA carga cuando le hace falta. Las que apagues no las verá.",
@@ -1341,7 +1341,7 @@ const en: Strings = {
   cardSubPlugin: "Plugin · loaded",
   cardSubPluginLoading: "Plugin · loading in the engine…",
   cardSubDaw: "Plays in your DAW on channel {ch}",
-  // Library cards (Fran, 05/11/2026)
+  // Library cards (05/11/2026)
   libTitle: "Library",
   libNone: "No card",
   libMissing: "The card “{name}” is not on this computer.",
@@ -1384,7 +1384,7 @@ const en: Strings = {
   outputDawChannel: "Your DAW (channel {ch})",
   hOutputPlugin: "{name} plays through {plugin}",
   pluginsScan: "Look for plugins on this computer",
-  engineMissing: "The engine is not built (see PRUEBA_S2.md)",
+  engineMissing: "The engine is not built (see BUILDING.md)",
   trackMenuPluginWindow: "Open {plugin}'s window",
   pluginLoadFailed: "{plugin} did not load",
   skillsIntro: "Craft written down, which your AI loads when it needs it. The ones you turn off, it won't see.",

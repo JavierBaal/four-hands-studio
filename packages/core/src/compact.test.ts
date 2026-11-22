@@ -60,7 +60,7 @@ describe("formatDuration", () => {
 });
 
 describe("formatNotes", () => {
-  it("reproduces the example of ESQUEMA_MCP.md, 3.3", () => {
+  it("reproduces the example of docs/mcp.md, 3.3", () => {
     const song = emptySong("Ejemplo");
     song.counters.t = 3;
     song.counters.n = 482;
@@ -137,7 +137,7 @@ describe("formatNotes", () => {
     expect(formatNotes(song, { trackIds: ["t1"], fromBar: 900, toBar: 900 })).toBe("Four Hands · r0 · Organo (t1) · c. 900\n(no notes)");
   });
 
-  it("keeps the whole of Dilatación within the context budget (ESQUEMA_MCP.md, 12)", () => {
+  it("keeps the whole of Dilatación within the context budget (docs/mcp.md, 12)", () => {
     const { song } = importMidi(DILATACION);
     const text = formatNotes(song);
     expect(text.split("\n").filter((l) => /^n\d+ /.test(l))).toHaveLength(1024);

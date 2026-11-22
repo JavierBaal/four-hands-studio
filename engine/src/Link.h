@@ -1,4 +1,4 @@
-// The link between Four Hands and the engine (ESTUDIO_FASE2_MOTOR.md, 3): one local TCP connection
+// The link between Four Hands and the engine (docs/audio-engine.md, 3): one local TCP connection
 // (127.0.0.1), JSON messages framed the JUCE way (4-byte magic number, 4-byte size, then the
 // message). The first message must be "hello" with the token Four Hands passed on the command line.
 #pragma once

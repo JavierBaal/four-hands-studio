@@ -1,5 +1,5 @@
 /**
- * The side column (ESTUDIO_INTERFAZ_2.md, 5.1–5.2; sketch `interfaz2_1_pista.png`): tabs with icon
+ * The side column: tabs with icon
  * and name, Pista (the active track's card), Sonidos (the browser, part 3) and IA (the activity panel). Below 1000 px it opens over the piano roll from the rail and
  * closes with Esc or its arrow.
  */

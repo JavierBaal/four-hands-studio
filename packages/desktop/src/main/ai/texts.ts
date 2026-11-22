@@ -1,5 +1,5 @@
 /**
- * What the AI reads (ESQUEMA_MCP.md, 4): the overview, the user's context and the instruments,
+ * What the AI reads (docs/mcp.md, 4): the overview, the user's context and the instruments,
  * as compact text in English. Pure functions of the song, so they are tested without the app.
  * Notes themselves are formatted by the core (compact.ts).
  */
@@ -61,7 +61,7 @@ export function panText(pan: number): string {
   return v === 0 ? "C" : v < 0 ? `L${-v}` : `R${v}`;
 }
 
-/** "mix vol 80 pan L30", "mix vol 80 pan C → Voces send Reverb 20 pre muted": volume, pan, where it goes and its sends (parte D). */
+/** "mix vol 80 pan L30", "mix vol 80 pan C → Voces send Reverb 20 pre muted": volume, pan, where it goes and its sends (part D). */
 export function mixText(track: Pick<Track, "volume" | "pan" | "mute" | "solo" | "bus" | "sends">, song: Song): string {
   const level = (n: number) => Math.round(n * 100);
   const out = track.bus ? ` → ${song.buses?.[track.bus]?.name ?? track.bus}` : "";
@@ -80,7 +80,7 @@ function percent(part: number, total: number): number {
 export interface OverviewExtras {
   /** Open interventions, for the AI to know whether someone is writing. */
   open: { id: string; who: string; description: string }[];
-  /** Library cards (Fran, 05/11/2026): a plugin track's card from the user's catalog, if it has one there. */
+  /** Library cards (05/11/2026): a plugin track's card from the user's catalog, if it has one there. */
   card?: (track: Track) => LibraryCard | undefined;
 }
 
@@ -138,7 +138,7 @@ export function overviewText(song: Song, extras: OverviewExtras = { open: [] }):
     lines.push(parts.join(" · "));
   }
 
-  // F2.2 parte D: the buses, with where they go and their effects.
+  // F2.2 part D: the buses, with where they go and their effects.
   const buses = busList(song);
   if (buses.length) {
     lines.push("Buses (tracks reach them through their output '→' or a send):");
@@ -153,7 +153,7 @@ export function overviewText(song: Song, extras: OverviewExtras = { open: [] }):
       lines.push(parts.join(" · "));
     }
   } else lines.push("Buses: none yet. Reverb or delay shared by tracks: add_bus (reverb: true) and sends with set_mix; for one track, add_effect 'reverb' on it");
-  // F2.2 parte B: the master fader, 0-100 like the tracks' volume (100 = 0 dB).
+  // F2.2 part B: the master fader, 0-100 like the tracks' volume (100 = 0 dB).
   lines.push(`Master: vol ${Math.round((song.masterVolume ?? 1) * 100)}${(song.masterVolume ?? 1) === 1 ? " (0 dB)" : ""}${song.masterInserts?.length ? ` · effects: ${chainText(song.masterInserts)}` : ""}`);
   if (Object.keys(song.harmony).length === 0) lines.push("Harmony: no chords written yet");
   else {
@@ -293,7 +293,7 @@ export function instrumentsText(banks: SoundBankInfo[], builtIn: readonly BankPr
     );
     for (const p of plugins) lines.push(`  ${p.name}${p.vendor ? ` · ${p.vendor}` : ""}${p.category ? ` · ${p.category}` : ""}`);
   }
-  // F2.2 parte C: the plugin effects, for add_effect (Four Hands' own EQ, compressor and limiter are always there).
+  // F2.2 part C: the plugin effects, for add_effect (Four Hands' own EQ, compressor and limiter are always there).
   if (effects.length) {
     lines.push("Effect plugins on this computer (for add_effect; Four Hands' own 'eq', 'compressor' and 'limiter' are always there):");
     for (const p of effects) lines.push(`  ${p.name}${p.vendor ? ` · ${p.vendor}` : ""}${p.category ? ` · ${p.category}` : ""}`);
@@ -321,7 +321,7 @@ export { barStart };
  * F2.2: get_levels. Peak and RMS per track after its fader, and the master, from the last playback.
  * A meter, not ears: it says how loud, not which frequencies (that comes with F2.3).
  */
-/** The engine's load as get_levels gives it (F2.2 parte B). */
+/** The engine's load as get_levels gives it (F2.2 part B). */
 export function loadText(load: EngineLoad | null | undefined): string | null {
   if (!load) return null;
   const cut = load.dropouts > 0 ? `; the audio was CUT ${load.dropouts} time(s) in the last second it measured (too many plugins, or too small a buffer)` : "; no audio cut";

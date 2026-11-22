@@ -1,5 +1,5 @@
 /**
- * Insert effects (F2.2 parte C, Fran 03/11/2026): a chain on each track, after its sound and before
+ * Insert effects (F2.2 part C, 03/11/2026): a chain on each track, after its sound and before
  * its fader, and one on the Master, before its fader.
  *
  * Four Hands' own effects (EQ, compressor, limiter) keep every parameter in the song, readable and
@@ -58,7 +58,7 @@ export const NOTE_VALUES: ReadonlyArray<{ id: string; beats: number; es: string;
 const pct = (id: string, name: string, d: number): ParamDef => ({ id, name, unit: "%", min: 0, max: 100, default: d });
 const q = (id: string, name: string, d: number): ParamDef => ({ id, name, unit: "Q", min: 0.3, max: 10, default: d, log: true });
 
-/** The own effects (ESTUDIO_FASE2_MOTOR.md, decisión 10): simple, and enough without paid plugins. */
+/** The own effects (docs/audio-engine.md, decisión 10): simple, and enough without paid plugins. */
 export const OWN_EFFECTS: Record<Exclude<InsertKind, "plugin">, { name: { es: string; en: string }; params: ParamDef[] }> = {
   eq: {
     name: { es: "EQ", en: "EQ" },
@@ -98,7 +98,7 @@ export const OWN_EFFECTS: Record<Exclude<InsertKind, "plugin">, { name: { es: st
   },
   reverb: {
     name: { es: "Reverb", en: "Reverb" },
-    // F2.2 parte D (Fran 04/11/2026): the GS reverb the built-in sounds had, now an effect like the
+    // F2.2 part D (04/11/2026): the GS reverb the built-in sounds had, now an effect like the
     // others. Its defaults are that reverb exactly, all wet: it sits on the «Reverb» bus.
     params: [
       pct("mix", "Mix", 100),
@@ -109,7 +109,7 @@ export const OWN_EFFECTS: Record<Exclude<InsertKind, "plugin">, { name: { es: st
   },
   delay: {
     name: { es: "Delay", en: "Delay" },
-    // Fran, 04/11/2026: an own delay, the reverb's partner on a send bus. Its repeats follow the
+    // 04/11/2026: an own delay, the reverb's partner on a send bus. Its repeats follow the
     // song's tempo (a note value) or a time in ms; the cuts darken the repeats, as a tape does.
     params: [
       on("sync", "Sync", 1),

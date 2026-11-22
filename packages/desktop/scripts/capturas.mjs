@@ -1,4 +1,4 @@
-// Screenshots of the window in a plain browser (the harness), to compare with bocetos/capturas.
+// Screenshots of the window in a plain browser (the harness), to compare with sketches/capturas.
 // Usage: node build.mjs --harness && node scripts/capturas.mjs <output folder> [chromium path]
 // Shots: 01 like capture 01 (sketch data, 1440 × 900), 05 compact at 880, Dilatación as the app
 // opens it the first time, an empty song and the English interface.
@@ -308,7 +308,7 @@ export const SHOTS = [
     if (b) await page.mouse.click(b.x + b.width * 0.45, b.y + 6);
     await page.waitForTimeout(300);
   } },
-  // F2.2 parte B (03/11/2026): the console, with the sketch's levels (the pretend engine gives the
+  // F2.2 part B (03/11/2026): the console, with the sketch's levels (the pretend engine gives the
   // same reading every time) and the engine's load, as mezcla_1 to mezcla_4 of the approved sketch.
   { name: "mezcla_1_consola", q: `?song=boceto&view=${view({ bottom: "mix" })}`, act: consoleLevels },
   { name: "mezcla_2_ampliada", q: `?song=boceto&view=${view({ bottom: "mix", mixMax: true })}`, act: consoleLevels },
@@ -323,7 +323,7 @@ export const SHOTS = [
     });
     await consoleLevels(page);
   } },
-  // F2.2 parte C1 (03/11/2026): effects in the slots, one bypassed, one plugin that failed, the Master's limiter.
+  // F2.2 part C1 (03/11/2026): effects in the slots, one bypassed, one plugin that failed, the Master's limiter.
   { name: "efectos_1_consola", q: `?song=boceto&view=${view({ bottom: "mix" })}`, act: async (page) => { await withEffects(page); await consoleLevels(page); } },
   { name: "efectos_2_estrecha", q: `?song=boceto&view=${view({ bottom: "mix", mixNarrow: true })}`, act: async (page) => { await withEffects(page); await consoleLevels(page); } },
   { name: "efectos_3_menu_anadir", q: `?song=boceto&view=${view({ bottom: "mix" })}`, act: async (page) => {
@@ -338,7 +338,7 @@ export const SHOTS = [
     await page.locator(".cslot[data-fx]").nth(1).click({ button: "right" });
     await page.waitForTimeout(200);
   } },
-  // Fran, 04/11/2026: many plugins, organised. The short «+» menu, and the effects in Sonidos.
+  // 04/11/2026: many plugins, organised. The short «+» menu, and the effects in Sonidos.
   { name: "efectos_5_menu_corto", q: `?song=boceto&plugins=fran&view=${view({ bottom: "mix" })}`, act: async (page) => {
     await page.evaluate(async () => {
       const { audio } = window.fhTest;
@@ -370,12 +370,12 @@ export const SHOTS = [
     });
     await consoleLevels(page);
   } },
-  // F2.2 parte C2 (04/11/2026): the window of Four Hands' own effects.
+  // F2.2 part C2 (04/11/2026): the window of Four Hands' own effects.
   ...[
     ["ventana_eq", { kind: "eq", params: { lowCut: 1, lowCutFreq: 90, lowGain: -2, lowMidFreq: 320, lowMidGain: -3.5, lowMidQ: 1.4, highMidFreq: 3200, highMidGain: 2.5, highMidQ: 0.8, highGain: 3, highFreq: 9000 } }, "EQ medios"],
     ["ventana_compresor", { kind: "compressor", params: { threshold: -24, ratio: 4, attack: 8, release: 140, knee: 6, makeup: 4 } }, null],
     ["ventana_limitador", { kind: "limiter", params: { gain: 4, ceiling: -1, release: 60 } }, null],
-    // Fran, 04/11/2026: the delay, in time with the song, and in ms.
+    // 04/11/2026: the delay, in time with the song, and in ms.
     ["ventana_delay", { kind: "delay", params: { note: 6, feedback: 45, pingPong: 1 } }, null],
     ["ventana_delay_ms", { kind: "delay", params: { sync: 0, time: 320, feedback: 30, mix: 25 } }, null],
   ].map(([name, spec, rename]) => ({
@@ -397,7 +397,7 @@ export const SHOTS = [
       await page.waitForTimeout(500);
     },
   })),
-  // F2.2 parte D (04/11/2026): buses and sends, as the approved sketch: Cuerdas (a subgroup of the
+  // F2.2 part D (04/11/2026): buses and sends, as the approved sketch: Cuerdas (a subgroup of the
   // melody and the countermelody) into Mix bus, a Delay return, the «Reverb» bus every song has.
   { name: "buses_1_consola", q: `?song=boceto&view=${view({ bottom: "mix", mixMax: true })}`, act: async (page) => { await withBuses(page); await consoleLevels(page); } },
   { name: "buses_2_con_arreglo", q: `?song=boceto&view=${view({ bottom: "mix" })}`, act: async (page) => { await withBuses(page); await consoleLevels(page); } },
@@ -433,8 +433,8 @@ export const SHOTS = [
     await page.keyboard.press("Delete");
     await page.waitForTimeout(500);
   } },
-  // The Mezcla / Editor button (Fran, 03/11/2026: at the start of the bar).
-  // Library cards (Fran, 05/11/2026): the violas in Kontakt with their card, without one, editing it.
+  // The Mezcla / Editor button (03/11/2026: at the start of the bar).
+  // Library cards (05/11/2026): the violas in Kontakt with their card, without one, editing it.
   ...[
     ["ficha_1_llena", true, 52, null],
     ["ficha_2_vacia", false, 52, null],
@@ -465,7 +465,7 @@ export const SHOTS = [
   { name: "boton_mezcla_editor_880", w: 880, h: 800, q: `?song=boceto&view=${sketchView(880 - 48 - 56, 8)}` },
 ];
 
-/** Buses like a real mix (F2.2 parte D): Cuerdas → Mix bus, a Delay return, sends to the reverb. */
+/** Buses like a real mix (F2.2 part D): Cuerdas → Mix bus, a Delay return, sends to the reverb. */
 async function withBuses(page) {
   await page.evaluate(async () => {
     const { replica } = window.fhTest;

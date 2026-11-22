@@ -1,5 +1,5 @@
 /**
- * F2.3, the AI's ear (Fran, 04/11/2026): what the engine measured in the last playback, and the
+ * F2.3, the AI's ear (04/11/2026): what the engine measured in the last playback, and the
  * sums Four Hands makes with it and the score (where each thing happens, in bars and sections).
  *
  * The engine gives, per strip, bus and the master, a frame per second: where the song was (in
@@ -202,7 +202,7 @@ export interface LoudnessTarget {
   truePeak: number | null;
 }
 
-/** The targets of serie (Fran, 04/11/2026); others come from the conversation. */
+/** The targets of serie (04/11/2026); others come from the conversation. */
 export const TARGETS: Record<string, LoudnessTarget> = {
   streaming: { name: "streaming (Spotify, Apple Music, YouTube)", lufs: -14, truePeak: -1 },
   cinema: { name: "cinema and TV (EBU R128; the US uses -24, ATSC A/85)", lufs: -23, truePeak: -1 },

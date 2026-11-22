@@ -45,7 +45,7 @@ function analysis(): EngineAnalysis {
 
 const ctx = () => ({ analysis: analysis(), at: Date.UTC(2026, 10, 4, 18, 30), strips: { t1: 0, t2: 1, t3: 2, t4: 3 }, buses: {} });
 
-describe("the AI's ear (F2.3, Fran 04/11/2026)", () => {
+describe("the AI's ear (F2.3, 04/11/2026)", () => {
   it("reads the engine's rows of numbers", () => {
     const a = parseAnalysis({ strips: [{ strip: 2, integrated: -20, frames: [[4, -21.5, -30, -20, -25, -26, -40, -50, -60, -3]] }], buses: [], master: { integrated: -18, frames: [[4, -19, -30, -20, -25, -26, -40, -50, -60, -1, 0.5, 0.25]] }, gaps: 0 })!;
     expect(a.strips[0]).toMatchObject({ strip: 2, integrated: -20 });

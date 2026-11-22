@@ -1,6 +1,6 @@
 /**
- * Ajustes › Sonido (ESTUDIO_INTERFAZ_2.md): the built-in sound, the banks installed and "Get more
- * sounds" (Fran, 14/10/2026): which formats work, three steps to install a bank and where to find
+ * Ajustes › Sonido: the built-in sound, the banks installed and "Get more
+ * sounds" (14/10/2026): which formats work, three steps to install a bank and where to find
  * free ones.
  * Plus the short notice that confirms banks dropped onto the window.
  */

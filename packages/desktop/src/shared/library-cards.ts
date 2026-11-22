@@ -1,5 +1,5 @@
 /**
- * Library cards (Fran, 05/11/2026; boceto aprobado el mismo día): what a sample library inside a
+ * Library cards (05/11/2026; sketch aprobado el mismo día): what a sample library inside a
  * plugin responds to (velocity, expression CC11, modulation CC1), which keys sound and which change
  * articulation, whether it brings its own reverb, and notes. The user's catalog keeps them outside
  * any song, so one card serves every song that uses that library; a track only links one

@@ -249,7 +249,7 @@ describe("plugin states (F2.1): what Kontakt had loaded comes back with the song
     again.dispose();
   });
 
-  it("keeps a plugin effect's state under its own id, and drops it when the effect goes (F2.2 parte C)", async () => {
+  it("keeps a plugin effect's state under its own id, and drops it when the effect goes (F2.2 part C)", async () => {
     const proQ = { id: "VST3-Pro-Q 3-9", name: "Pro-Q 3" };
     let engineSays: Record<string, { id: string; data: string }> = {};
     const s = await SongSession.createNew(options({ collectPluginStates: async () => engineSays }));
@@ -272,7 +272,7 @@ describe("plugin states (F2.1): what Kontakt had loaded comes back with the song
   });
 
   it("keeps the engine's own encoding (JUCE's base64, with dots), as Kontakt sends it", async () => {
-    // What the engine really sends (prueba de Fran, 29/10/2026): every save failed with it.
+    // What the engine really sends (tested on 29/10/2026): every save failed with it.
     const juce = "18342.4D2+8fa7.2hA9JqXCkt7BBb.Fe3D0K++.KwB..A";
     let engineSays: Record<string, { id: string; data: string }> = {};
     const s = await SongSession.createNew(options({ collectPluginStates: async () => engineSays }));

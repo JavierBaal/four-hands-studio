@@ -1,7 +1,7 @@
 /**
- * Visual tokens from DIRECCION_ARTISTICA.md (sections 2–5). The single source for CSS and canvas:
+ * Visual tokens from docs/design.md (sections 2–5). The single source for CSS and canvas:
  * `installTheme()` writes them as CSS variables; the canvas code reads `T` directly.
- * Nothing visual changes without Fran's approval (DIRECCION_ARTISTICA.md, 0).
+ * Visual changes follow docs/design.md, 0.
  */
 export const T = {
   // 2.1 Surfaces
@@ -72,7 +72,7 @@ export const T = {
   keyWhiteText: "#2a2622",
   keyBlack: "#2c2824",
   keyBlackLine: "#1b1916",
-  // Library cards (Fran, 05/11/2026): keyswitch keys and keys outside the library's range.
+  // Library cards (05/11/2026): keyswitch keys and keys outside the library's range.
   keyswitch: "#c9826f",
   keyswitchText: "#7a3e30",
   keyswitchTextOnBlack: "#e8c3b8",
@@ -98,7 +98,7 @@ export const SIZE = {
   topBar: 52,
   trackHeader: 196,
   trackHeaderCompact: 44,
-  /** H3.2: 26 → 40 so volume and pan fit under the name (pending Fran's approval). */
+  /** H3.2: 26 → 40 so volume and pan fit under the name. */
   arrangeLane: 54,
   arrangeLaneCompact: 14,
   arrangeStrip: 22,
@@ -115,7 +115,7 @@ export const SIZE = {
   rail: 48,
   /** Black keys leave this much of the row uncovered on the right. */
   blackKeyGap: 24,
-  /** Below this app width the compact layout applies (DIRECCION_ARTISTICA.md, 6.3). */
+  /** Below this app width the compact layout applies (docs/design.md, 6.3). */
   compactBelow: 1000,
 } as const;
 
@@ -124,7 +124,7 @@ export const FONT = {
   mono: "'IBM Plex Mono', ui-monospace, monospace",
 } as const;
 
-/** Note opacity from velocity (DIRECCION_ARTISTICA.md, 5). */
+/** Note opacity from velocity (docs/design.md, 5). */
 export function velocityOpacity(velocity: number): number {
   return 0.55 + (0.45 * velocity) / 127;
 }

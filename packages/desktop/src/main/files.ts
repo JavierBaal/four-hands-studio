@@ -1,5 +1,5 @@
 /**
- * Disk writes that never leave a half-written song (ARQUITECTURA.md, 9):
+ * Disk writes that never leave a half-written song (docs/architecture.md, 9):
  * write a temporary file next to the target, then rename it over the target.
  * Plus rotating backups, so there is always an earlier copy to go back to.
  */

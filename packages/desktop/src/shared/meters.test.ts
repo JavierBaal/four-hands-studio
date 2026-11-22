@@ -3,7 +3,7 @@ import { METER_FLOOR_DB, PEAK_HOLD_MS, SILENT_METER, fracToDb, meterFrac, stepMe
 
 const half = { peak: 0.5, rms: 0.1, clips: 0 }; // −6 dB peak, −20 dB RMS
 
-describe("the console's meters (F2.2 parte B)", () => {
+describe("the console's meters (F2.2 part B)", () => {
   it("rise at once and fall about 20 dB a second", () => {
     const up = stepMeter(SILENT_METER, half, 1000, 967);
     expect(up.rmsDb).toBeCloseTo(-20, 5);

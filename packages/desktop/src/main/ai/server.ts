@@ -1,11 +1,11 @@
 /**
- * The door for the bridges (ARQUITECTURA.md, 6): a WebSocket on 127.0.0.1 with a token.
+ * The door for the bridges (docs/architecture.md, 6): a WebSocket on 127.0.0.1 with a token.
  *
- * - The app writes its port and a fresh token in bridge.json (ESQUEMA_MCP.md, 2) at every start
+ * - The app writes its port and a fresh token in bridge.json (docs/mcp.md, 2) at every start
  *   and removes it when it closes. Only a program that can read that file can write in the song.
  * - Any number of bridges at once (Claude Desktop and a linked claude.ai session start one each).
  * - A bridge of another tools version gets a clear answer on every call: update the connection.
- * - The window does not use this door: it talks to the main process over IPC (ARQUITECTURA.md, 6.2).
+ * - The window does not use this door: it talks to the main process over IPC (docs/architecture.md, 6.2).
  *
  * It only carries messages: what each tool does is in desk.ts.
  */
@@ -104,7 +104,7 @@ export class AiServer {
       }
       if (msg.type === "call") {
         const transit = typeof msg.at === "number" ? Date.now() - msg.at : undefined;
-        // Most tools answer at once; a plugin effect's parameters wait for the engine (F2.2 parte C).
+        // Most tools answer at once; a plugin effect's parameters wait for the engine (F2.2 part C).
         const answer = (reply: { ok: true; text: string } | { ok: false; error: string }) => {
           const out: AppMessage = reply.ok ? { type: "result", id: msg.id, ok: true, text: reply.text } : { type: "result", id: msg.id, ok: false, error: reply.error };
           ws.send(JSON.stringify(out));

@@ -3,7 +3,7 @@ import { METRONOME_KEY, MAX_STRIPS, StripMap } from "./strips.js";
 
 const tracks = (n: number, channel = (i: number) => (i < 9 ? i : i < 15 ? i + 1 : 0)) => Array.from({ length: n }, (_, i) => ({ id: `t${i + 1}`, channel: channel(i) }));
 
-describe("strips per track (A2, Fran 03/11/2026)", () => {
+describe("strips per track (A2, 03/11/2026)", () => {
   it("keeps a song of up to 15 tracks on its channels' numbers, as before, with the metronome on 15", () => {
     const m = new StripMap();
     m.sync(tracks(15, (i) => (i < 9 ? i : i + 1)));

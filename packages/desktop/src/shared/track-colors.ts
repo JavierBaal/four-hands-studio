@@ -2,7 +2,7 @@ import { TRACK_COLOR_COUNT } from "@fourhands/core";
 
 /**
  * Track palette, shared by the window (theme.ts) and the AI desk, which accepts the names.
- * 2.7 Track colours (H3.2, approved by Fran on 15/10/2026, option C): ten named tones without the
+ * 2.7 Track colours (H3.2, decided on 15/10/2026, option C): ten named tones without the
  * amber and blue of authorship, about twice as saturated as the first H3.2 palette (it looked dull
  * next to Partita), same lightness. Every pair stays apart for deuteranopia, protanopia and
  * tritanopia (CIEDE2000 ≥ 5.5 in all three simulations) and the dark note text reads at ≥ 4.7:1.

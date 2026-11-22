@@ -1,6 +1,6 @@
 /**
- * Sound banks the user installs (Fran, 14/10/2026): every SF2 / SF3 in the sounds folder
- * (Documentos\Four Hands\Sonidos), plus the project's recursos\soundfonts on Fran's computer.
+ * Sound banks the user installs (14/10/2026): every SF2 / SF3 in the sounds folder
+ * (Documentos\Four Hands\Sonidos), plus recursos\soundfonts next to the repo in a development checkout.
  * The default bank (MuseScore_General) is not listed: it is the one every track uses unless it
  * chooses another. Files are read only when a track uses them; their presets come from the header.
  */

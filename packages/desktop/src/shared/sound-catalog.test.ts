@@ -3,7 +3,7 @@ import { NO_SOUND_PREFS, buildCatalog, categoryFromName, filterCatalog, groupCat
 
 const plugin = (name: string, category: string, vendor = "") => ({ id: `VST3-${name}`, name, vendor, category, format: "VST3", instrument: true });
 
-// The instruments the engine found on Fran's computer (prueba S2, 28/10/2026), with their real names.
+// The instruments the engine found on a development computer (test S2, 28/10/2026), with their real names.
 const FRAN = [
   plugin("Kontakt 8", "Instrument|Sampler", "Native Instruments"),
   plugin("Omnisphere", "Instrument|Synth", "Spectrasonics"),
@@ -19,7 +19,7 @@ const FRAN = [
 const catalog = (prefs = NO_SOUND_PREFS) =>
   buildCatalog({ lang: "es", banks: [{ id: "Sonatina.sf2", name: "Sonatina", presets: [{ name: "1st Violins Sustain", program: 0, bankMSB: 0 }, { name: "Concert Harp", program: 1, bankMSB: 0 }] }], plugins: FRAN, prefs, builtInLabel: "de serie" });
 
-describe("the sound catalog (ESTUDIO_INTERFAZ_2.md, 5.3)", () => {
+describe("the sound catalog", () => {
   it("joins Four Hands's sounds, the banks and the instrument plugins (not the effects)", () => {
     const items = catalog();
     expect(items.filter((i) => i.origin === "builtin")).toHaveLength(22);
@@ -76,7 +76,7 @@ describe("the sound catalog (ESTUDIO_INTERFAZ_2.md, 5.3)", () => {
   });
 });
 
-describe("the effect catalog (F2.2 parte C, Fran 04/11/2026)", () => {
+describe("the effect catalog (F2.2 part C, 04/11/2026)", () => {
   const plugins = [
     { id: "VST3-Pro-Q 3", name: "Pro-Q 3", vendor: "FabFilter", category: "Fx|EQ", format: "VST3", instrument: false },
     { id: "VST3-Pro-C 2", name: "Pro-C 2", vendor: "FabFilter", category: "Fx|Dynamics", format: "VST3", instrument: false },

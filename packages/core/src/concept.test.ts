@@ -14,7 +14,7 @@ function doc() {
   return d;
 }
 
-describe("the song concept (ESTUDIO_SKILLS_COMPOSICION.md, 6.3)", () => {
+describe("the song concept", () => {
   it("is written with its author, rewritten, removed, and every change is one undo step", () => {
     const d = doc();
     d.transact({ actor: CLAUDE, label: "concepto" }, (tx) => setSongProperties(tx, { concept: "  Orquesta infectada. Dura 1:12.  " }));

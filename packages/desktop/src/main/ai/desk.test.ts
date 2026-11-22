@@ -147,7 +147,7 @@ describe("reading (route 1: the AI reads the song without the user describing it
     expect(new Set(lines.map((l) => l.split(" ")[0])).size).toBe(Object.keys(session.song.notes).length);
   });
 
-  it("analyzes what it wrote: the low clash it creates is found, with its notes (ESTUDIO_SKILLS_COMPOSICION.md, 5)", () => {
+  it("analyzes what it wrote: the low clash it creates is found, with its notes", () => {
     const whole = ok("analyze");
     expect(whole).toMatch(/^Analysis of whole song \(c\. 1–52\), all tracks/);
     expect(whole).toMatch(/cannot hear sounds/);
@@ -379,7 +379,7 @@ describe("interventions: one intervention = one undo step", () => {
   });
 });
 
-describe("the user's notes are protected (ESQUEMA_MCP.md, 5.2)", () => {
+describe("the user's notes are protected (docs/mcp.md, 5.2)", () => {
   it("refuses to change a note the user changed after the AI read it", () => {
     const note = notesOf(session.song, "t1")[0]!;
     const id = begin();
@@ -544,9 +544,9 @@ describe("form, harmony, pedal, properties, tracks and annotations", () => {
     expect(trackByName("Chelos Sonatina").sound).toBeUndefined();
   });
 
-  it("puts plugins on tracks (fase 2): one sound per track", () => {
+  it("puts plugins on tracks (phase 2): one sound per track", () => {
     expect(ok("list_instruments")).toMatch(/Kontakt 8 · Native Instruments · Instrument\|Sampler/);
-    // An effect plugin is not an instrument: it is listed apart, for add_effect (F2.2 parte C).
+    // An effect plugin is not an instrument: it is listed apart, for add_effect (F2.2 part C).
     expect(ok("list_instruments").split("Effect plugins")[0]).not.toMatch(/Ozone/);
     const id = begin("Kontakt");
     ok("add_track", { intervention_id: id, name: "Cuerdas Kontakt", sound: "plugin / kontakt" });
@@ -628,7 +628,7 @@ describe("H3.1: the mix and the track list", () => {
     expect(orderedTracks(session.song).map((t) => ({ v: t.volume, p: t.pan, m: t.mute }))).toEqual(before);
   });
 
-  it("reverb is a bus and a send, not a track setting (Fran, 04/11/2026)", () => {
+  it("reverb is a bus and a send, not a track setting (04/11/2026)", () => {
     const id = begin("Los violines más lejos");
     expect(fail("set_mix", { intervention_id: id, mix: "t1 rev 35" })).toMatch(/write the track or bus first/);
     ok("add_bus", { intervention_id: id, name: "Reverb", reverb: true });
@@ -777,7 +777,7 @@ describe("H3.2: track colours", () => {
   });
 });
 
-describe("skills served by the app (ESTUDIO_SKILLS.md, 3)", () => {
+describe("skills served by the app", () => {
   it("list_skills lists the built-in skills, the basics first, and the overview points to them", () => {
     const text = ok("list_skills");
     expect(text).toMatch(/^Skills \(\d+\)\. Load with load_skill/);
@@ -833,7 +833,7 @@ describe("skills served by the app (ESTUDIO_SKILLS.md, 3)", () => {
   });
 });
 
-describe("sound profiles (ESTUDIO_SKILLS_COMPOSICION.md, 5.4)", () => {
+describe("sound profiles", () => {
   it("list_instruments says how each built-in sound behaves, from the default bank's data", () => {
     const text = ok("list_instruments");
     expect(text).toMatch(/Choir \/ Coro · program 52 · E2–A5 · sung 'aah' vowels: no words, no consonants · fast attack, holds long notes, rings 1\.7 s after the note ends/);
@@ -858,7 +858,7 @@ describe("sound profiles (ESTUDIO_SKILLS_COMPOSICION.md, 5.4)", () => {
   });
 });
 
-describe("the song concept (ESTUDIO_SKILLS_COMPOSICION.md, 6.3)", () => {
+describe("the song concept", () => {
   it("the overview says there is none and how to write one, then shows it with its author", () => {
     expect(ok("get_song_overview").split("\n")[2]).toMatch(/^Concept: none yet\. For a new piece, write one with set_song_properties concept/);
     const id = begin("Concepto");
@@ -893,7 +893,7 @@ describe("get_levels (F2.2, 03/11/2026)", () => {
     expect(levelsText(null, [], null)).toMatch(/Ask the user to play/);
   });
 
-  it("says the master's fader and the engine's load, and when the audio was cut (parte B)", async () => {
+  it("says the master's fader and the engine's load, and when the audio was cut (part B)", async () => {
     const { levelsText } = await import("./texts.js");
     const channels = [{ peak: 0.5, rms: 0.1, clips: 0 }];
     const text = levelsText({ channels, master: { peak: 0.5, rms: 0.1, clips: 0 } }, [{ name: "Piano", channel: 0 }], null, { masterVolume: 0.9, load: { avgLoad: 0.23, maxLoad: 0.4, dropouts: 0 } });
@@ -905,7 +905,7 @@ describe("get_levels (F2.2, 03/11/2026)", () => {
   });
 });
 
-describe("the master fader for the AI (F2.2 parte B)", () => {
+describe("the master fader for the AI (F2.2 part B)", () => {
   it("set_mix takes a 'master vol' line in the same undo step, and the overview shows the master", () => {
     expect(ok("get_song_overview")).toContain("Master: vol 100 (0 dB)");
     const id = begin("Bajo el máster");
@@ -923,7 +923,7 @@ describe("the master fader for the AI (F2.2 parte B)", () => {
   });
 });
 
-describe("insert effects for the AI (F2.2 parte C)", () => {
+describe("insert effects for the AI (F2.2 part C)", () => {
   it("adds an own effect with settings, shows it in the overview, and undoes it in one step", () => {
     const id = begin("Limpio el órgano");
     const text = ok("add_effect", { intervention_id: id, track: "t1", effect: "ecualizador", settings: "Low cut: on\nLow cut freq: 120 Hz\nHigh-mid gain: -3 dB" });
@@ -964,7 +964,7 @@ describe("insert effects for the AI (F2.2 parte C)", () => {
     ok("end_intervention", { intervention_id: id });
   });
 
-  it("names effects, and the overview says the name with what it is (Fran, 04/11/2026)", async () => {
+  it("names effects, and the overview says the name with what it is (04/11/2026)", async () => {
     const id = begin("Tres EQ");
     ok("add_effect", { intervention_id: id, track: "t1", effect: "eq", name: "EQ graves" });
     ok("add_effect", { intervention_id: id, track: "t1", effect: "eq" });
@@ -1017,7 +1017,7 @@ describe("insert effects for the AI (F2.2 parte C)", () => {
   });
 });
 
-describe("buses for the AI (F2.2 parte D)", () => {
+describe("buses for the AI (F2.2 part D)", () => {
   it("a song starts without buses; the overview shows them with what goes into them", () => {
     expect(ok("get_song_overview")).toMatch(/Buses: none yet/);
     const id = begin("Profundidad");
@@ -1081,7 +1081,7 @@ describe("buses for the AI (F2.2 parte D)", () => {
   });
 });
 
-describe("Four Hands' delay for the AI (Fran, 04/11/2026)", () => {
+describe("Four Hands' delay for the AI (04/11/2026)", () => {
   it("makes a delay return in time with the song and sets its note value in words", async () => {
     const a = async (tool: string, args: Record<string, unknown>) => desk.callAsync("c1", tool, args);
     const id = begin("Eco en la melodía");
@@ -1107,7 +1107,7 @@ describe("analyze_mix for the AI (F2.3)", () => {
   });
 });
 
-describe("library cards (Fran, 05/11/2026)", () => {
+describe("library cards (05/11/2026)", () => {
   it("fills a plugin track's card in the user's catalog, links it, shows it in the overview and warns of notes outside its range", () => {
     const id = begin("Ficha de las violas");
     ok("add_track", { intervention_id: id, name: "Violas K", sound: "plugin / kontakt" });

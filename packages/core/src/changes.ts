@@ -1,5 +1,5 @@
 /**
- * What changed between two versions of the song (ESQUEMA_MCP.md, 4: get_changes_since), for the AI
+ * What changed between two versions of the song (docs/mcp.md, 4: get_changes_since), for the AI
  * when it comes back to the conversation: the signed history in between, then the differences
  * grouped by kind (notes per track, harmony, form, song, tracks, annotations). Pure: the app keeps
  * the earlier version and passes both.
@@ -191,7 +191,7 @@ export function changesText(before: Song, after: Song, options: ChangesOptions):
   if (kept.join() !== keptBefore.join()) trackLines.push(`  order: ${orderedTracks(after).map((t) => t.name).join(", ")}`);
   if (trackLines.length) lines.push("", "Tracks:", ...trackLines);
 
-  // Buses (F2.2 parte D).
+  // Buses (F2.2 part D).
   const busLines: string[] = [];
   const busesBefore = before.buses ?? {};
   for (const b of busList(after)) {

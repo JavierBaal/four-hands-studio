@@ -184,7 +184,7 @@ juce::var Link::handle (const juce::var& m, Connection& from)
                       { "soundsSlot", kSoundsSlot },
                       // A2 (03/11/2026): strips numbered by Four Hands, not by MIDI channel.
                       { "strips", kStrips },
-                      // F2.2 parte D: buses, and an engine that can route (older ones ignore "routing").
+                      // F2.2 part D: buses, and an engine that can route (older ones ignore "routing").
                       { "buses", kBuses } });
 
     if (type == "plugins")
@@ -323,7 +323,7 @@ juce::var Link::handle (const juce::var& m, Connection& from)
 
     if (type == "mix")
     {
-        // F2.2: the strips that changed, { ch (the strip), gain, pan, on }; parte D: the buses that
+        // F2.2: the strips that changed, { ch (the strip), gain, pan, on }; part D: the buses that
         // changed, { bus, gain, pan, on }; the master fader (`master`, linear), when it comes. No reply.
         if (auto* list = m["channels"].getArray())
             for (const auto& c : *list)
@@ -338,7 +338,7 @@ juce::var Link::handle (const juce::var& m, Connection& from)
 
     if (type == "routing")
     {
-        // F2.2 parte D, the whole routing: { strips: [{ ch, out, sends: [{ bus, level, pre }] }],
+        // F2.2 part D, the whole routing: { strips: [{ ch, out, sends: [{ bus, level, pre }] }],
         // buses: [{ bus, out, sends }], order: [bus…], instrumentReverb }. `out` -1: the master.
         auto route = [] (const juce::var& c) {
             Engine::Route r;
@@ -371,7 +371,7 @@ juce::var Link::handle (const juce::var& m, Connection& from)
         const auto busLevels = engine.takeBusMeters (type == "levels");
         auto level = [] (const Engine::Level& l) { return obj ({ { "peak", l.peak }, { "rms", l.rms }, { "clips", (juce::int64) l.clips } }); };
         juce::Array<juce::var> list, buses;
-        // A2: one per strip in use (the app maps them to its tracks), then the master; parte D: the buses.
+        // A2: one per strip in use (the app maps them to its tracks), then the master; part D: the buses.
         for (size_t i = 0; i + 1 < levels.size(); ++i)
             list.add (level (levels[i]));
         for (const auto& l : busLevels)
@@ -446,7 +446,7 @@ juce::var Link::handle (const juce::var& m, Connection& from)
                       { "gapMax", s.gapMax }, { "gaps", s.gaps }, { "messageStall", takeMessageStall() } });
     }
 
-    // --- Insert effects (F2.2 parte C) ---------------------------------------------------------
+    // --- Insert effects (F2.2 part C) ---------------------------------------------------------
     if (type == "inserts")
     {
         // { strip (-1: the master), chain: [{ id, kind, plugin, bypass, params: { name: value } }] }

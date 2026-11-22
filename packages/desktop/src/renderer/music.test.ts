@@ -78,7 +78,7 @@ describe("durations as musicians say them (H3.2)", () => {
   });
 });
 
-describe("vertical zoom and the zoom tool (Fran, 15/10/2026)", () => {
+describe("vertical zoom and the zoom tool (15/10/2026)", () => {
   const base: RollView = { startTick: 0, pxPerTick: 0.025, scrollY: (127 - 84) * 15, width: 1000, height: 450 };
 
   it("moves by comfortable steps and stops at the ends", () => {

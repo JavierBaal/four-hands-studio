@@ -1,6 +1,6 @@
-# Four Hands Engine (fase 2, prueba S2; ESTUDIO_FASE2_MOTOR.md): the native audio engine.
+# Four Hands Engine (phase 2, test S2; docs/audio-engine.md): the native audio engine.
 # It hosts VST3 instruments, opens their windows and plays what Four Hands sends it.
-# JUCE 8 under its Starter licence (free up to 20,000 USD a year; decided by Fran on 28/10/2026).
+# JUCE 8 under its Starter licence (free up to 20,000 USD a year; decided on 28/10/2026).
 cmake_minimum_required(VERSION 3.22)
 project(FourHandsEngine VERSION 0.1.0 LANGUAGES C CXX)
 

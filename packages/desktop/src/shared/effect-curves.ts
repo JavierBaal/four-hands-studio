@@ -1,5 +1,5 @@
 /**
- * What the own effects do, drawn (F2.2 parte C2): the EQ's frequency response and the compressor's
+ * What the own effects do, drawn (F2.2 part C2): the EQ's frequency response and the compressor's
  * transfer curve, with the same formulas as the engine (engine/src/Effects.cpp), so the curve on
  * screen is the one heard. Pure.
  */

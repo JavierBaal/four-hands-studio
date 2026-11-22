@@ -1,5 +1,5 @@
 /**
- * The rulers above the piano roll, at its zoom (DIRECCION_ARTISTICA.md, 6.1 item 4): form,
+ * The rulers above the piano roll, at its zoom (docs/design.md, 6.1 item 4): form,
  * annotations in lanes of their own (20/10/2026), harmony, bar numbers with the loop band. Empty states as in capture 08.
  * DOM rather than canvas: a few dozen elements, crisp text, and chords are typed in place.
  *
@@ -191,7 +191,7 @@ export function annotationLanes(song: Song, v: RollView): number {
 }
 
 /**
- * Annotations in lanes that never overlap each other or the section names (Fran, 20/10/2026).
+ * Annotations in lanes that never overlap each other or the section names (20/10/2026).
  * Each one spans its bars, with its words as a label; the left edge carries its author's colour.
  * Double click edits; right click opens its menu; on empty space, "Add annotation".
  */
@@ -348,7 +348,7 @@ export function hasKeyRuler(song: Song): boolean {
 }
 
 /**
- * Tempo changes (H4, Fran 26/10/2026): each change reads where it happens, like a marking on a
+ * Tempo changes (H4, 26/10/2026): each change reads where it happens, like a marking on a
  * score: "60" for a jump, "rit." or "accel." over the bars where it glides and the tempo it
  * reaches, "⌒ 2×" for a fermata. Double click writes one at the beat under the mouse (or rewrites
  * the one clicked); right click opens its menu.

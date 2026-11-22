@@ -1,6 +1,6 @@
 /**
- * Top bar (DIRECCION_ARTISTICA.md, 6.1 item 1): transport, position, tempo, meter, key, title,
- * save state, AI. Plus, with the same tokens: the computer keyboard as a piano (ESPEC_PIANO_ROLL.md,
+ * Top bar (docs/design.md, 6.1 item 1): transport, position, tempo, meter, key, title,
+ * save state, AI. Plus, with the same tokens: the computer keyboard as a piano (docs/piano-roll.md,
  * 8.2) and the recording chip of capture 07.
  */
 import { useEffect, useState, useSyncExternalStore } from "react";
@@ -14,7 +14,7 @@ import { keyName, noteName, transportPosition } from "../music.js";
 import { GearIcon, KeyboardIcon, LoopIcon, PlayIcon, RecordIcon, StopIcon, ToStartIcon } from "./Icons.js";
 
 /**
- * The state of the file, not a clock (Fran, 15/10/2026: "Guardado hace 12 min" read as "not saved
+ * The state of the file, not a clock (15/10/2026: "Guardado hace 12 min" read as "not saved
  * for 12 minutes", when it meant "nothing changed for 12 minutes"). The time goes in the tooltip.
  */
 function savedText(t: ReturnType<typeof useApp>["t"], file: FileState, now: number): string {
@@ -26,7 +26,7 @@ function savedText(t: ReturnType<typeof useApp>["t"], file: FileState, now: numb
 const CUT_SHOWN_MS = 4000;
 
 /**
- * F2.2 parte B: the engine's load (DIRECCION_ARTISTICA.md, 13, 03/11/2026). Discreet, by «Guardado…»;
+ * F2.2 part B: the engine's load (docs/design.md, 13, 03/11/2026). Discreet, by «Guardado…»;
  * amber from 70 %; «Audio cortado» for a few seconds when the audio was cut; only the bar at 880 px.
  * Only while the engine runs (its load is read every second).
  */

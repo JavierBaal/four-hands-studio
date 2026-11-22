@@ -1,17 +1,17 @@
 /**
  * Piano roll geometry: ticks and pitches to pixels and back. Pure, so the gestures can be tested
- * without a window. Rows are 15 px by default (DIRECCION_ARTISTICA.md, 4) and change with the
+ * without a window. Rows are 15 px by default (docs/design.md, 4) and change with the
  * vertical zoom; pitch 127 is the top row.
  */
 import { PPQ } from "@fourhands/core";
 import { SIZE } from "../theme.js";
 
-/** Default row height (DIRECCION_ARTISTICA.md, 4). */
+/** Default row height (docs/design.md, 4). */
 export const ROW = SIZE.row;
 export const TOTAL_ROWS = 128;
 
 /**
- * Vertical zoom (Fran, 15/10/2026): a few comfortable row heights, not a free stretch. 15 px is
+ * Vertical zoom (15/10/2026): a few comfortable row heights, not a free stretch. 15 px is
  * the approved size; 12 shows more octaves, 18–24 give room to read and aim. Beyond 24 a note is
  * taller than it is useful and an octave no longer fits a laptop screen with its context.
  */
@@ -119,7 +119,7 @@ export function zoomRowsAt(v: RollView, rowHeight: number, anchorY: number): { r
 export const ZOOM_LIMITS = { min: 0.004, max: 1.2 } as const;
 
 /**
- * Zoom tool, rectangle (Fran, 15/10/2026): the time and pitches inside the rectangle fill the view.
+ * Zoom tool, rectangle (15/10/2026): the time and pitches inside the rectangle fill the view.
  * Time fits exactly; rows take the tallest comfortable step (ROW_STEPS) at which those pitches fit,
  * never more than 24 px, and the pitches are centred.
  */

@@ -1,4 +1,4 @@
-// Four Hands Engine: a SoundFont bank as SoundFont 2 describes it (F2.1, Fran 01/11/2026).
+// Four Hands Engine: a SoundFont bank as SoundFont 2 describes it (F2.1, 01/11/2026).
 //
 // TinySoundFont reads the file and decodes SF3 samples; this keeps, for every pair of preset zone
 // and instrument zone, the generators in their own units and the modulators that apply, merged the

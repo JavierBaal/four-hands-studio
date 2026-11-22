@@ -1,4 +1,4 @@
-// Interface tests of the piano roll gestures (ESPEC_PIANO_ROLL.md), in a real browser against the
+// Interface tests of the piano roll gestures (docs/piano-roll.md), in a real browser against the
 // harness. Usage: node build.mjs --harness && node scripts/interaccion.mjs [chromium path]
 import { chromium } from "playwright-core";
 import fs from "node:fs";
@@ -286,7 +286,7 @@ await page.keyboard.press("Space");
 await page.waitForTimeout(400);
 check("play", await page.evaluate(() => window.fhTest.audio.player.playing));
 check("playhead moves", (await page.evaluate(() => window.fhTest.audio.player.position())) > cursor);
-// The arrangement shows the same playhead, where the player is (Fran, 19/10/2026).
+// The arrangement shows the same playhead, where the player is (19/10/2026).
 const arrHead = await page.evaluate(() => {
   const c = document.querySelector(".lanes canvas.arrhead");
   const ctx = c.getContext("2d");
@@ -369,7 +369,7 @@ const added = s1.tracks[s1.trackOrder.at(-1)];
 check("track added", s1.trackOrder.length === tracksBefore + 1 && added.program === 42 && added.name === "Chelos", JSON.stringify(added));
 check("new track active", s1.context.activeTrackId === added.id);
 check("add label", (await lastLabel()) === "añadiste la pista Chelos", await lastLabel());
-// The sound in the piano roll bar opens Sonidos (interfaz 2, parte 3): a double click picks it.
+// The sound in the piano roll bar opens Sonidos (interfaz 2, part 3): a double click picks it.
 await page.locator(".rsubb").click();
 await page.locator(".sndsearch input").fill("violas");
 await page.locator(".sndit", { hasText: /^Violas/ }).dblclick();
@@ -394,7 +394,7 @@ check("track reordered", s1.trackOrder.indexOf(added.id) === s1.trackOrder.lengt
 await page.locator(".thdr").first().click({ button: "right" });
 await menuItem("Mezcla…").click();
 check("mixer opens", (await page.locator(".qdialog[role=dialog]").count()) === 1);
-// Fran, 04/11/2026: no reverb row any more (reverb is a bus or an effect): volume and pan only.
+// 04/11/2026: no reverb row any more (reverb is a bus or an effect): volume and pan only.
 check("the mixer card has volume and pan, and no reverb", (await page.locator(".qdialog .mixtype").count()) === 2);
 await page.keyboard.press("Escape");
 check("mixer closes with Esc", (await page.locator(".qdialog[role=dialog]").count()) === 0);
@@ -511,7 +511,7 @@ check("chord removed", (await song()).harmony[String(BAR + 1920)] === undefined)
 // 26. Sound banks: the palette lists the installed banks; a bank opens its presets; the track takes
 // one (its General MIDI program stays); going back to the default bank clears it.
 await page.keyboard.press("Escape");
-// Interfaz 2, parte 3: the banks are in the Sonidos browser, with Four Hands's sounds.
+// Interface 2, part 3: the banks are in the Sonidos browser, with Four Hands's sounds.
 await page.locator(".rsubb").click();
 await page.locator(".sndsearch input").fill("");
 await page.getByRole("radio", { name: "Fabricante" }).click();
@@ -579,7 +579,7 @@ const end = await page.evaluate(() => window.fhTest.view.state.scrollY);
 check("wheel glides", mid > sy0 && mid < sy0 + 200 && Math.abs(end - (sy0 + 200)) < 0.5, JSON.stringify([sy0, mid, end]));
 
 // 27. A list taller than the window scrolls and stays inside it, also when a bank's list replaces the
-// palette at the same point (Fran, 14/10/2026: the last presets were out of reach).
+// palette at the same point (14/10/2026: the last presets were out of reach).
 await page.setViewportSize({ width: 1440, height: 520 });
 await page.waitForTimeout(200);
 // The palette of «Añadir pista» is still a menu.
@@ -836,7 +836,7 @@ check("the card brings it back to Four Hands", !(await song()).tracks[secondId].
 await page.keyboard.press("Escape");
 await settle();
 
-// Fase 2, prueba S2 and interfaz 2: a track sounds through a plugin, chosen in its Sonido menu; its window opens.
+// Fase 2, test S2 and interfaz 2: a track sounds through a plugin, chosen in its Sonido menu; its window opens.
 await page.locator(".thdr").nth(1).click({ button: "right", position: { x: 120, y: 12 } });
 await page.getByRole("menuitem", { name: /^Sonido…/ }).click();
 await page.waitForSelector(".snd .sndsearch input");
@@ -863,7 +863,7 @@ await page.getByRole("menuitem", { name: "Abrir ventana de Kontakt 8" }).click()
 await settle();
 check("the track menu opens the plugin's window", await page.evaluate((id) => window.fhTest.ai.engine.shown.includes(window.fhTest.audio.stripOf(window.fhTest.replica.song.tracks[id])), pluginId));
 
-// Interfaz 2, parte 2: the Pista tab, the card of the active track.
+// Interface 2, part 2: the Pista tab, the card of the active track.
 await page.locator(".thdr").nth(1).click({ position: { x: 60, y: 10 } });
 await page.getByRole("tab", { name: "Pista" }).click();
 await settle();
@@ -904,7 +904,7 @@ await settle();
 check("the card moves the track", (await song()).trackOrder.indexOf(pluginId) === upBefore + 1);
 await page.evaluate(() => window.fhTest.replica.undoLast());
 await settle();
-// Interfaz 2, parte 3: the Sonidos browser.
+// Interface 2, part 3: the Sonidos browser.
 await page.getByRole("tab", { name: "Sonidos" }).click();
 await page.locator(".sndsearch input").fill("");
 await settle();
@@ -961,7 +961,7 @@ await page.getByRole("tab", { name: "IA" }).click();
 await settle();
 check("the IA tab is the activity panel", (await page.locator(".pbody .concept").count()) === 1);
 
-// Fran, 29/10/2026: the side column folds away and comes back when needed.
+// 29/10/2026: the side column folds away and comes back when needed.
 await page.locator(".pbody").click({ position: { x: 5, y: 5 } });
 await page.keyboard.press("F6");
 await settle();
@@ -1136,7 +1136,7 @@ if (hasPanel) {
   await page.keyboard.press("Escape");
 }
 
-// The history (ESTUDIO_INTERFAZ_2.md, 9): its own box with a scroll, and a click goes back to a step.
+// The history: its own box with a scroll, and a click goes back to a step.
 if ((await page.locator(".ptab.ai").count()) === 0) await page.keyboard.press("F6");
 await page.locator(".ptab.ai").click();
 await settle();
@@ -1183,7 +1183,7 @@ check("«Añadir pista» still adds past 15 tracks", (await song()).trackOrder.l
 const strips = await page.evaluate(() => window.fhTest.replica.song.trackOrder.map((id) => window.fhTest.audio.stripOf(window.fhTest.replica.song.tracks[id])));
 check("each of the 18 tracks plays on a strip of its own", new Set(strips).size === 18, JSON.stringify(strips));
 
-// F2.2 parte B (03/11/2026): the console in the piano roll's place, F2 / F3.
+// F2.2 part B (03/11/2026): the console in the piano roll's place, F2 / F3.
 await page.locator(".arrangement, .work").first().click({ position: { x: 5, y: 5 } }).catch(() => {});
 await page.keyboard.press("F3");
 await settle();
@@ -1244,7 +1244,7 @@ check("«Carga» shows only while the engine gives its load", cLoadShown === 0 |
 await page.evaluate(() => (window.fhTest.ai.engine.load = { avgLoad: 0.8, maxLoad: 0.9, dropouts: 0 }));
 await page.waitForTimeout(1300);
 check("«Carga» turns amber from 70 %", (await page.locator(".load.hot").count()) === 1 && /80 %/.test(await page.locator(".load").innerText()));
-// Typed values (Fran, 03/11/2026): one click on the dB or the pan opens the field.
+// Typed values (03/11/2026): one click on the dB or the pan opens the field.
 await page.locator(`.cstrip[data-track="${ct0}"] button.cdb`).click();
 await page.keyboard.type("-6");
 await page.keyboard.press("Enter");
@@ -1278,7 +1278,7 @@ await page.locator(".ctoolbar .modeb").click();
 await settle();
 check("«Editor» goes back to the piano roll", (await page.locator("section.roll").count()) === 1);
 
-// A shorter arrangement that scrolls (Fran, 03/11/2026): the lanes follow, nothing goes black.
+// A shorter arrangement that scrolls (03/11/2026): the lanes follow, nothing goes black.
 await page.evaluate(() => window.fhTest.view.set({ arrHeight: 170 }));
 await settle();
 await page.evaluate(() => (document.querySelector(".arr").scrollTop = 140));
@@ -1301,7 +1301,7 @@ const picked = await page.evaluate(() => {
 check("a click on a scrolled lane picks the track under the mouse", picked.active === picked.under, JSON.stringify(picked));
 await page.evaluate(() => window.fhTest.view.set({ arrHeight: null }));
 
-// F2.2 parte C1: effects in the console. Ozone is a favourite, so the short «+» menu has it.
+// F2.2 part C1: effects in the console. Ozone is a favourite, so the short «+» menu has it.
 await page.evaluate(() => window.fhTest.audio.updateSoundPrefs((p) => ({ ...p, favorites: [...p.favorites, "plugin:VST3-Ozone 11-3"] })));
 await page.evaluate(() => window.fhTest.view.set({ bottom: "mix", mixNarrow: false, mixMax: false }));
 await settle();
@@ -1329,7 +1329,7 @@ check("double click on a plugin effect opens its window", await page.evaluate((i
 await fxStrip.locator(".cslot[data-fx]").nth(1).dragTo(fxStrip.locator(".cslot[data-fx]").nth(0));
 await settle();
 check("dragging a slot reorders the chain", (await song()).tracks[fxTrack].inserts.map((x) => x.kind).join() === "compressor,eq,plugin", (await song()).tracks[fxTrack].inserts.map((x) => x.kind).join());
-// Down (Fran, 04/11/2026): the first one onto the lower half of the second goes after it.
+// Down (04/11/2026): the first one onto the lower half of the second goes after it.
 {
   const second = fxStrip.locator(".cslot[data-fx]").nth(1);
   const box = await second.boundingBox();
@@ -1352,7 +1352,7 @@ await fxStrip.locator(".cslot[data-fx]").nth(1).click({ button: "right" });
 await menuItem("Anular").click();
 await settle();
 check("«Anular» bypasses the effect and the slot shows it", (await song()).tracks[fxTrack].inserts[1].bypass === true && (await fxStrip.locator(".cslot.byp").count()) === 1);
-// A name of the user's (Fran, 04/11/2026).
+// A name of the user's (04/11/2026).
 await fxStrip.locator(".cslot[data-fx]").nth(0).click({ button: "right" });
 await menuItem("Cambiar nombre").click();
 await page.keyboard.press("Control+a");
@@ -1382,7 +1382,7 @@ await fxStrip.locator("button.cslot.add").click();
 await page.locator(".menu [role=menuitem]", { hasText: "Ozone 11" }).first().click();
 await settle();
 check("a plugin effect that cannot load is marked in amber with why", (await fxStrip.locator(".cslot.bad").count()) >= 1 && /no se pudo cargar/.test(await fxStrip.locator(".cslot.bad").last().getAttribute("title")));
-// Fran, 04/11/2026: the «+» menu stays short; the whole list is in Sonidos › Efectos, folded.
+// 04/11/2026: the «+» menu stays short; the whole list is in Sonidos › Efectos, folded.
 await fxStrip.locator("button.cslot.add").click();
 const plusItems = await page.locator(".menu [role=menuitem]").allInnerTexts();
 check("«+» lists Four Hands' effects, the favourites and «Todos los efectos…», not every plugin", plusItems.some((x) => /^EQ$/.test(x)) && plusItems.some((x) => /Ozone 11/.test(x)) && plusItems.some((x) => /Todos los efectos/.test(x)), JSON.stringify(plusItems));
@@ -1407,7 +1407,7 @@ check("«al Máster» sends the effects there", ((await song()).masterInserts?.l
 await page.getByRole("radio", { name: "Instrumentos" }).click();
 await page.evaluate(() => window.fhTest.view.set({ bottom: "editor" }));
 
-// F2.2 parte C2: the window of Four Hands' own effects.
+// F2.2 part C2: the window of Four Hands' own effects.
 await page.evaluate(() => window.fhTest.view.set({ bottom: "mix" }));
 await settle();
 const winTrack = (await song()).trackOrder[3];
@@ -1465,7 +1465,7 @@ await settle();
 check("a fader in the window changes its parameter (ratio)", (await song()).tracks[winTrack].inserts[1].params.ratio > 3, String((await song()).tracks[winTrack].inserts[1].params.ratio));
 await page.locator(".fxhead .ibtn").click();
 
-// F2.2 parte D (04/11/2026): buses and sends in the console. A song starts without buses; the user
+// F2.2 part D (04/11/2026): buses and sends in the console. A song starts without buses; the user
 // makes a «Reverb» bus with Four Hands' reverb (b1).
 await page.evaluate(() => window.fhTest.view.set({ bottom: "mix", mixNarrow: false, mixMax: true }));
 await settle();
@@ -1550,7 +1550,7 @@ await page.getByRole("button", { name: "Añadir bus" }).click();
 await settle();
 check("«Añadir bus» adds a bus after the others", JSON.stringify((await song()).busOrder) === JSON.stringify(["b1", "b2", "b3"]));
 await page.keyboard.press("Escape");
-// Fran, 04/11/2026: Four Hands' delay, in time with the song or in ms.
+// 04/11/2026: Four Hands' delay, in time with the song or in ms.
 await page.locator('.cstrip.bus[data-bus="b1"] button.cslot.add').click();
 await menuItem("Delay").click();
 await settle();
@@ -1566,7 +1566,7 @@ await page.keyboard.press("Escape");
 await page.keyboard.press("Escape");
 await page.evaluate(() => window.fhTest.view.set({ bottom: "editor", mixMax: false }));
 
-// Library cards (Fran, 05/11/2026): a plugin track gets a card in the user's catalog, edits it in Pista,
+// Library cards (05/11/2026): a plugin track gets a card in the user's catalog, edits it in Pista,
 // and the same card links to another track from «Usar otra ficha…».
 const libTrack = (await song()).trackOrder[0];
 await page.evaluate(async (id) => {

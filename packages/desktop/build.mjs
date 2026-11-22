@@ -53,7 +53,7 @@ await Promise.all([
   })(),
 ]);
 
-// The built-in skills (ESTUDIO_SKILLS.md, 4): every folder of the repo's skills/ with a SKILL.md.
+// The built-in skills: every folder of the repo's skills/ with a SKILL.md.
 const skillsSrc = path.join(here, "..", "..", "skills");
 for (const entry of fs.readdirSync(skillsSrc, { withFileTypes: true })) {
   if (entry.isDirectory() && fs.existsSync(path.join(skillsSrc, entry.name, "SKILL.md"))) {

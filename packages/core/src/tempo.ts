@@ -1,5 +1,5 @@
 /**
- * Tempo and key over time (H4, Fran 26/10/2026): the song's first tempo and key plus their
+ * Tempo and key over time (H4, 26/10/2026): the song's first tempo and key plus their
  * changes. Every conversion between ticks and seconds goes through here, so playback, the summary,
  * analysis and the AI all agree.
  *

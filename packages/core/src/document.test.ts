@@ -150,7 +150,7 @@ describe("undo and redo", () => {
   });
 });
 
-describe("going back to a step from the history (ESTUDIO_INTERFAZ_2.md, 9)", () => {
+describe("going back to a step from the history", () => {
   const note = (start: number) => ({ pitch: 60, start, duration: PPQ, velocity: 80 });
   function threeSteps() {
     const { doc, t } = docWithTrack();
@@ -317,7 +317,7 @@ describe("track output (H4): inside Four Hands or out to another program", () =>
   });
 });
 
-describe("track output through a plugin (fase 2, prueba S2)", () => {
+describe("track output through a plugin (phase 2, test S2)", () => {
   const kontakt = { id: "VST3-Kontakt 8-abc-123", name: "Kontakt 8" };
 
   it("needs the plugin, keeps it when going back inside, and undoes", () => {
@@ -448,7 +448,7 @@ describe("commands", () => {
     expect(tracks.at(-1)!.program).toBeNull();
   });
 
-  it("keep each note's deviation when moving by whole grid steps (ESPEC_PIANO_ROLL.md, 5.3)", () => {
+  it("keep each note's deviation when moving by whole grid steps (docs/piano-roll.md, 5.3)", () => {
     const { doc, t } = docWithTrack();
     const played = [PPQ + 17, 2 * PPQ - 11, 2 * PPQ + 320 + 6];
     const ids = doc.transact({ actor: USER, label: "Toma" }, (tx) =>

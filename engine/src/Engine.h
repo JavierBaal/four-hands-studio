@@ -1,4 +1,4 @@
-// Four Hands Engine: the native audio engine (fase 2, prueba S2; ESTUDIO_FASE2_MOTOR.md, 3).
+// Four Hands Engine: the native audio engine (phase 2, test S2; docs/audio-engine.md, 3).
 //
 // It hosts one plugin per slot (a slot is a track's sound), plays the MIDI that Four Hands sends
 // with a small delay so it lands on time, sums the slots and sends them to the audio device.
@@ -21,13 +21,13 @@
 namespace fh
 {
 /**
- * A2 (F2.2, Fran 03/11/2026): one strip per track, numbered by Four Hands, not by MIDI channel, so
+ * A2 (F2.2, 03/11/2026): one strip per track, numbered by Four Hands, not by MIDI channel, so
  * a song is not held to 16 tracks. A track that sounds through a plugin has it in the slot of its
  * strip. (Before, 16 slots: the track's MIDI channel.)
  */
 constexpr int kStrips = 512;
 constexpr int kSlots = kStrips;
-/** Buses (F2.2 parte D): channels fed by strips and by other buses, with their own chain and fader. */
+/** Buses (F2.2 part D): channels fed by strips and by other buses, with their own chain and fader. */
 constexpr int kBuses = 128;
 /** After them, the built-in sounds (SoundFontSynth): one channel of its own per strip. */
 constexpr int kSoundsSlot = kSlots;
@@ -35,7 +35,7 @@ constexpr int kAllSlots = kSlots + 1;
 
 
 /**
- * Where the song is, for the hosted plugins (Fran, 04/11/2026: Ozone's assistant listens only while
+ * Where the song is, for the hosted plugins (04/11/2026: Ozone's assistant listens only while
  * the host plays; synced delays and arpeggiators follow the tempo). Four Hands sends points with the
  * notes; between them the engine moves on at their tempo. Read by plugins on the audio thread.
  */
@@ -58,7 +58,7 @@ public:
     /** Opens the default output (WASAPI on Windows). Returns an error, or an empty string. */
     juce::String openDevice();
     /**
-     * Follows the system's default output (Fran, 03/11/2026): when Windows switches, say, from the
+     * Follows the system's default output (03/11/2026): when Windows switches, say, from the
      * TV to the headphones, the engine moves to them. Without this it kept the output it opened.
      * `onDeviceChanged` gets the new device's text and latency, for Four Hands.
      */
@@ -109,18 +109,18 @@ public:
     // Mix (F2.2, 03/11/2026): one strip per track
 
     /**
-     * A strip's fader (linear gain) and balance (-1 to 1). F2.2 parte B: a strip that is off (`on`
+     * A strip's fader (linear gain) and balance (-1 to 1). F2.2 part B: a strip that is off (`on`
      * false: muted, or not soloed while another is) is silent here, after its sound, so the tails of
      * its plugin and of what it sends stop at once. Parte D: the built-in sounds' volume is here too
      * (Four Hands sends them CC7 at 127); their pan stays in the synth (CC10, per voice).
      */
     void setMix (int strip, double gain, double pan, bool on = true);
-    /** A bus's fader, balance and on/off (F2.2 parte D). */
+    /** A bus's fader, balance and on/off (F2.2 part D). */
     void setBusMix (int bus, double gain, double pan, bool on = true);
     /** The master fader (linear gain, after the buses and before the master meter). */
     void setMasterGain (double gain) { masterGain.store (juce::jlimit (0.0, 4.0, gain)); }
 
-    /** Where a strip or bus goes (F2.2 parte D): its output (a bus, or -1: the master) and its sends. */
+    /** Where a strip or bus goes (F2.2 part D): its output (a bus, or -1: the master) and its sends. */
     struct Route
     {
         int out = -1;
@@ -132,7 +132,7 @@ public:
      * the buses in processing order (each after every bus that feeds it; a bus left out is not
      * processed), and the bus that gets what the built-in instruments send to reverb on their own
      * (their SoundFont's setting; -1: none). Until Four Hands sends it, the engine sounds as before
-     * parte D (offline renders, tests): the built-in sounds' CC91 goes to the GS reverb.
+     * part D (offline renders, tests): the built-in sounds' CC91 goes to the GS reverb.
      */
     void setRouting (std::vector<std::pair<int, Route>> strips, std::vector<std::pair<int, Route>> buses, std::vector<int> order, int instrumentReverb);
     /** Samples every bus input is delayed (compensation), for tests. */
@@ -155,7 +155,7 @@ public:
     void resetLevels();
 
     // -------------------------------------------------------------------------
-    // Insert effects (F2.2 parte C, 03/11/2026)
+    // Insert effects (F2.2 part C, 03/11/2026)
 
     /** One link as Four Hands sends it: its id in the song, kind, plugin (if any), on/off, parameters. */
     struct InsertSpec
@@ -164,7 +164,7 @@ public:
         bool bypass = false;
         std::vector<std::pair<juce::String, double>> params;
     };
-    /** Strip -1 (or kStrips) is the master; kBusChain + n, bus n (F2.2 parte D). */
+    /** Strip -1 (or kStrips) is the master; kBusChain + n, bus n (F2.2 part D). */
     static constexpr int kMasterChain = kStrips;
     static constexpr int kBusChain = kStrips + 1;
     /**
@@ -300,11 +300,11 @@ private:
     std::vector<Strip> mix = std::vector<Strip> ((size_t) kStrips);
     std::vector<Meter> meters = std::vector<Meter> ((size_t) kStrips + 1);
     juce::AudioBuffer<float> strips, sends, master, busIn;
-    /** Before parte D's routing arrives: the GS reverb the built-in sounds' CC91 goes to. */
+    /** Before part D's routing arrives: the GS reverb the built-in sounds' CC91 goes to. */
     std::unique_ptr<gs::Reverb> busReverb;
     double busRate = 0;
 
-    // Buses (F2.2 parte D). The routing is built on the message thread and swapped in under the lock.
+    // Buses (F2.2 part D). The routing is built on the message thread and swapped in under the lock.
     struct Edge
     {
         int to = -1; // a bus, or -1: the master

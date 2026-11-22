@@ -2,7 +2,7 @@
  * Reads what a SoundFont (SF2 / SF3) contains without loading it: its name (INFO/INAM), its
  * presets (pdta/phdr) and, from the rest of pdta, a profile of each preset's sound: the keys it
  * has samples for, how fast it starts, whether it holds or dies out, how long it rings after the
- * note ends (ESTUDIO_SKILLS_COMPOSICION.md, 5.4). Walks the RIFF chunks with small reads and never
+ * note ends. Walks the RIFF chunks with small reads and never
  * touches the samples, so a 500 MB bank answers in milliseconds. Pure: the caller supplies the
  * reads (a file on disk, a buffer in a test).
  */

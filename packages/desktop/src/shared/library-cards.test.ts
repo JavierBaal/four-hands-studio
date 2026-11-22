@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { LibraryCatalogFile } from "../main/library-catalog.js";
 import { cleanCard, cleanCatalog, hostPitchName, newCardId, parseKeyswitches, parseRange, parseResponse, parseUserPitch } from "./library-cards.js";
 
-describe("library cards (Fran, 05/11/2026)", () => {
+describe("library cards (05/11/2026)", () => {
   it("reads pitches as the user types them: Do Re Mi or letters, middle C = Do4", () => {
     expect(parseUserPitch("Do4")).toBe(60);
     expect(parseUserPitch("do♯1")).toBe(25);

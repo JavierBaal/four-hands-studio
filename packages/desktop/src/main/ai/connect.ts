@@ -1,6 +1,6 @@
 /**
- * "Conectar con Claude" (ESQUEMA_MCP.md, 2): hands the bridge extension (.mcpb) to Claude Desktop,
- * in the order proven on Windows on 13/10/2026 (PRUEBA_MCPB.md):
+ * "Conectar con Claude" (docs/mcp.md, 2): hands the bridge extension (.mcpb) to Claude Desktop,
+ * in the order proven on Windows on 13/10/2026:
  *   1. the .mcpb file association, if Windows has one;
  *   2. the `claude-desktop.exe` execution alias, with the file as argument (Microsoft Store version);
  *   3. as a last resort, the file shown in the Explorer with its path copied, for

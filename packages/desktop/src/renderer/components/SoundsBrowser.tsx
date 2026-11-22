@@ -1,5 +1,5 @@
 /**
- * Sonidos (ESTUDIO_INTERFAZ_2.md, 5.3; sketches `interfaz2_2_sonidos.png` and `interfaz2_3_buscar.png`):
+ * Sonidos:
  * every sound a track can have in one browser, after Studio One's. Search (accents and case do not
  * matter), filters by origin, favourites and recents, grouped by category or by vendor. Double
  * click or Enter puts the sound on the active track; dragging it onto a track header puts it on
@@ -18,7 +18,7 @@ import { CategoryIcon } from "./CategoryIcon.js";
 
 /** The drag payload: the sound's catalog key. */
 export const SOUND_DRAG = "application/x-fourhands-sound";
-/** An effect of the catalog being dragged onto a console slot (F2.2 parte C): its key. */
+/** An effect of the catalog being dragged onto a console slot (F2.2 part C): its key. */
 export const EFFECT_DRAG = "application/x-fourhands-new-effect";
 
 /** The catalog key of what a track plays now (to mark it in the list). */
@@ -214,7 +214,7 @@ function InstrumentsBrowser({ audio }: { audio: AudioLayer }) {
 }
 
 /**
- * Sonidos shows instruments or effects (Fran, 04/11/2026): with many plugins the «+» menu was chaos,
+ * Sonidos shows instruments or effects (04/11/2026): with many plugins the «+» menu was chaos,
  * so the effects live here too, folded by type or by vendor, with search, favourites and recents.
  */
 export function SoundsBrowser({ audio }: { audio: AudioLayer }) {

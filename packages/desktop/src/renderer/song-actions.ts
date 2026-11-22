@@ -1,5 +1,5 @@
 /**
- * Song-level editing (PRD_MVP.md, 4.1–4.2): tracks and instruments, tempo, meter, key and title,
+ * Song-level editing: tracks and instruments, tempo, meter, key and title,
  * sections, chords and annotations. Every action is one command list (one undo step) with its
  * sentence in the history. Also holds which field is being typed into (one at a time).
  */
@@ -40,7 +40,7 @@ import type { Replica } from "./replica.js";
 import { SIZE, TRACK_PALETTE, trackColor, trackColorIndex } from "./theme.js";
 import { formatDb, parseDb, parsePan, parseReverb } from "../shared/mix.js";
 
-/** A new send starts at half (−6 dB): heard, and with room both ways (F2.2 parte D). */
+/** A new send starts at half (−6 dB): heard, and with room both ways (F2.2 part D). */
 const DEFAULT_SEND = 0.5;
 
 /** The sections of Ajustes, in their order. */
@@ -60,7 +60,7 @@ export type Typing =
   /** A tempo change typed on the Tempo ruler (H4); `editing` is the tick of the change being rewritten. */
   | { kind: "tempoChange"; tick: number; editing: number | null }
   | { kind: "effectName"; id: string }
-  /** F2.2 parte D: a bus's name, and a send's level typed in place (0–100). */
+  /** F2.2 part D: a bus's name, and a send's level typed in place (0–100). */
   | { kind: "busName"; id: string }
   | { kind: "sendLevel"; source: string; bus: string };
 
@@ -89,22 +89,22 @@ export class SongActions {
   typing: Typing | null = null;
   mixer: { trackId: string; x: number; y: number } | null = null;
   /**
-   * Ajustes (ESTUDIO_INTERFAZ_2.md, 5.4): the section open, or null when closed. Tu IA, the sound
+   * Ajustes: the section open, or null when closed. Tu IA, the sound
    * banks, the plugins, MIDI, the folders and the test tools live here, not in the Help menu.
    */
   settings: SettingsSection | null = null;
   /** A short message at the bottom of the window, gone after a few seconds. */
   notice: string | null = null;
-  /** F2.2 parte C: the effect slot selected in the console (Supr removes it). */
+  /** F2.2 part C: the effect slot selected in the console (Supr removes it). */
   selectedEffect: string | null = null;
-  /** F2.2 parte D: the bus selected in the console (Supr removes it, after an effect). */
+  /** F2.2 part D: the bus selected in the console (Supr removes it, after an effect). */
   selectedBus: string | null = null;
   /**
-   * The Sonidos tab shows instruments or effects (Fran, 04/11/2026), and where an effect goes from
+   * The Sonidos tab shows instruments or effects (04/11/2026), and where an effect goes from
    * there: a track's chain or the Master's (null: the active track).
    */
   soundsMode: "instruments" | "effects" = "instruments";
-  /** F2.2 parte C2: the window of an own effect that is open (one at a time), and where it was left. */
+  /** F2.2 part C2: the window of an own effect that is open (one at a time), and where it was left. */
   effectWindow: { id: string } | null = null;
   effectWindowPos: { left: number; top: number } | null = null;
   fxTarget: string | null = null;
@@ -141,7 +141,7 @@ export class SongActions {
   ) {}
 
   // -------------------------------------------------------------------------
-  // Sonidos (ESTUDIO_INTERFAZ_2.md, 5.3): the browser is the door to a track's sound
+  // Sonidos: the browser is the door to a track's sound
 
   /** A context menu for a panel (the browser's rows). */
   menu(x: number, y: number, items: MenuItem[]): void {
@@ -311,7 +311,7 @@ export class SongActions {
     void this.run(this.h(key, { name: track.name, ch: track.channel + 1 }), [{ type: "updateTrack", id, changes: { output } }]);
   }
 
-  /** The track sounds through this plugin of the engine (prueba S2). */
+  /** The track sounds through this plugin of the engine (test S2). */
   choosePlugin(id: string, plugin: { id: string; name: string }): void {
     const track = this.song.tracks[id];
     if (!track) return;
@@ -499,7 +499,7 @@ export class SongActions {
   }
 
   // -------------------------------------------------------------------------
-  // Insert effects (F2.2 parte C)
+  // Insert effects (F2.2 part C)
 
   /** "el Piano" / "el Máster" / "Voces", for the history. */
   private chainLabel(target: string): string {
@@ -515,7 +515,7 @@ export class SongActions {
   }
 
   // -------------------------------------------------------------------------
-  // Buses, outputs and sends (F2.2 parte D)
+  // Buses, outputs and sends (F2.2 part D)
 
   selectBus(id: string | null): void {
     if (this.selectedBus === id && (!id || !this.selectedEffect)) return;
@@ -544,7 +544,7 @@ export class SongActions {
 
   /**
    * Deletes a bus (menu or Supr). What went through it goes on to its output, the sends to it go;
-   * a notice says so (DIRECCION_ARTISTICA.md, 13).
+   * a notice says so (docs/design.md, 13).
    */
   removeBus(id: string): void {
     const bus = this.song.buses?.[id];
@@ -753,7 +753,7 @@ export class SongActions {
   effectAddMenu(target: string, x: number, y: number): void {
     const t = this.t;
     const close = (fn: () => void) => () => (this.editor.closeMenus(), fn());
-    // Short (Fran, 04/11/2026: with many plugins a flat list was chaos): Four Hands' own, the
+    // Short (04/11/2026: with many plugins a flat list was chaos): Four Hands' own, the
     // favourite and recent plugins, and the whole organised list in the Sonidos tab.
     const catalog = this.audio?.effectCatalog(this.lang, t("sndBuiltIn")) ?? [];
     const prefs = this.audio?.soundPrefs;
@@ -852,7 +852,7 @@ export class SongActions {
     void this.run(this.h(changed.length === 1 ? "hEffectParam" : "hEffectParams", { effect: insertName(found.insert, this.lang), param: what }), [{ type: "updateInsert", id, changes: { params: Object.fromEntries(changed) } }]);
   }
 
-  /** The user's own name for an effect; "" goes back to what it is (Fran, 04/11/2026). */
+  /** The user's own name for an effect; "" goes back to what it is (04/11/2026). */
   renameEffect(id: string, text: string): void {
     const found = findInsert(this.song, id);
     if (!found) return;
@@ -868,7 +868,7 @@ export class SongActions {
     void this.run(this.h(key, { effect: insertName(found.insert, this.lang), where: this.chainLabel(found.target) }), [{ type: "updateInsert", id, changes: { bypass } }]);
   }
 
-  /** F2.2 parte B: the master fader while it moves; the song changes with `setMasterVolume`. */
+  /** F2.2 part B: the master fader while it moves; the song changes with `setMasterVolume`. */
   previewMaster(volume: number): void {
     this.audio?.previewMaster(volume);
   }
@@ -1023,7 +1023,7 @@ export class SongActions {
   }
 
   // -------------------------------------------------------------------------
-  // Library cards (Fran, 05/11/2026): the card lives in the user's catalog; the track links it.
+  // Library cards (05/11/2026): the card lives in the user's catalog; the track links it.
 
   /** Links a card of the catalog to the track (one undo step), or unlinks with null. */
   linkLibrary(id: string, card: { id: string; name: string } | null): void {
@@ -1069,7 +1069,7 @@ export class SongActions {
   }
 
   // -------------------------------------------------------------------------
-  // Tempo and key along the song (H4, Fran 26/10/2026)
+  // Tempo and key along the song (H4, 26/10/2026)
 
   /** The tempo in force at a tick, in whole BPM (the top bar shows it at the playhead or the cursor). */
   tempoAt(tick: number): number {

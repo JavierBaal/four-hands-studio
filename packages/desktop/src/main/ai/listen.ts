@@ -1,5 +1,5 @@
 /**
- * F2.3, the AI's ear (Fran, 04/11/2026): `analyze_mix`, what the last playback measured, read with
+ * F2.3, the AI's ear (04/11/2026): `analyze_mix`, what the last playback measured, read with
  * the score. Loudness against a target, the master's tonal balance, each section's loudness, where
  * each part has its energy, and which parts fight in the same band, in which bars.
  *

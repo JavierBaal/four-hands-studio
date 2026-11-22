@@ -52,7 +52,7 @@ describe("tool definitions", () => {
     }
   });
 
-  // The annotations decide the permission group the user sees (PRUEBA_S1.md, conclusion 2).
+  // The annotations decide the permission group the user sees.
   it("reading tools are read-only, the rest are writes, and only deleting notes, tracks, annotations, buses or effects is destructive", () => {
     expect(TOOLS.filter((t) => t.annotations.readOnlyHint).map((t) => t.name).sort()).toEqual([...READ_ONLY].sort());
     expect(TOOLS.filter((t) => t.annotations.destructiveHint).map((t) => t.name)).toEqual(["delete_notes", "remove_bus", "remove_effect", "remove_track", "remove_annotations"]);
@@ -90,7 +90,7 @@ describe("tool definitions", () => {
     expect(byName.point_to?.description).toMatch(/does NOT move the user's view/);
   });
 
-  // The mandatory rules live in the tools, not in a skill (ESQUEMA_MCP.md, 9).
+  // The mandatory rules live in the tools, not in a skill (docs/mcp.md, 9).
   it("the tools that move notes promise to keep the played deviation", () => {
     for (const n of ["move_notes", "repitch_notes", "copy_notes", "edit_notes"]) expect(byName[n]?.description, n).toMatch(/deviation/);
     expect(byName.quantize_notes?.description).toMatch(/only when the user asks/);

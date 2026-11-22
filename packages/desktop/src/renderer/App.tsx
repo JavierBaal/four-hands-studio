@@ -1,5 +1,5 @@
 /**
- * The window (DIRECCION_ARTISTICA.md, 6.1): top bar, arrangement, piano roll and activity panel.
+ * The window (docs/design.md, 6.1): top bar, arrangement, piano roll and activity panel.
  * The layout follows the approved sketches; below 1000 px of width the compact layout applies.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
@@ -30,7 +30,7 @@ import { Splitter } from "./components/Splitter.js";
 const ROLL_MIN = 220;
 /** The arrangement's share of the height by default when its tracks do not fit. */
 const ARR_SHARE = 0.4;
-/** F2.2 parte B: what the console keeps at least, below the arrangement (a fader that can be used). */
+/** F2.2 part B: what the console keeps at least, below the arrangement (a fader that can be used). */
 const CONSOLE_MIN = 420;
 import { type Action, DEFAULT_SHORTCUTS, PIANO_MODE_ALLOWED, actionFor } from "./shortcuts.js";
 import { SIZE } from "./theme.js";
@@ -120,7 +120,7 @@ export function App({ audio, onEditor }: AppProps) {
   );
 
   /**
-   * The side column (Fran, 29/10/2026: it should fold away and come back when needed). With a tab:
+   * The side column (29/10/2026: it should fold away and come back when needed). With a tab:
    * opens it on that tab, or folds it if it is already showing it (F4 Pista, F5 Sonidos, F6 IA, as
    * Studio One's Inspector and Browser). Without: folds or unfolds it.
    */
@@ -277,7 +277,7 @@ export function App({ audio, onEditor }: AppProps) {
       const typingField = target && (target.tagName === "INPUT" || target.tagName === "SELECT" || target.tagName === "TEXTAREA");
       if (typingField && !/^F[23456]$/.test(e.code)) return;
       if (e.key === (MAC ? "Meta" : "Control")) view.set({ pencilHeld: true });
-      // The computer keyboard as a piano takes its keys first (ESPEC_PIANO_ROLL.md, 8.2).
+      // The computer keyboard as a piano takes its keys first (docs/piano-roll.md, 8.2).
       if (audio.keyDown(e)) {
         e.preventDefault();
         return;
@@ -384,7 +384,7 @@ export function App({ audio, onEditor }: AppProps) {
     );
     return () => clearTimeout(id);
   }, [v.headerWidth, v.panelWidth, v.arrHeight, v.rowHeight, v.panelOpen, v.panelPeek, v.panelTab, v.bottom, v.mixArrHeight, v.mixMax, v.mixNarrow]);
-  // F2.2 parte B: with the console, the arrangement has its own height; by default it leaves the
+  // F2.2 part B: with the console, the arrangement has its own height; by default it leaves the
   // console CONSOLE_MIN pixels, and never more than the tracks need.
   const mixing = v.bottom === "mix";
   const mixArrMax = Math.max(arrMin, (workSize.height || 800) - CONSOLE_MIN);

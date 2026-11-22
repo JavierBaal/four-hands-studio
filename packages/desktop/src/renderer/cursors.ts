@@ -1,5 +1,5 @@
 /**
- * Mouse cursors for the tools, drawn like their buttons (Fran, 14/10/2026: tools as icons, also in
+ * Mouse cursors for the tools, drawn like their buttons (14/10/2026: tools as icons, also in
  * the cursor). Light strokes with a dark outline so they read over notes and the dark grid.
  * The hotspot is the tip that touches the music: the pencil's point, the eraser's lower edge.
  */

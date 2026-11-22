@@ -1,5 +1,5 @@
 /**
- * The window of Four Hands' own effects (F2.2 parte C2, Fran 03/11/2026: «ventana flotante»).
+ * The window of Four Hands' own effects (F2.2 part C2, 03/11/2026: «ventana flotante»).
  *
  * One at a time, over the app; dragged by its header, it stays where it was left and stays open
  * while you work (Esc or ✕ closes it). Every control is heard while it moves and is one undo step
@@ -71,7 +71,7 @@ function Window({ audio, insert, target }: { audio: AudioLayer; insert: Insert; 
   }, []);
 
   const drag = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
-  // A track's or (parte D) a bus's name and colour.
+  // A track's or (part D) a bus's name and colour.
   const where = target === "master" ? t("consoleMaster") : (song.tracks[target]?.name ?? song.buses?.[target]?.name ?? "");
   const color = target === "master" ? "var(--text)" : trackColor(song.tracks[target]?.color ?? song.buses?.[target]?.color ?? 0);
   const name = insertName(insert, lang);
@@ -192,7 +192,7 @@ const ES_LABELS: Record<string, string> = {
   makeup: "Ganancia",
   gain: "Entrada",
   ceiling: "Techo",
-  // Reverb (F2.2 parte D) and delay.
+  // Reverb (F2.2 part D) and delay.
   mix: "Mezcla",
   sync: "Al tempo",
   note: "Figura",
@@ -522,7 +522,7 @@ function LimView({ audio, id, params, onPreview, onCommit }: ViewProps & { audio
   );
 }
 
-// --- Reverb (F2.2 parte D) -------------------------------------------------------------------------
+// --- Reverb (F2.2 part D) -------------------------------------------------------------------------
 
 /** Four Hands' reverb: its four parameters in rows (all wet on a bus; lower «Mix» on a track). */
 function ReverbView({ params, onPreview, onCommit }: ViewProps) {
@@ -538,7 +538,7 @@ function ReverbView({ params, onPreview, onCommit }: ViewProps) {
   );
 }
 
-// --- Delay (Fran, 04/11/2026) ----------------------------------------------------------------------
+// --- Delay (04/11/2026) ----------------------------------------------------------------------
 
 /** An on/off parameter as a button, like «Activo» in the header. */
 function ToggleRow({ def, value, onCommit }: { def: ParamDef; value: number; onCommit(v: number): void }) {

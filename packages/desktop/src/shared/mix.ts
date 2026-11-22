@@ -92,7 +92,7 @@ export interface EngineStrip {
   gain: number;
   pan: number;
   /**
-   * F2.2 parte B: false when the track is muted, or a solo elsewhere leaves it out. The engine
+   * F2.2 part B: false when the track is muted, or a solo elsewhere leaves it out. The engine
    * silences the strip after its sound, so a plugin's own tail and its sends stop at once. Absent: on.
    */
   on?: boolean;
@@ -127,7 +127,7 @@ export function engineStrips(tracks: ReadonlyArray<StripTrack>, reset: Iterable<
   return [...out.values()];
 }
 
-/** A bus's fader, balance and on/off, as the engine gets it (F2.2 parte D). */
+/** A bus's fader, balance and on/off, as the engine gets it (F2.2 part D). */
 export interface EngineBusMix {
   bus: number;
   gain: number;
@@ -163,14 +163,14 @@ export interface EngineRouting {
   order: number[];
   /**
    * The bus that gets what a built-in instrument sends to reverb by itself (its SoundFont's
-   * setting). Always -1 (Fran, 04/11/2026): that reverb is part of the sound and stays in the
-   * engine, as before parte D, whatever buses the song has.
+   * setting). Always -1 (04/11/2026): that reverb is part of the sound and stays in the
+   * engine, as before part D, whatever buses the song has.
    */
   instrumentReverb: number;
 }
 
 /**
- * The song's routing for the engine (F2.2 parte D): every track's and bus's output and sends.
+ * The song's routing for the engine (F2.2 part D): every track's and bus's output and sends.
  * Outside tracks do not sound in the engine and are left out.
  */
 export function engineRouting(song: Song, stripOf: (track: Track) => number, busIndex: (id: string) => number): EngineRouting {
@@ -228,12 +228,12 @@ export function levelsReport(
   return report;
 }
 
-/** The master fader's gain (F2.2 parte B): the song's `masterVolume`, same curve as a track. */
+/** The master fader's gain (F2.2 part B): the song's `masterVolume`, same curve as a track. */
 export function masterGain(masterVolume: number | undefined): number {
   return stripGain(masterVolume ?? 1);
 }
 
-/** What the engine says about its load (F2.2 parte B, the «Carga» indicator). */
+/** What the engine says about its load (F2.2 part B, the «Carga» indicator). */
 export interface EngineLoad {
   /** Average share of each block's budget used since the last reading (0–1). */
   avgLoad: number;
@@ -331,7 +331,7 @@ export function costReport(cost: EngineCost, tracks: ReadonlyArray<{ name: strin
   };
 }
 
-/** F2.2 parte C: one link of a chain as the engine gets it. */
+/** F2.2 part C: one link of a chain as the engine gets it. */
 export interface EngineInsert {
   id: string;
   kind: string;

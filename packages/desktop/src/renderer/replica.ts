@@ -1,5 +1,5 @@
 /**
- * The window's copy of the song (ARQUITECTURA.md, 8), kept up to date with the main process's
+ * The window's copy of the song (docs/architecture.md, 8), kept up to date with the main process's
  * patches. The window never changes it directly: every change goes out as commands and comes back
  * as a patch, the same way the AI's changes arrive.
  */
@@ -14,7 +14,7 @@ export class Replica {
   undo: UndoState = { canUndo: false, canRedo: false, undoLabel: null, redoLabel: null, lastAi: null };
   /** Increases on every change, for React and the canvas. */
   version = 0;
-  /** Notes added since the last draw, for the AI fade-in (DIRECCION_ARTISTICA.md, 9). */
+  /** Notes added since the last draw, for the AI fade-in (docs/design.md, 9). */
   readonly fresh = new Map<string, number>();
   private listeners = new Set<() => void>();
 

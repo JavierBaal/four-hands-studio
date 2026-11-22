@@ -1,9 +1,9 @@
 /**
- * Guide of the computer keyboard as a piano (ESPEC_PIANO_ROLL.md, 8.2): a translucent card over the
+ * Guide of the computer keyboard as a piano (docs/piano-roll.md, 8.2): a translucent card over the
  * piano roll with the keys, their letters and notes, the octave and the velocity. It lights the
  * keys being held. Shown while piano mode is on; it can be hidden and shown again (the choice is
  * remembered). Clicking a key sounds it. Its header drags it anywhere over the piano roll
- * (Fran, 14/10/2026); the place is remembered and a double click puts it back.
+ * (14/10/2026); the place is remembered and a double click puts it back.
  */
 import { useRef, useState, useSyncExternalStore } from "react";
 import { NOTE_KEYS } from "../../audio/keyboard.js";

@@ -1,8 +1,8 @@
 /**
- * "Salida MIDI" (H4, Fran 20/10/2026): send some tracks to Studio One (or any DAW) so they sound
+ * "Salida MIDI" (H4, 20/10/2026): send some tracks to Studio One (or any DAW) so they sound
  * with the user's libraries. The port, whether it is there, which channel each track goes out on
  * (and where each one sounds, switchable here), and the steps on the other side. Same card as
- * Ajustes › MIDI (ESTUDIO_INTERFAZ_2.md).
+ * Ajustes › MIDI.
  */
 import { useSyncExternalStore } from "react";
 import type { AudioLayer } from "../audio-layer.js";

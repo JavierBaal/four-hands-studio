@@ -1,5 +1,5 @@
 /**
- * Messages between the window and the main process (ARQUITECTURA.md, 3).
+ * Messages between the window and the main process (docs/architecture.md, 3).
  * The song lives in the main process; the window keeps a replica updated with patches and
  * sends every change as a list of commands (one gesture = one transaction = one undo step).
  */
@@ -97,7 +97,7 @@ export type Request =
 export type Reply = { ok: true; results: CommandResult[] } | { ok: false; error: string };
 
 // ---------------------------------------------------------------------------
-// The AI (H3): what the window shows of it (DIRECCION_ARTISTICA.md, 11; capture 07)
+// The AI (H3): what the window shows of it (docs/design.md, 11; capture 07)
 
 /** An AI connected through a bridge. */
 export interface AiClientInfo {

@@ -1,5 +1,5 @@
 /**
- * Annotations on their own ruler, in lanes that never overlap (Fran, 20/10/2026: on the form ruler
+ * Annotations on their own ruler, in lanes that never overlap (20/10/2026: on the form ruler
  * they covered the section names and each other).
  *
  * Each annotation is a box from its start to its end, at least as wide as its label (up to a cap):

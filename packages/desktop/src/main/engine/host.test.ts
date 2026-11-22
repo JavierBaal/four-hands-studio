@@ -32,7 +32,7 @@ describe("engine framing", () => {
   });
 });
 
-describe("engine host (prueba S2)", () => {
+describe("engine host (test S2)", () => {
   it("says the engine is missing when it is not built", async () => {
     const { h } = host(null);
     await expect(h.request({ type: "plugins" })).rejects.toThrow(/not built/);

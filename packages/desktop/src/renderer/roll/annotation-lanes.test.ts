@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { MAX_LANES, labelWidth, layoutAnnotations } from "./annotation-lanes.js";
 
-describe("annotation lanes (Fran, 20/10/2026: no overlaps)", () => {
+describe("annotation lanes (20/10/2026: no overlaps)", () => {
   it("puts annotations that would touch in different lanes, and the rest back in the first", () => {
     const l = layoutAnnotations(
       [

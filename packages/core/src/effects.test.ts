@@ -17,7 +17,7 @@ function doc() {
   return d;
 }
 
-describe("insert effects (F2.2 parte C)", () => {
+describe("insert effects (F2.2 part C)", () => {
   it("adds own effects with every parameter at its default, each one undo step", () => {
     const d = doc();
     let eq = "";
@@ -78,7 +78,7 @@ describe("insert effects (F2.2 parte C)", () => {
     expect(() => d.transact({ actor: USER, label: "x" }, (tx) => addInsert(tx, "t9", { kind: "eq" }))).toThrow(/Unknown track/);
   });
 
-  it("takes a name of the user's, and goes back to what it is with an empty one (Fran, 04/11/2026)", () => {
+  it("takes a name of the user's, and goes back to what it is with an empty one (04/11/2026)", () => {
     const d = doc();
     d.transact({ actor: USER, label: "eq" }, (tx) => {
       addInsert(tx, "t1", { kind: "eq" });
@@ -160,7 +160,7 @@ describe("insert effects (F2.2 parte C)", () => {
     expect(text).toContain("master effects: + Limiter (x2)");
   });
 
-  it("the delay follows the tempo with note values people write in either language (Fran, 04/11/2026)", () => {
+  it("the delay follows the tempo with note values people write in either language (04/11/2026)", () => {
     const note = OWN_EFFECTS.delay.params.find((p) => p.id === "note")!;
     expect(paramText(note, defaultParams("delay").note!)).toBe("1/4");
     expect(paramText(note, NOTE_VALUES.findIndex((n) => n.id === "1/8D"), "es")).toBe("Corchea con puntillo");

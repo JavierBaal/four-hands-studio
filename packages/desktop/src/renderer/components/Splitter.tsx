@@ -1,7 +1,7 @@
 /**
  * A divider between two parts of the window that can be dragged to give one of them more room
- * (Fran, 15/10/2026): arrangement / piano roll, track headers / lanes, piano roll / activity panel.
- * The sizes of DIRECCION_ARTISTICA.md are the starting values; double click goes back to them.
+ * (15/10/2026): arrangement / piano roll, track headers / lanes, piano roll / activity panel.
+ * The sizes of docs/design.md are the starting values; double click goes back to them.
  *
  * Invisible 6 px grip over the existing 1 px border; on hover or while dragging the border lights
  * up in `--line-on`. The new size follows the mouse (nothing jumps).

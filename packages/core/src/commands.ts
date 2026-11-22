@@ -1,8 +1,8 @@
 /**
- * Commands: every change to the song goes through one of these (ARQUITECTURA.md, 5.1).
+ * Commands: every change to the song goes through one of these (docs/architecture.md, 5.1).
  * They are the same for the mouse, the MIDI keyboard and the AI.
  *
- * Authorship rule (PRD_MVP.md, 4.5; ESTUDIO_INTERFAZ.md, 8.7), applied here and nowhere else:
+ * Authorship rule, applied here and nowhere else:
  * a note belongs to whoever decided its current pitch, position and duration.
  * - Changing pitch, start or duration makes the transaction's author the note's author.
  * - Changing only the velocity (or moving the note to another track) does not.
@@ -233,7 +233,7 @@ export type TrackChanges = Partial<Pick<Track, "name" | "program" | "channel" | 
   output?: "internal" | "external" | "plugin";
   /** The plugin for output "plugin"; null forgets it. */
   plugin?: TrackPlugin | null;
-  /** Its library card in the user's catalog (Fran, 05/11/2026); null unlinks it. */
+  /** Its library card in the user's catalog (05/11/2026); null unlinks it. */
   library?: TrackLibrary | null;
 };
 
@@ -408,7 +408,7 @@ export function updateNotes(tx: Transaction, changes: readonly NoteChange[]): vo
 
 /**
  * Moves notes in time and pitch. Each note keeps its own offset from the grid, because the
- * deviation is computed on read: moving by whole grid steps keeps it (ESPEC_PIANO_ROLL.md, 5.3).
+ * deviation is computed on read: moving by whole grid steps keeps it (docs/piano-roll.md, 5.3).
  */
 export function moveNotes(tx: Transaction, ids: readonly string[], by: { ticks?: number; semitones?: number }): void {
   const ticks = by.ticks ?? 0;

@@ -1,5 +1,5 @@
 /**
- * Four Hands Studio: Electron main process (ARQUITECTURA.md, 3).
+ * Four Hands Studio: Electron main process (docs/architecture.md, 3).
  *
  * Hosts the song (SongSession), answers the window over IPC, saves to disk, shows the menus and
  * file dialogs. From H3 it will also talk to the AI bridges over a local WebSocket.
@@ -32,7 +32,7 @@ import { CATEGORIES, RECENT_MAX, type SoundCategory, type SoundPrefs } from "../
 const here = path.dirname(fileURLToPath(import.meta.url)); // packages/desktop/dist
 const packageDir = path.resolve(here, "..");
 const repoRoot = path.resolve(packageDir, "..", "..");
-// On Fran's computer the repo lives in <project>/codigo, next to <project>/recursos.
+// In a development checkout the repo may live in <project>/codigo, next to <project>/recursos.
 const projectRoot = fs.existsSync(path.join(repoRoot, "..", "recursos")) ? path.resolve(repoRoot, "..") : null;
 
 const SF_NAME = "MuseScore_General.sf3";
@@ -40,7 +40,7 @@ const lang: Lang = langFrom(process.env.FH_LANG ?? app.getLocale());
 const t = translator(lang);
 
 app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
-// F2.2 (Fran, 03/11/2026): with the sound in the engine the window is not "playing audio" for
+// F2.2 (03/11/2026): with the sound in the engine the window is not "playing audio" for
 // Chromium, so behind another window (Alt+Tab) its timers slowed to one a second and the player sent
 // the notes late: stutters. A music app keeps its timing in the background.
 app.commandLine.appendSwitch("disable-renderer-backgrounding");
@@ -56,9 +56,9 @@ let desk: AiDesk | null = null;
 let aiServer: AiServer | null = null;
 let skills: SkillLibrary | null = null;
 let engine: EngineHost | null = null;
-/** The plugins the engine knows (fase 2), for the AI's list_instruments. */
+/** The plugins the engine knows (phase 2), for the AI's list_instruments. */
 let knownPlugins: EnginePlugin[] = [];
-/** The user's library cards (Fran, 05/11/2026), shared by every song. */
+/** The user's library cards (05/11/2026), shared by every song. */
 let libraries: LibraryCatalogFile | null = null;
 const catalog = () => (libraries ??= new LibraryCatalogFile(path.join(dataDir(), "libraries.json")));
 
@@ -84,10 +84,10 @@ interface Settings {
   pluginFolders?: string[];
   /** Last full plugin scan, ms since the epoch. */
   pluginsScannedAt?: number;
-  /** The Sonidos browser (ESTUDIO_INTERFAZ_2.md, 5.3): favourites, recents, hidden plugins, moved categories. */
+  /** The Sonidos browser: favourites, recents, hidden plugins, moved categories. */
   soundPrefs?: SoundPrefs;
   /**
-   * F2.1 (Fran, 01/11/2026): where the built-in sounds play. "engine" (the default): in the native
+   * F2.1 (01/11/2026): where the built-in sounds play. "engine" (the default): in the native
    * engine, with everything else; "app": in the window, as before (SpessaSynth), to go back if
    * something sounds wrong. With no engine built they play in the window either way.
    */
@@ -125,7 +125,7 @@ function findSoundFont(): string | null {
 
 /** Where the user puts more sound banks. */
 const soundsDir = () => path.join(songsDir(), "Sonidos");
-/** The user's skills (ESTUDIO_SKILLS.md, 6); the built-in ones travel with the app. */
+/** The user's skills; the built-in ones travel with the app. */
 const userSkillsDir = () => path.join(songsDir(), "Skills");
 
 function makeLibrary(): SoundLibrary {
@@ -142,7 +142,7 @@ function soundFontCandidates(): string[] {
 }
 
 /**
- * The native engine (fase 2, prueba S2), if it has been built: FH_ENGINE, the copy that
+ * The native engine (phase 2, test S2), if it has been built: FH_ENGINE, the copy that
  * «Compilar motor.bat» leaves in <project>/motor, or the build folder of the repo.
  */
 function findEngine(): string | null {
@@ -193,7 +193,7 @@ function engineHost(): EngineHost {
 let lastLevels: { levels: EngineLevels; at: number; strips: Record<string, number>; buses?: Record<string, number> } | null = null;
 /** F2.3: what the engine heard in the last playback, for the AI's analyze_mix. */
 let lastAnalysis: AnalysisContext | null = null;
-/** F2.2 parte B: the engine's last load reading (the window asks every second), for get_levels. */
+/** F2.2 part B: the engine's last load reading (the window asks every second), for get_levels. */
 let lastLoad: EngineLoad | null = null;
 /**
  * A2 (03/11/2026): each track's strip in the engine, as the window last sent it with the mix (the
@@ -201,7 +201,7 @@ let lastLoad: EngineLoad | null = null;
  */
 let trackStrips: Record<string, number> = {};
 const stripOfTrack = (track: { id: string; channel: number }): number => trackStrips[track.id] ?? track.channel;
-/** F2.2 parte D: each bus's place in the engine, as the window last sent it. */
+/** F2.2 part D: each bus's place in the engine, as the window last sent it. */
 const busIndexes: Record<string, number> = {};
 
 /** F2.1: sound banks the engine is loading, by "id@offset", waiting for its "soundsLoaded". */
@@ -282,7 +282,7 @@ async function collectPluginStates(song: Song, slots?: Set<number>, insertIds?: 
       // That slot did not answer: its saved state stays.
     }
   }
-  // F2.2 parte C: plugin effects keep what they have inside too, under their own id ("x12").
+  // F2.2 part C: plugin effects keep what they have inside too, under their own id ("x12").
   // On saving (no filter): every plugin effect loaded in this run. From the watcher: only those asked.
   const watching = slots !== undefined || insertIds !== undefined;
   for (const x of pluginInserts(song)) {
@@ -304,7 +304,7 @@ function pluginInserts(song: Song): Array<{ id: string; plugin: string }> {
   return chains.flat().filter((x) => x.kind === "plugin" && x.plugin).map((x) => ({ id: x.id, plugin: x.plugin!.id }));
 }
 
-/** F2.2 parte C: plugin effects the engine has loaded in this run (id → plugin), to restore their state once. */
+/** F2.2 part C: plugin effects the engine has loaded in this run (id → plugin), to restore their state once. */
 const insertsLoaded = new Map<string, string>();
 let insertsGeneration = -1;
 /** Plugin effects whose window was open at the last look (their state is checked once more after closing). */
@@ -325,13 +325,13 @@ async function watchPluginStates(): Promise<void> {
   } catch {
     // An engine built before 29/10/2026: it cannot tell.
   }
-  // Plugin effects (parte C): those with their window open now, or open at the last look.
+  // Plugin effects (part C): those with their window open now, or open at the last look.
   let openFx = new Set<string>();
   try {
     const reply = await engine.request({ type: "insertWindows" });
     if (Array.isArray(reply.ids)) openFx = new Set(reply.ids.map(String));
   } catch {
-    // An engine before parte C.
+    // An engine before part C.
   }
   const fxToCheck = new Set([...openFx, ...insertWindowsOpen]);
   insertWindowsOpen = openFx;
@@ -489,7 +489,7 @@ function buildMenu(): void {
         { label: t("menuExport"), accelerator: "CmdOrCtrl+E", click: () => void exportMidi() },
         { label: t("menuShowFolder"), click: () => songs && shell.showItemInFolder(songs.path) },
         { type: "separator" },
-        // Ajustes (ESTUDIO_INTERFAZ_2.md, 5.4): what the Help menu used to hold. The window takes Ctrl+, itself.
+        // Ajustes: what the Help menu used to hold. The window takes Ctrl+, itself.
         { label: t("menuSettings"), accelerator: "CmdOrCtrl+,", registerAccelerator: false, click: () => sendMenu("settings") },
         { type: "separator" },
         { label: t("menuQuit"), role: "quit" },
@@ -532,7 +532,7 @@ function buildMenu(): void {
     {
       label: t("menuHelp"),
       submenu: [
-        // Only help (ESTUDIO_INTERFAZ_2.md, 5.4); settings, folders and test tools are in Ajustes.
+        // Only help; settings, folders and test tools are in Ajustes.
         { label: t("menuConnectAi"), click: () => sendMenu("skills") },
         { label: t("menuOpenDemo"), click: () => void openDemo() },
         { type: "separator" },
@@ -562,7 +562,7 @@ async function startAi(): Promise<void> {
     analysis: () => lastAnalysis,
     libraries: () => catalog(),
     load: () => (engine && engine.current.state === "ready" ? lastLoad : null),
-    // F2.2 parte C: a plugin effect's parameters, from the engine.
+    // F2.2 part C: a plugin effect's parameters, from the engine.
     effectParams: async (id) => {
       if (!engine || engine.current.state !== "ready") return null;
       try {
@@ -619,7 +619,7 @@ function importSkills(files: string[]): SkillImportResult {
   return result;
 }
 
-/** Help > Connect with Claude: opens the extension in Claude Desktop (PRUEBA_MCPB.md). */
+/** Help > Connect with Claude: opens the extension in Claude Desktop. */
 async function connectWithClaude(): Promise<void> {
   const mcpb = findMcpb([path.join(repoRoot, "packages", "bridge", "dist"), projectRoot ?? "", path.join(here, "..")]);
   if (!mcpb) {
@@ -719,7 +719,7 @@ async function createWindow(): Promise<void> {
       backgroundThrottling: false,
     },
   });
-  // The window handles every key itself (ESPEC_PIANO_ROLL.md, 6): no page zoom on Ctrl + / -.
+  // The window handles every key itself (docs/piano-roll.md, 6): no page zoom on Ctrl + / -.
   win.webContents.setVisualZoomLevelLimits(1, 1);
   win.webContents.on("before-input-event", (event, input) => {
     if ((input.control || input.meta) && ["+", "-", "=", "0"].includes(input.key)) event.preventDefault();
@@ -787,7 +787,7 @@ function registerIpc(): void {
     writeSettings({ midiOutPort: next });
     return next;
   });
-  // The native engine (prueba S2): plugins, loading them, their windows, MIDI.
+  // The native engine (test S2): plugins, loading them, their windows, MIDI.
   ipcMain.handle(CH.engineStatus, () => engineHost().current);
   ipcMain.handle(CH.enginePlugins, async (_e, scan: unknown) => {
     try {
@@ -833,7 +833,7 @@ function registerIpc(): void {
       return false;
     }
   });
-  // F2.2 parte C: a strip's effect chain (-1: the Master). Plugin effects new to this run get back
+  // F2.2 part C: a strip's effect chain (-1: the Master). Plugin effects new to this run get back
   // what they had in this song.
   ipcMain.handle(CH.engineInserts, async (_e, strip: unknown, chain: unknown) => {
     if (!engine || engine.current.state !== "ready" || !Array.isArray(chain)) return { ok: false, errors: [] };
@@ -870,7 +870,7 @@ function registerIpc(): void {
     if (!engine || engine.current.state !== "ready") return;
     void engine.request({ type: "setParam", id: String(id), index: Number(index), value: Number(value) }).catch(() => {});
   });
-  // F2.2 parte C2: how much each compressor or limiter is reducing now (its window's meter).
+  // F2.2 part C2: how much each compressor or limiter is reducing now (its window's meter).
   ipcMain.handle(CH.engineReductions, async (_e, ids: unknown) => {
     if (!engine || engine.current.state !== "ready" || !Array.isArray(ids)) return null;
     try {
@@ -937,7 +937,7 @@ function registerIpc(): void {
     if (!routing || typeof routing !== "object") return;
     engine?.send({ type: "routing", ...(routing as Record<string, unknown>) });
   });
-  // F2.2 parte B: the console's meters (~30 times a second, only with the console open) and the
+  // F2.2 part B: the console's meters (~30 times a second, only with the console open) and the
   // engine's load for «Carga». Never start the engine for them.
   ipcMain.handle(CH.engineMeters, async () => {
     if (!engine || engine.current.state !== "ready") return null;

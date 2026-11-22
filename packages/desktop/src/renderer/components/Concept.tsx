@@ -1,5 +1,5 @@
 /**
- * The song concept at the top of the activity panel (ESTUDIO_SKILLS_COMPOSICION.md, 6.3): the
+ * The song concept at the top of the activity panel: the
  * intention and the limits, written by the user or the AI, with who wrote it. The AI reads it first
  * in get_song_overview and analyze checks a duration or tempo written in it.
  */

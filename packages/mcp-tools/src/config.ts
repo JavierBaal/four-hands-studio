@@ -1,6 +1,6 @@
 /**
  * Where the app leaves its port and token for the bridges (bridge.json), so that both read the
- * same place (ESQUEMA_MCP.md, 2; PRUEBA_MCPB.md). Not the app's own data folder: the bridge runs
+ * same place (docs/mcp.md, 2). Not the app's own data folder: the bridge runs
  * inside Claude Desktop and only knows this fixed path.
  */
 import path from "node:path";

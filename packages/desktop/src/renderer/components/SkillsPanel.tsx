@@ -1,8 +1,8 @@
 /**
- * "Tu IA" (ESTUDIO_SKILLS.md, 6; H4): connecting it, how it gives its opinions, and its skills. Two places:
+ * "Tu IA" (H4): connecting it, how it gives its opinions, and its skills. Two places:
  * - "Skills activas" in the activity panel, as sketch 01 shows it: the skills that are on, with their
  *   origin, and "Gestionar skills…";
- * - Ajustes › Tu IA (ESTUDIO_INTERFAZ_2.md): every skill Four Hands serves, built in or the user's,
+ * - Ajustes › Tu IA: every skill Four Hands serves, built in or the user's,
  *   turned on and off; import a ZIP or open the folder. A dot in the AI's colour marks the skills an
  *   AI loaded since the app opened.
  */

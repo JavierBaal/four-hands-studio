@@ -1,6 +1,6 @@
 /**
- * Librería, in the Pista tab of a track that sounds through a plugin (Fran, 05/11/2026; boceto
- * aprobado, bocetos/propuestas/ficha_*.png): its library card from the user's catalog, the same in
+ * Librería, in the Pista tab of a track that sounds through a plugin (05/11/2026; sketch
+ * aprobado, sketches/propuestas/ficha_*.png): its library card from the user's catalog, the same in
  * every song. Three states: the card, no card, and editing it.
  */
 import { useState } from "react";

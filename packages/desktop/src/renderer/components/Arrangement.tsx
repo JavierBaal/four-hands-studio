@@ -1,5 +1,5 @@
 /**
- * Arrangement (DIRECCION_ARTISTICA.md, 6.1 item 2): track headers, sections strip, one lane per
+ * Arrangement (docs/design.md, 6.1 item 2): track headers, sections strip, one lane per
  * track with its notes in miniature, and the rectangle of what the piano roll shows.
  *
  * - Lanes: clicking makes that track the active one; dragging the rectangle (or anywhere) pans the
@@ -33,7 +33,7 @@ export interface ArrangementProps {
   onToggle(id: string, field: "mute" | "solo"): void;
   /** Height the user dragged (splitter), or null for as tall as the tracks need. */
   height?: number | null;
-  /** The player: its position draws the playhead over the lanes while playing (Fran, 19/10/2026). */
+  /** The player: its position draws the playhead over the lanes while playing (19/10/2026). */
   audio?: AudioLayer;
 }
 
@@ -48,7 +48,7 @@ export function Arrangement({ compact, visible, onSelectTrack, onPan, onToggle, 
   const { t, replica, view, lang } = useApp();
   useView();
   const actions = useActions();
-  // Sounds dragged from the Sonidos browser (ESTUDIO_INTERFAZ_2.md, 5.3): onto a track, or under the tracks.
+  // Sounds dragged from the Sonidos browser: onto a track, or under the tracks.
   const [soundOver, setSoundOver] = useState<string | null>(null);
   const soundFrom = (e: React.DragEvent) => {
     const key = e.dataTransfer.getData(SOUND_DRAG);
@@ -88,7 +88,7 @@ export function Arrangement({ compact, visible, onSelectTrack, onPan, onToggle, 
   const colors = useMemo(() => trackColors(song), [replica.version]);
   const byTrack = useMemo(() => notesByTrack(song), [replica.version]);
   const full = arrangementTotal(song);
-  // Zoomed arrangement (Fran, 15/10/2026): a window over the song; null shows all of it.
+  // Zoomed arrangement (15/10/2026): a window over the song; null shows all of it.
   const z = useView().arrZoom;
   const total = z ? Math.min(z.span, full) : full;
   const t0 = z ? Math.max(0, Math.min(z.start, full - total)) : 0;
@@ -103,7 +103,7 @@ export function Arrangement({ compact, visible, onSelectTrack, onPan, onToggle, 
   const pan = useRef<{ grabTick: number } | null>(null);
 
   /**
-   * Vertical scroll of a shorter arrangement (Fran, 03/11/2026). The lanes' canvas is as tall as
+   * Vertical scroll of a shorter arrangement (03/11/2026). The lanes' canvas is as tall as
    * what is in view and follows the scroll, drawing the lanes from there: a canvas as tall as every
    * track went black below the first screen (and with hundreds of tracks would not fit in memory).
    */
@@ -129,7 +129,7 @@ export function Arrangement({ compact, visible, onSelectTrack, onPan, onToggle, 
     });
   });
 
-  // Playhead over the lanes (Fran, 19/10/2026): the same line as in the piano roll, on its own
+  // Playhead over the lanes (19/10/2026): the same line as in the piano roll, on its own
   // layer so the lanes are not redrawn every frame. Stopped, it marks the cursor, like the roll.
   const headRef = useRef<HTMLCanvasElement>(null);
   const playing = audio?.player.playing ?? false;
@@ -475,7 +475,7 @@ const noSubscribe = () => () => {};
 
 /**
  * Opens the plugin's own window (Kontakt…) in one click from the track header, next to M and S
- * (Fran, 29/10/2026). Waits while the engine loads it.
+ * (29/10/2026). Waits while the engine loads it.
  */
 function PluginButton({ audio, track }: { audio: AudioLayer; track: Track }) {
   const { t } = useApp();

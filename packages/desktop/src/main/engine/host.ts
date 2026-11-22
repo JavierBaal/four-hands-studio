@@ -140,9 +140,9 @@ export class EngineHost {
               fail("The engine was built before A2 (strips per track): build it again");
               return;
             }
-            // F2.2 parte D (04/11/2026): buses and sends. An older engine would not route anything.
+            // F2.2 part D (04/11/2026): buses and sends. An older engine would not route anything.
             if (!(Number(hello.buses) > 0)) {
-              fail("The engine was built before the buses (F2.2 parte D): build it again");
+              fail("The engine was built before the buses (F2.2 part D): build it again");
               return;
             }
             settled = true;
@@ -199,7 +199,7 @@ export class EngineHost {
 
   /**
    * What the engine prints is mostly the plugins talking to themselves (Kontakt's memory messages,
-   * Splice, Serato…): the first lines go to the log, the rest only counted (S2, Fran 28/10/2026).
+   * Splice, Serato…): the first lines go to the log, the rest only counted (S2, 28/10/2026).
    */
   private chatter(type: string, text: string): void {
     if (this.chatterLines < CHATTER_LOGGED) this.options.log({ type, text });
@@ -301,7 +301,7 @@ export class EngineHost {
   }
 
   /**
-   * The engine moved to another output (Windows changed its default, Fran 03/11/2026): the new
+   * The engine moved to another output (Windows changed its default, 03/11/2026): the new
    * device and its delay, so the plugin tracks stay in time with the rest.
    */
   deviceChanged(device: string, latency: number, error?: string): void {

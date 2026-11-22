@@ -1,5 +1,5 @@
 /**
- * The piano roll proper: rulers, keyboard, notes and velocity lane (DIRECCION_ARTISTICA.md, 6.1
+ * The piano roll proper: rulers, keyboard, notes and velocity lane (docs/design.md, 6.1
  * items 4–6). Draws, and passes the pointer to the Editor (editor.ts).
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
@@ -121,7 +121,7 @@ export function RollArea({ v, editor, audio, playhead, onResize, onWheel, onKeyP
 
   const selected = useMemo(() => new Set(song.context.selection), [replica.version]);
 
-  // H4, proposal mode: the notes of the pending proposal, with a dashed outline (DIRECCION_ARTISTICA.md, 2.6).
+  // H4, proposal mode: the notes of the pending proposal, with a dashed outline (docs/design.md, 2.6).
   const pending = currentProposal(replica.undo.proposals);
   const proposed = useMemo(() => (pending && !pending.stale && track ? proposalNotes(song, pending, track.id) : []), [replica.version, pending, track?.id]);
 
@@ -354,7 +354,7 @@ export function RollArea({ v, editor, audio, playhead, onResize, onWheel, onKeyP
   );
 }
 
-/** Label over a note: what a musician reads (DIRECCION_ARTISTICA.md tokens, like the context menu). */
+/** Label over a note: what a musician reads (docs/design.md tokens, like the context menu). */
 function NoteLabel({ note, x, y, width }: { note: Note | undefined; x: number; y: number; width: number }) {
   const { t, lang } = useApp();
   const view = useView();

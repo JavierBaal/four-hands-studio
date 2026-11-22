@@ -1,5 +1,5 @@
 /**
- * Editing in the piano roll (ESPEC_PIANO_ROLL.md, 3–7): pointer gestures, actions on the selection
+ * Editing in the piano roll (docs/piano-roll.md, 3–7): pointer gestures, actions on the selection
  * and the clipboard. A gesture draws a local preview while it lasts and sends one command list
  * when it ends: one gesture, one undo step (ESPEC, 1.4).
  */
@@ -204,7 +204,7 @@ export class Editor {
     if (button !== 0) return;
     const tool = this.tool(mods);
     if (tool === "zoom") {
-      // Zoom tool (Fran, 15/10/2026): a click zooms in (Alt: out); a drag frames a rectangle.
+      // Zoom tool (15/10/2026): a click zooms in (Alt: out); a drag frames a rectangle.
       this.gesture = { kind: "zoom", x0: x, y0: y, out: mods.alt };
       return;
     }
@@ -535,7 +535,7 @@ export class Editor {
   }
 
   // -------------------------------------------------------------------------
-  // Velocity lane (ESPEC_PIANO_ROLL.md, 7)
+  // Velocity lane (docs/piano-roll.md, 7)
 
   velocityDown(x: number, y: number, height: number, mods: Mods): void {
     const own = this.ownNotes();
@@ -595,7 +595,7 @@ export class Editor {
   }
 
   // -------------------------------------------------------------------------
-  // Pedal lane (ESPEC_PIANO_ROLL.md, 7): drag on empty space draws a pressed stretch; drag an edge
+  // Pedal lane (docs/piano-roll.md, 7): drag on empty space draws a pressed stretch; drag an edge
   // to move it; drag the middle to move the whole stretch; double click removes it.
 
   private pedalSpans(): PedalSpan[] {

@@ -1,5 +1,5 @@
 /**
- * F2.1, keeping the files small (Fran, 29/10/2026): what goes into the file for a plugin, and when
+ * F2.1, keeping the files small (29/10/2026): what goes into the file for a plugin, and when
  * to look whether it changed.
  *
  * - Packed: the engine's text for a plugin's state, deflated. A sampler's state is mostly its

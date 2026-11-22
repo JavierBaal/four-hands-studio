@@ -1,7 +1,7 @@
 /**
- * Activity panel and its folded rail (DIRECCION_ARTISTICA.md, 6.1 item 7 and 6.2):
+ * Activity panel and its folded rail (docs/design.md, 6.1 item 7 and 6.2):
  * the song concept, what the AI sees, the AI's last interventions, signed history and active skills.
- * H4 (Fran, 20/10/2026): the AI's changes go straight in, so the proposals section of sketch 01
+ * H4 (20/10/2026): the AI's changes go straight in, so the proposals section of sketch 01
  * becomes the AI's interventions: where it wrote and how much, "Ir", and "Con / Sin · B" on the
  * last one while it can still be compared. Skills: SkillsPanel.tsx.
  */
@@ -105,7 +105,7 @@ function AiInterventions({ now }: { now: number }) {
 const HISTORY_SHOWN = 30;
 
 /**
- * The history (ESTUDIO_INTERFAZ_2.md, 9): a box with its own scroll, about six entries high, so the
+ * The history: a box with its own scroll, about six entries high, so the
  * column does not grow with it; the wheel passes on to the column at its ends. As in Photoshop, a
  * click on a step of this session goes back (or forward) to right after it; the steps undone are in
  * grey until a new change drops them. Proposals and earlier sessions are there to read, not to

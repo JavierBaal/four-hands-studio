@@ -1,16 +1,16 @@
 /**
- * MCP tool definitions shared by the bridge and the app (ARQUITECTURA.md, 6.2).
+ * MCP tool definitions shared by the bridge and the app (docs/architecture.md, 6.2).
  *
- * One description per tool, with the mandatory rules inside it (ESQUEMA_MCP.md, 9).
+ * One description per tool, with the mandatory rules inside it (docs/mcp.md, 9).
  * Tool names, descriptions and server instructions are in English on purpose;
  * the AI talks to the user in the user's language.
  *
- * Milestone H3 (the AI's hand): reading, interventions, every write tool of ESQUEMA_MCP.md, 6, and
+ * Milestone H3 (the AI's hand): reading, interventions, every write tool of docs/mcp.md, 6, and
  * point_to. H3.1 (15/10/2026): the mix (set_mix, mute), remove_track and move_track. H3.2: track colours (color in
- * add_track and update_track). 19/10/2026: analyze (ESTUDIO_SKILLS_COMPOSICION.md, 5). 20/10/2026: list_skills and load_skill (ESTUDIO_SKILLS.md, 3).
+ * add_track and update_track). 19/10/2026: analyze. 20/10/2026: list_skills and load_skill.
  * Still to come in H4: summarize, get_changes_since, get_history, get_proposals and withdraw_proposal.
  *
- * No tool composes (ESQUEMA_MCP.md, 8): they read, write, and transform mechanically.
+ * No tool composes (docs/mcp.md, 8): they read, write, and transform mechanically.
  */
 import { z } from "zod";
 
@@ -75,7 +75,7 @@ export interface ToolAnnotations {
 
 export interface ToolDefinition {
   name: string;
-  /** What the user sees in Claude's settings (PRUEBA_S1.md, 5): short and clear. */
+  /** What the user sees in Claude's settings: short and clear. */
   title: string;
   description: string;
   /** Zod raw shape, as the MCP TypeScript SDK expects it. */
@@ -110,7 +110,7 @@ const PROTECTED =
 
 export const TOOLS: readonly ToolDefinition[] = [
   // -------------------------------------------------------------------------
-  // Reading (ESQUEMA_MCP.md, 4)
+  // Reading (docs/mcp.md, 4)
   {
     name: "get_song_overview",
     title: "Song overview",
@@ -290,7 +290,7 @@ export const TOOLS: readonly ToolDefinition[] = [
   },
 
   // -------------------------------------------------------------------------
-  // Interventions (ESQUEMA_MCP.md, 5)
+  // Interventions (docs/mcp.md, 5)
   {
     name: "begin_intervention",
     title: "Begin an intervention",
@@ -319,7 +319,7 @@ export const TOOLS: readonly ToolDefinition[] = [
   },
 
   // -------------------------------------------------------------------------
-  // Writing (ESQUEMA_MCP.md, 6). All need an open intervention.
+  // Writing (docs/mcp.md, 6). All need an open intervention.
   {
     name: "add_notes",
     title: "Add notes",
@@ -615,7 +615,7 @@ export const TOOLS: readonly ToolDefinition[] = [
     },
     annotations: write,
   },
-  // Library cards (Fran, 05/11/2026): what a sample library responds to, in the user's catalog.
+  // Library cards (05/11/2026): what a sample library responds to, in the user's catalog.
   {
     name: "set_library_card",
     title: "Fill a library card",
@@ -643,7 +643,7 @@ export const TOOLS: readonly ToolDefinition[] = [
     },
     annotations: write,
   },
-  // F2.2 parte D (04/11/2026): buses. Routing and sends go through set_mix.
+  // F2.2 part D (04/11/2026): buses. Routing and sends go through set_mix.
   {
     name: "add_bus",
     title: "Add a bus",
@@ -674,7 +674,7 @@ export const TOOLS: readonly ToolDefinition[] = [
     },
     annotations: destructive,
   },
-  // F2.2 parte C (03/11/2026): insert effects. Four Hands' own (EQ, compressor, limiter) keep their
+  // F2.2 part C (03/11/2026): insert effects. Four Hands' own (EQ, compressor, limiter) keep their
   // parameters in the song; a plugin effect's parameters are the plugin's, read through the engine.
   {
     name: "add_effect",

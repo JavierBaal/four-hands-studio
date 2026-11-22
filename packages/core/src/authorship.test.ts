@@ -1,5 +1,5 @@
 /**
- * Authorship rule (PRD_MVP.md, 4.5; ESTUDIO_INTERFAZ.md, 8.7):
+ * Authorship rule:
  * a note belongs to whoever decided its current pitch, position and duration.
  */
 import { describe, expect, it } from "vitest";
@@ -42,7 +42,7 @@ describe("authorship", () => {
     expect(note(aiNote).createdBy).toEqual(claude);
   });
 
-  it("moving an AI note half a tone makes it the user's (ESTUDIO_INTERFAZ.md)", () => {
+  it("moving an AI note half a tone makes it the user's", () => {
     const { doc, aiNote, note } = setup();
     doc.transact({ actor: USER, label: "Mover" }, (tx) => moveNotes(tx, [aiNote], { semitones: -1 }));
     expect(note(aiNote).shapedBy).toEqual(USER);

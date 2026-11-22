@@ -1,4 +1,4 @@
-/** Piano roll bar (DIRECCION_ARTISTICA.md, 6.1 item 3): track, tools, grid, layers, legend, what the AI sees. */
+/** Piano roll bar (docs/design.md, 6.1 item 3): track, tools, grid, layers, legend, what the AI sees. */
 import { barAt } from "@fourhands/core";
 import { SoundOriginIcon } from "./SidePanel.js";
 import { activeTrack, useActions, useApp, useSong, useView } from "../context.js";
@@ -30,7 +30,7 @@ export function aiSeesText(song: ReturnType<typeof useSong>, t: ReturnType<typeo
 }
 
 /**
- * F2.2 parte B (Fran, 03/11/2026): one button that says where it takes you, «Mezcla» in the editor
+ * F2.2 part B (03/11/2026): one button that says where it takes you, «Mezcla» in the editor
  * and «Editor» in the console, first in both bars, so it is always in the same place. Never pressed:
  * it is an action, not a layer like Autoría or Escala. The keys (F2, F3) are in the tooltip.
  */
@@ -53,7 +53,7 @@ export function RollToolbar({ onGridMenu }: RollToolbarProps) {
   const v = useView();
   const track = activeTrack(song);
   const tool: Tool = v.pencilHeld && v.tool === "arrow" ? "pencil" : v.tool;
-  // Tools as icons (Fran, 14/10/2026); the name and key are in the tooltip and for screen readers.
+  // Tools as icons (14/10/2026); the name and key are in the tooltip and for screen readers.
   const toolButton = (id: Tool, label: string, key: string, icon: React.ReactNode) => (
     <button className={tool === id ? "tool icon on" : "tool icon"} aria-pressed={tool === id} aria-label={label} title={`${label} (${key})`} onClick={() => view.set({ tool: id })}>
       {icon} <span className="kbd">{key}</span>

@@ -1,4 +1,4 @@
-// Four Hands Engine: the built-in sounds (F2.1, Fran 31/10 and 01/11/2026).
+// Four Hands Engine: the built-in sounds (F2.1, 31/10 and 01/11/2026).
 //
 // The sounds that come with Four Hands (MuseScore_General) and the banks the user adds play here,
 // in the engine, like a plugin: everything leaves through the same place and can be exported.
@@ -9,7 +9,7 @@
 // The voices follow SpessaSynth (Apache-2.0) step by step: generators and modulators as SoundFont 2
 // describes them, its volume and modulation envelopes, filter, LFOs, pan law, Hermite
 // interpolation, and its GS reverb and chorus (GsEffects.h). That is how the songs sound the same
-// as in the app (decided with Fran on 31/10/2026, option 1). TinySoundFont (MIT) only reads the
+// as in the app (decided on 31/10/2026, option 1). TinySoundFont (MIT) only reads the
 // banks and decodes SF3 (SoundBank.h).
 #pragma once
 

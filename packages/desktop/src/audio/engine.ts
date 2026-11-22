@@ -1,7 +1,7 @@
 /**
  * Audio engine for the window: AudioContext + synth worklet + lookahead scheduler.
  * The scheduler sends the next 200 ms of events every 25 ms, like the real app will
- * during playback (ARQUITECTURA.md, 7.1), so UI stalls longer than the lookahead show up as late events.
+ * during playback (docs/architecture.md, 7.1), so UI stalls longer than the lookahead show up as late events.
  */
 import type { FromWorklet, SynthEvent, ToWorklet, WorkletStats } from "../shared/messages.js";
 

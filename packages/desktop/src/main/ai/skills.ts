@@ -1,5 +1,5 @@
 /**
- * The skills Four Hands serves to the AI (ESTUDIO_SKILLS.md, 3 and 6).
+ * The skills Four Hands serves to the AI.
  *
  * A skill is a folder with a SKILL.md (Agent Skills format: YAML front matter with name and description,
  * then the instructions) and optional reference files. Two places:
@@ -248,7 +248,7 @@ function cap(text: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Texts for the AI (compact, no structured content: ARQUITECTURA.md, 6.2)
+// Texts for the AI (compact, no structured content: docs/architecture.md, 6.2)
 
 const ORIGIN: Record<SkillOrigin, string> = { "built-in": "built in", user: "the user's" };
 

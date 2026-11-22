@@ -1,6 +1,5 @@
 /**
- * `analyze`: the AI's substitute for ears (ESQUEMA_MCP.md, 4; PRD_MVP.md, 4.6;
- * ESTUDIO_SKILLS_COMPOSICION.md, 5).
+ * `analyze`: the AI's substitute for ears (docs/mcp.md, 4).
  *
  * Mechanical findings with their place and notes. It describes what is in the score and never
  * judges or composes: what to do with a finding is the AI's (and the user's) call.

@@ -19,8 +19,8 @@ function doc() {
   return d;
 }
 
-describe("buses and sends (F2.2 parte D, Fran 04/11/2026)", () => {
-  it("a new song starts without buses (Fran, 04/11/2026); the «Reverb» bus is only for songs from before", () => {
+describe("buses and sends (F2.2 part D, 04/11/2026)", () => {
+  it("a new song starts without buses (04/11/2026); the «Reverb» bus is only for songs from before", () => {
     const song = starterSong();
     expect(song.buses).toBeUndefined();
     expect(reverbBus(song)).toBeUndefined();

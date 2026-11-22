@@ -1,10 +1,10 @@
 /**
- * Time in Four Hands (ARQUITECTURA.md, 4.2).
+ * Time in Four Hands (docs/architecture.md, 4.2).
  *
  * - Positions and durations are stored as integer ticks at 960 per quarter note.
  * - Ticks never leave the core: the AI sees "17.3+1/2" and "1/8", the UI sees pixels.
  * - The deviation from the grid is NOT stored. It is computed on read against the
- *   nearest nominal grid (sixteenth or eighth-note triplet, ESQUEMA_MCP.md, 3.1).
+ *   nearest nominal grid (sixteenth or eighth-note triplet, docs/mcp.md, 3.1).
  *   Moving a note by a whole number of grid steps therefore keeps its deviation.
  */
 

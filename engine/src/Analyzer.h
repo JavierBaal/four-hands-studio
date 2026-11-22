@@ -1,4 +1,4 @@
-// Four Hands Engine: the AI's ear (F2.3, Fran 04/11/2026).
+// Four Hands Engine: the AI's ear (F2.3, 04/11/2026).
 //
 // While the song plays, every strip, bus and the master are measured: loudness (LUFS, ITU-R
 // BS.1770: K-weighting, 400 ms gated blocks), short-term loudness and its range, peaks, energy in

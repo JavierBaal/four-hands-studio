@@ -1,5 +1,5 @@
 /**
- * The catalog of sounds behind the Sonidos browser (ESTUDIO_INTERFAZ_2.md, 5.3): Four Hands's
+ * The catalog of sounds behind the Sonidos browser: Four Hands's
  * own sounds, the banks the user installed and the plugins the engine found, as one list with an
  * origin and a category each. Pure: the window builds it, filters it and groups it.
  */
@@ -184,7 +184,7 @@ export function withRecent(prefs: SoundPrefs, key: string): SoundPrefs {
 }
 
 // ---------------------------------------------------------------------------
-// Effects (F2.2 parte C, Fran 04/11/2026): the same browser, for insert effects. With many plugins,
+// Effects (F2.2 part C, 04/11/2026): the same browser, for insert effects. With many plugins,
 // a flat menu is chaos: grouped by type or by vendor, folded, with search, favourites and recents.
 
 export const EFFECT_CATEGORIES = ["eq", "dynamics", "reverb", "delay", "modulation", "saturation", "mastering", "utility", "other"] as const;
@@ -249,9 +249,9 @@ export function buildEffectCatalog(input: { lang: Lang; plugins: EnginePlugin[];
     ["eq", "eq"],
     ["compressor", "dynamics"],
     ["limiter", "dynamics"],
-    // F2.2 parte D: the song's GS reverb, as an effect (on the «Reverb» bus by default).
+    // F2.2 part D: the song's GS reverb, as an effect (on the «Reverb» bus by default).
     ["reverb", "reverb"],
-    // Fran, 04/11/2026: the delay, synced to the song's tempo.
+    // 04/11/2026: the delay, synced to the song's tempo.
     ["delay", "delay"],
   ];
   const items: EffectItem[] = own.map(([kind, category]) => ({ key: ownEffectKey(kind), name: input.ownNames[kind], source: input.ownLabel, origin: "builtin", category, target: { kind } }));

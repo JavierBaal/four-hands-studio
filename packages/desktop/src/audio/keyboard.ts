@@ -1,5 +1,5 @@
 /**
- * The computer keyboard as a piano (ESPEC_PIANO_ROLL.md, 8.2).
+ * The computer keyboard as a piano (docs/piano-roll.md, 8.2).
  *
  * Physical keys (KeyboardEvent.code), so it works the same with Spanish, English or French layouts.
  * A S D F G H J K L = white keys from C to the D of the next octave; W E T Y U O P = black keys.
@@ -65,7 +65,7 @@ export function keyAction(code: string, state: KeyboardState, mods: { ctrl: bool
 
 const NAMES_ES = ["Do", "Do#", "Re", "Re#", "Mi", "Fa", "Fa#", "Sol", "Sol#", "La", "La#", "Si"];
 
-/** Latin note name with middle C = Do4 (DIRECCION_ARTISTICA.md, 10). */
+/** Latin note name with middle C = Do4 (docs/design.md, 10). */
 export function noteNameEs(midi: number): string {
   return `${NAMES_ES[midi % 12]}${Math.floor(midi / 12) - 1}`;
 }

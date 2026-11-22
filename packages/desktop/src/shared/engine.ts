@@ -1,5 +1,5 @@
 /**
- * The native engine as the window sees it (fase 2, prueba S2; ESTUDIO_FASE2_MOTOR.md, 3). The
+ * The native engine as the window sees it (phase 2, test S2; docs/audio-engine.md, 3). The
  * main process starts the engine and talks to it; the window asks for plugins, loads them into
  * slots (one per track, its strip: shared/strips.ts) and sends MIDI ahead of time.
  */
@@ -23,7 +23,7 @@ export interface EngineStatus {
 export const ENGINE_OFF: EngineStatus = { state: "off", generation: 0 };
 
 /**
- * F2.1 (Fran, 01/11/2026): the engine's slot for the built-in sounds, after the plugin slots (one
+ * F2.1 (01/11/2026): the engine's slot for the built-in sounds, after the plugin slots (one
  * per strip, A2: 512). Its synth has a channel per strip, given with each event (`ch`).
  */
 export const SOUNDS_SLOT = 512;
@@ -59,7 +59,7 @@ export interface EngineMidiEvent {
 }
 
 /**
- * F2.2 (Fran, 04/11/2026): where the song is, for the plugins (their transport: Ozone's assistant
+ * F2.2 (04/11/2026): where the song is, for the plugins (their transport: Ozone's assistant
  * listens only while playing; synced delays and arpeggiators follow the tempo). Sent with the notes,
  * `delay` seconds ahead, so each point lands on its sample; between points the engine moves on at
  * `bpm`.

@@ -1,6 +1,6 @@
 /**
- * A small horizontal fader for volume and pan in the track header (H3.2, after Partita's header:
- * ESTUDIO_COMPETENCIA_PARTITA.md, 4.1). Drawn with the tokens: a 3 px rail, the filled part in the
+ * A small horizontal fader for volume and pan in the track header (H3.2).
+ * Drawn with the tokens: a 3 px rail, the filled part in the
  * secondary text colour (never amber or blue: those belong to authorship) and an 10 px knob.
  *
  * - Dragging follows the mouse and is heard at once (`onInput`); the song changes on release

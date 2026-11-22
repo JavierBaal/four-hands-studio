@@ -1,5 +1,5 @@
 /**
- * The passages of the blind listening test (ARQUITECTURA.md, 7.2): the same notes of Dilatación
+ * The passages of the blind listening test (docs/architecture.md, 7.2): the same notes of Dilatación
  * for every candidate SoundFont, as timed synth events.
  */
 import { type Song, barStart, orderedTracks, secondsBetween } from "@fourhands/core";
@@ -36,7 +36,7 @@ const SHORT = /pizz|stacc|trem|spicc|marcato|harmon/i;
  * The preset of a bank that plays a role. A General MIDI bank answers by number (piano 0, strings
  * 48, cello 42); any other by name, so a bank that numbers its own way (Sonatina keeps its strings
  * on 2) is not asked for a number it does not have, which a synth would answer with its first
- * preset, often a piano (Fran, 14/10/2026). A cello falls back to the strings. Null: the bank has
+ * preset, often a piano (14/10/2026). A cello falls back to the strings. Null: the bank has
  * no such instrument, and that bank sits out the passage.
  */
 export function pickPreset(presets: readonly BankPreset[], role: Role): BankPreset | null {

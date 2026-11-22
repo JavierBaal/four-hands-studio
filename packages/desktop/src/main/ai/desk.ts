@@ -1,5 +1,5 @@
 /**
- * The AI's hand (milestone H3; ESQUEMA_MCP.md; ARQUITECTURA.md, 6).
+ * The AI's hand (milestone H3; docs/mcp.md; docs/architecture.md, 6).
  *
  * Answers every tool call of every connected AI on the open song, through the same command layer
  * as the window. No Electron and no network here: the WebSocket server (server.ts) only carries
@@ -10,7 +10,7 @@
  *   user sees it live, and all of them form one undo step (SongDocument groups).
  * - An intervention closes by itself after 5 minutes without calls, and the user can close it.
  * - Notes the user changed after the revision the AI read are protected: the write is refused and
- *   the answer says what changed (ESQUEMA_MCP.md, 5.2).
+ *   the answer says what changed (docs/mcp.md, 5.2).
  * - Several AIs can be connected at once; each one has at most one open intervention.
  *
  * H3 applies changes directly. Proposal mode (H4, off by default: Tu IA > Lo que escribe) only
@@ -111,7 +111,7 @@ import { DEFAULT_WINDOW, type WindowInfo, bankText, chainText, effectText, instr
 
 export type ToolReply = { ok: true; text: string } | { ok: false; error: string };
 
-/** A plugin's parameter as the engine reads it (F2.2 parte C). */
+/** A plugin's parameter as the engine reads it (F2.2 part C). */
 export interface EffectParam {
   index: number;
   name: string;
@@ -127,27 +127,27 @@ export interface AiDeskOptions {
   banks?: () => SoundBankInfo[];
   /** The default bank's presets with their profiles, for the built-in palette. */
   builtInSounds?: () => BankPreset[];
-  /** Instrument plugins the engine found on this computer (fase 2), for sound 'plugin / <name>'. */
+  /** Instrument plugins the engine found on this computer (phase 2), for sound 'plugin / <name>'. */
   plugins?: () => EnginePlugin[];
-  /** Built-in and user skills (ESTUDIO_SKILLS.md, 3). */
+  /** Built-in and user skills. */
   skills?: SkillSource;
   /** F2.2: what the engine measured in the last playback (the window asks it when playback stops). */
   /** The last playback's levels, and the strip each track had then (A2). */
   levels?: () => { levels: EngineLevels; at: number; strips?: Record<string, number>; buses?: Record<string, number> } | null;
   /** F2.3: what the engine heard in the last playback (analyze_mix). */
   analysis?: () => AnalysisContext | null;
-  /** The user's library cards (Fran, 05/11/2026). */
+  /** The user's library cards (05/11/2026). */
   libraries?: () => LibraryStore;
-  /** F2.2 parte B: the engine's last load reading (for get_levels), null without engine. */
+  /** F2.2 part B: the engine's last load reading (for get_levels), null without engine. */
   load?: () => EngineLoad | null;
   /**
-   * F2.2 parte C: a plugin effect's parameters (null: the engine is not running or does not have it),
+   * F2.2 part C: a plugin effect's parameters (null: the engine is not running or does not have it),
    * and setting one by its value text (what it reads after, and its normalised value).
    */
   effectParams?: (insertId: string) => Promise<EffectParam[] | null>;
   setEffectParam?: (insertId: string, index: number, text: string) => Promise<{ ok: boolean; text: string; value: number } | null>;
   now?: () => number;
-  /** 5 minutes (ESQUEMA_MCP.md, 5.1). */
+  /** 5 minutes (docs/mcp.md, 5.1). */
   autoCloseMs?: number;
   /** How long "reading the song" shows after a read. */
   readingMs?: number;
@@ -263,7 +263,7 @@ export class AiDesk {
     return this.session.song;
   }
 
-  /** Follows the song's changes to protect what the user edits (ESQUEMA_MCP.md, 5.2). */
+  /** Follows the song's changes to protect what the user edits (docs/mcp.md, 5.2). */
   private watch(): void {
     this.unsubscribe();
     this.unsubscribe = this.session.onPatch((m) => this.onPatch(m));
@@ -348,7 +348,7 @@ export class AiDesk {
   // Calls
 
   /**
-   * F2.2 parte C: tools that wait for the engine (a plugin effect's parameters). The others answer at
+   * F2.2 part C: tools that wait for the engine (a plugin effect's parameters). The others answer at
    * once through `call`.
    */
   async callAsync(connectionId: string, tool: string, rawArgs: unknown): Promise<ToolReply> {
@@ -542,7 +542,7 @@ export class AiDesk {
     return found;
   }
 
-  /** Refuses notes the user changed after the revision the AI read (ESQUEMA_MCP.md, 5.2). */
+  /** Refuses notes the user changed after the revision the AI read (docs/mcp.md, 5.2). */
   private guard(iv: Intervention, ids: readonly string[], args: Record<string, unknown>): void {
     const given = parseRevision(this.str(args, "base_revision", false));
     if (Number.isNaN(given)) throw new MusicError("base_revision is a revision like 'r1532'");
@@ -686,7 +686,7 @@ export class AiDesk {
    * The range a track's notes should stay in: the usual range of a built-in instrument, or the keys a
    * bank's sound has samples for (outside them it is silent).
    */
-  /** The library card of a plugin track, from the user's catalog (Fran, 05/11/2026). */
+  /** The library card of a plugin track, from the user's catalog (05/11/2026). */
   private cardOf(trackId: string): LibraryCard | undefined {
     const track = this.song.tracks[trackId];
     if (!track?.library || track.output !== "plugin") return undefined;
@@ -853,7 +853,7 @@ export class AiDesk {
       });
     },
 
-    // F2.3, the AI's ear (Fran, 04/11/2026).
+    // F2.3, the AI's ear (04/11/2026).
     analyze_mix: (_conn, args) => {
       const song = this.options.session().snapshot().song;
       const target = this.loudnessTarget(args);
@@ -1387,7 +1387,7 @@ export class AiDesk {
         changes.output = "plugin";
       } else {
         if (soundText !== undefined) changes.sound = fold(soundText) === "default" ? null : this.sound(soundText);
-        // One sound per track (ESTUDIO_INTERFAZ_2.md, 5.2): a built-in sound or a bank's replaces the plugin.
+        // One sound per track: a built-in sound or a bank's replaces the plugin.
         if ((soundText !== undefined || instrumentText !== undefined) && current.plugin) {
           changes.plugin = null;
           if (current.output === "plugin") changes.output = "internal";
@@ -1411,7 +1411,7 @@ export class AiDesk {
       return `Track ${trackId}: ${describeTrack(this.song, trackId)}. ${this.rev()}`;
     },
 
-    // Library cards (Fran, 05/11/2026): the card lives in the user's catalog; the song only links it.
+    // Library cards (05/11/2026): the card lives in the user's catalog; the song only links it.
     set_library_card: (conn, args) => {
       const iv = this.intervention(conn, args);
       const store = this.options.libraries?.();
@@ -1482,7 +1482,7 @@ export class AiDesk {
       const iv = this.intervention(conn, args);
       const all = lines(this.str(args, "mix")!);
       if (all.length === 0) throw new MusicError("No tracks: one per line, e.g. 't1 vol 65 pan -40'");
-      // F2.2 parte B: a 'master vol 90' line sets the master fader (a track called so wins).
+      // F2.2 part B: a 'master vol 90' line sets the master fader (a track called so wins).
       let master: number | undefined;
       const trackLines = all.filter(({ n, text }) => {
         const m = /^(master|máster|master bus)\s+(.*)$/i.exec(text.trim());
@@ -1530,7 +1530,7 @@ export class AiDesk {
       return `Mix set:\n${after.join("\n")}\n${this.rev()}`;
     },
 
-    // F2.2 parte D: buses.
+    // F2.2 part D: buses.
     add_bus: (conn, args) => {
       const iv = this.intervention(conn, args);
       const name = this.str(args, "name")!;
@@ -1572,7 +1572,7 @@ export class AiDesk {
       return `${parts.join(" ")}\n${this.rev()}`;
     },
 
-    // F2.2 parte C: insert effects.
+    // F2.2 part C: insert effects.
     add_effect: (conn, args) => {
       const iv = this.intervention(conn, args);
       const target = this.chainTarget(this.str(args, "track")!);
@@ -1873,7 +1873,7 @@ export class AiDesk {
   }
 
   // -------------------------------------------------------------------------
-  // Insert effects (F2.2 parte C)
+  // Insert effects (F2.2 part C)
 
   /** Tools that may wait for the engine: a plugin effect's parameters. Own effects answer at once. */
   private readonly asyncHandlers: Record<string, (conn: Connection, args: Record<string, unknown>) => Promise<string>> = {

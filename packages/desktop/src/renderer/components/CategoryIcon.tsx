@@ -1,4 +1,4 @@
-/** The icon of each category in the Sonidos browser (sketch interfaz2_2_sonidos), same trace as the rest. */
+/** The icon of each category in the Sonidos browser, same trace as the rest. */
 import type { SoundCategory } from "../../shared/sound-catalog.js";
 
 const svg = { width: 16, height: 16, viewBox: "0 0 16 16", "aria-hidden": true } as const;

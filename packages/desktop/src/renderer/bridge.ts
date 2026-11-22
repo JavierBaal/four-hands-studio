@@ -68,7 +68,7 @@ export interface Bridge {
   setMidiOutPort(name: string | null): Promise<string | null>;
   /** File > Export MIDI (to drag into the DAW and get its tracks with their names). */
   exportMidi(): void;
-  /** The native engine (fase 2, prueba S2). */
+  /** The native engine (phase 2, test S2). */
   engineStatus(): Promise<EngineStatus>;
   onEngineStatus(listener: (status: EngineStatus) => void): () => void;
   /** The plugins the engine knows; `scan` looks for them on the computer first (slow). */
@@ -87,17 +87,17 @@ export interface Bridge {
   engineSounds(id: string, offset: number): Promise<EngineSoundsResult>;
   /**
    * F2.2: the engine's channel strips (fader and balance; on or off for mute and solo), when given
-   * the master fader's gain (parte B) and the buses' faders (parte D).
+   * the master fader's gain (part B) and the buses' faders (part D).
    */
   engineMix(channels: EngineStrip[], master?: number, buses?: EngineBusMix[]): void;
-  /** F2.2 parte D: where every strip and bus goes (outputs and sends), whole. */
+  /** F2.2 part D: where every strip and bus goes (outputs and sends), whole. */
   engineRouting(routing: EngineRouting): void;
-  /** F2.2 parte B: the strips' levels since the last call, for the console's meters (null without engine). */
+  /** F2.2 part B: the strips' levels since the last call, for the console's meters (null without engine). */
   engineMeters(): Promise<EngineLevels | null>;
-  /** F2.2 parte B: the engine's load since the last call (null without engine). */
+  /** F2.2 part B: the engine's load since the last call (null without engine). */
   engineStats(): Promise<EngineLoad | null>;
   /**
-   * F2.2 parte C: a strip's effect chain (-1: the Master; parte D: -2 - n, bus n, `busChainKey`);
+   * F2.2 part C: a strip's effect chain (-1: the Master; part D: -2 - n, bus n, `busChainKey`);
    * what failed to load comes back.
    */
   engineInserts(strip: number, chain: EngineInsert[]): Promise<{ ok: boolean; errors: Array<{ id: string; error: string }>; latency?: number; compensation?: number }>;
@@ -107,7 +107,7 @@ export interface Bridge {
   engineSetParam(id: string, index: number, value: number): void;
   /** F2.2 (04/11/2026): the plugins' transport, with the notes. */
   engineTransport(points: EngineTransportPoint[]): void;
-  /** F2.2 parte C2: how many dB each of these compressors and limiters is reducing now. */
+  /** F2.2 part C2: how many dB each of these compressors and limiters is reducing now. */
   engineReductions(ids: string[]): Promise<Record<string, number> | null>;
   /** F2.2: `reset` starts counting again; otherwise the strips' levels since then (null without engine). */
   engineLevels(reset: boolean): Promise<EngineLevels | null>;
@@ -126,7 +126,7 @@ export interface Bridge {
   /** The Sonidos browser: favourites, recents, hidden plugins and moved categories. */
   soundPrefs(): Promise<SoundPrefs>;
   setSoundPrefs(prefs: SoundPrefs): Promise<SoundPrefs>;
-  /** Library cards (Fran, 05/11/2026): the user's catalog, shared by every song (libraries.json). */
+  /** Library cards (05/11/2026): the user's catalog, shared by every song (libraries.json). */
   libraries(): Promise<LibraryCatalog>;
   /** Adds or replaces a card; gives it as saved (null if it was not valid). */
   saveLibrary(card: LibraryCard): Promise<LibraryCard | null>;

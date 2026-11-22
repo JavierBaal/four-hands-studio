@@ -1,11 +1,11 @@
 /**
- * Reading what the AI writes (ESQUEMA_MCP.md, 3): the compact format back into ticks.
+ * Reading what the AI writes (docs/mcp.md, 3): the compact format back into ticks.
  *
  *   E5 17.1 1/4 v72
  *   D5 17.2 1/8 v65 ~s+0.03
  *
  * The mirror of compact.ts. Every parse error says, in musical terms, what is wrong and where, so
- * that the AI can fix it by itself (ESQUEMA_MCP.md, 11). Nothing is written if any line is wrong:
+ * that the AI can fix it by itself (docs/mcp.md, 11). Nothing is written if any line is wrong:
  * the caller parses everything first and only then runs the commands.
  */
 import type { NoteSpec } from "./commands.js";
@@ -215,7 +215,7 @@ export function parseNoteEdits(meter: Meter, text: string): NoteEdit[] {
 }
 
 // ---------------------------------------------------------------------------
-// Ranges (ESQUEMA_MCP.md, 3.2)
+// Ranges (docs/mcp.md, 3.2)
 
 export interface ResolvedRange {
   start: number;
@@ -453,7 +453,7 @@ export function parseMeter(text: string): Meter {
 }
 
 // ---------------------------------------------------------------------------
-// Tempo and key changes (H4, Fran 26/10/2026)
+// Tempo and key changes (H4, 26/10/2026)
 
 function bpmText(tempo: number): string {
   return String(Math.round((60_000_000 / tempo) * 100) / 100);

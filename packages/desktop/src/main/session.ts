@@ -1,5 +1,5 @@
 /**
- * The open song in the main process: the single source of truth (ARQUITECTURA.md, 3).
+ * The open song in the main process: the single source of truth (docs/architecture.md, 3).
  *
  * - Holds the SongDocument and runs every change the window (and, from H3, the AI) asks for.
  * - Autosaves one second after the last change, writing a temporary file and renaming it.
@@ -297,7 +297,7 @@ export class SongSession {
       // The engine did not answer: what the file had is kept.
     }
     const out: PluginStates = {};
-    // Instruments by track id, plugin effects by their own id (F2.2 parte C): both keep their state
+    // Instruments by track id, plugin effects by their own id (F2.2 part C): both keep their state
     // while they play the same plugin.
     const owners: Array<[string, string]> = [];
     for (const [trackId, track] of Object.entries(song.tracks)) if (track.plugin) owners.push([trackId, track.plugin.id]);

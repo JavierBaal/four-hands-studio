@@ -1,6 +1,6 @@
 /**
  * Synth AudioWorklet: SpessaSynth (spessasynth_core, Apache-2.0) on the audio thread,
- * with a sample-accurate event queue (ARQUITECTURA.md, 7.1).
+ * with a sample-accurate event queue (docs/architecture.md, 7.1).
  *
  * - "now" events (keyboard, MIDI input) apply at the start of the next block.
  * - "sched" events (playback, metronome) apply at their exact frame.

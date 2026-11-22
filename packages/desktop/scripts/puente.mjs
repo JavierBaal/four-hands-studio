@@ -57,7 +57,7 @@ const call = async (name, args = {}) => {
   return { ok: !r.isError, text };
 };
 
-// --- The skills travel with the app (ESTUDIO_SKILLS.md, 3)
+// --- The skills travel with the app
 const skillList = await call("list_skills");
 check("the app serves its built-in skills", skillList.ok && /^- four-hands-basics \(built in\)/m.test(skillList.text) && /- styles \(built in, 3 reference files\)/.test(skillList.text), skillList.text.slice(0, 300));
 const prompts = (await client.listPrompts()).prompts.map((p) => p.name);

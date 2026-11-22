@@ -273,7 +273,7 @@ private:
     Params<3> p { { "gain", "ceiling", "release" }, { 0, -1, 50 } };
 };
 
-// --- Reverb (F2.2 parte D): the GS reverb of the built-in sounds, as an effect ------------------
+// --- Reverb (F2.2 part D): the GS reverb of the built-in sounds, as an effect ------------------
 
 /**
  * The sound in goes to the GS reverb as its mono send did: (L + R) / 2, with the level that makes
@@ -337,7 +337,7 @@ private:
     std::vector<float> mono, wetL, wetR;
 };
 
-// --- Delay (Fran, 04/11/2026) -----------------------------------------------------------------------
+// --- Delay (04/11/2026) -----------------------------------------------------------------------
 
 /** Quarter notes of each note value, in the order of the song's `note` parameter (core NOTE_VALUES). */
 constexpr double kNoteBeats[] = { 0.125, 1.0 / 6, 0.25, 0.375, 1.0 / 3, 0.5, 0.75, 2.0 / 3, 1.0, 1.5, 2.0, 3.0, 4.0 };

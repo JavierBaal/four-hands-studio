@@ -1,5 +1,5 @@
 /**
- * The `.fourhands` file (ARQUITECTURA.md, 9): readable JSON with the song, the signed history
+ * The `.fourhands` file (docs/architecture.md, 9): readable JSON with the song, the signed history
  * and the pending proposals, with a format version from day one.
  *
  * Pure: text in, text out. Autosave, temporary files and renaming are the app's job.
@@ -54,7 +54,7 @@ const note = z.object({
   shapedBy: authorship,
 });
 
-// F2.2 parte C: insert effects. Own effects keep their parameters; a plugin, only which it is.
+// F2.2 part C: insert effects. Own effects keep their parameters; a plugin, only which it is.
 const insert = z.object({
   id: z.string().regex(/^x\d+$/),
   kind: z.enum(["eq", "compressor", "limiter", "reverb", "delay", "plugin"]),
@@ -66,7 +66,7 @@ const insert = z.object({
   pluginBase: z.record(z.string().regex(/^\d+$/), z.number().min(0).max(1)).optional(),
 });
 
-// F2.2 parte D: sends and buses.
+// F2.2 part D: sends and buses.
 const send = z.object({ bus: z.string().regex(/^b\d+$/), level: z.number().min(0).max(1), pre: z.literal(true).optional() });
 
 const bus = z.object({
@@ -133,7 +133,7 @@ const song = z.object({
   buses: z.record(z.string(), bus).optional(),
   busOrder: z.array(z.string()).optional(),
   revision: int.min(0),
-  // `x` (effects) came with F2.2 parte C: songs from before start it at 1.
+  // `x` (effects) came with F2.2 part C: songs from before start it at 1.
   counters: z.object({ n: int.min(1), t: int.min(1), s: int.min(1), a: int.min(1), p: int.min(1), i: int.min(1), x: int.min(1).default(1), b: int.min(1).default(1) }),
   trackOrder: z.array(z.string()),
   tracks: z.record(z.string(), track),
@@ -170,13 +170,13 @@ const fileSchema = z.object({
   history: z.array(historyEntry),
   proposals: z.array(z.unknown()),
   // The data is the engine's text for the plugin's state, opaque here: JUCE's base64 ("5321.Ab+…",
-  // its own alphabet with "." in it), not the standard one. Only safe characters (prueba de Fran, 29/10/2026).
+  // its own alphabet with "." in it), not the standard one. Only safe characters (tested on 29/10/2026).
   pluginStates: z.record(z.string().regex(/^[tx]\d+$/), z.object({ id: z.string().min(1).max(2000), data: z.string().regex(/^[A-Za-z0-9+/=.]*$/).max(256 * 1024 * 1024) })).optional(),
 });
 
 /** Migrations from version N to N + 1, keyed by N. */
 const MIGRATIONS: Record<number, (data: Record<string, unknown>) => Record<string, unknown>> = {
-  // F2.2 parte D (04/11/2026): the per-track reverb (H4) is gone. A song that used it opens with the
+  // F2.2 part D (04/11/2026): the per-track reverb (H4) is gone. A song that used it opens with the
   // «Reverb» bus and each of those tracks sending to it, so it sounds the same; others, without buses.
   1: (data) => {
     const song = data.song as { counters?: Record<string, number>; tracks?: Record<string, Record<string, unknown>>; buses?: unknown } | undefined;

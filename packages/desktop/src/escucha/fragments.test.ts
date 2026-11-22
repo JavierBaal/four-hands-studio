@@ -28,7 +28,7 @@ describe("blind listening passages", () => {
     expect(shuffle(["a", "b", "c"], () => [0.1, 0.9][k++ % 2]!).sort()).toEqual(["a", "b", "c"]);
   });
 
-  // The fault Fran heard (14/10/2026): Sonatina numbers its own way, and asking it for program 48
+  // The fault heard in testing (14/10/2026): Sonatina numbers its own way, and asking it for program 48
   // gave its first preset, a Steinway, in the strings passage.
   const sonatina = ["Steinway Concert Gra", "Concert Harp", "1st Violins Sustain", "1st Violins Pizz.", "2nd Violins Sustain", "2nd Violins Pizz.", "Viola Section Sustai", "Viola Section Pizz.", "Cello Section Sustai", "Cello Section Pizz."].map((name, program) => ({ name, program, bankMSB: 0 }));
   const gm = Array.from({ length: 128 }, (_, program) => ({ name: program === 48 ? "Strings" : program === 42 ? "Cello" : program === 0 ? "Grand Piano" : `P${program}`, program, bankMSB: 0 }));

@@ -1,4 +1,4 @@
-// Four Hands Engine: the reverb and chorus of the built-in sounds (F2.1, Fran 01/11/2026).
+// Four Hands Engine: the reverb and chorus of the built-in sounds (F2.1, 01/11/2026).
 //
 // The same effects the app's SoundFont player uses (SpessaSynth, Apache-2.0): a Dattorro plate
 // reverb set as the GS "Hall 2" macro (number 4, its default) and the GS "Chorus 3" macro (2).
@@ -132,7 +132,7 @@ public:
     }
 
     /**
-     * SpessaSynth's GS reverb parameters (F2.2 parte D: Four Hands' Reverb effect turns them):
+     * SpessaSynth's GS reverb parameters (F2.2 part D: Four Hands' Reverb effect turns them):
      * level and time 0–127, pre-lowpass 0–7 (0: brightest), pre-delay in samples (under a second).
      */
     void configure (int level, int preLowpass, int time, double preDelaySamples)

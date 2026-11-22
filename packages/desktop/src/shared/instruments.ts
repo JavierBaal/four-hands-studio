@@ -72,7 +72,7 @@ export interface PaletteItem {
   en: string;
   /** Real sounding range, lowest and highest MIDI note (what the AI reads in list_instruments). */
   range?: [low: number, high: number];
-  /** What the AI cannot guess from the name (ESTUDIO_SKILLS_COMPOSICION.md, 5.4). */
+  /** What the AI cannot guess from the name. */
   note?: string;
 }
 
@@ -80,7 +80,7 @@ export interface PaletteItem {
 export const GM_NOTES = "General MIDI 120-127 (guitar fret noise, breath noise, seashore, bird, telephone, helicopter, applause, gunshot) are sound effects: the pitch changes their colour, not a note you hear as a melody.";
 
 /**
- * The instrument palette (PRD_MVP.md, 4.2): piano, strings by section, organ, pad, timpani, plus a
+ * The instrument palette: piano, strings by section, organ, pad, timpani, plus a
  * few colours a neoclassical writer reaches for. Names are plural for sections, as on a score.
  */
 export const PALETTE: { es: string; en: string; items: PaletteItem[] }[] = [

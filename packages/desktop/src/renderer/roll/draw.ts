@@ -1,6 +1,6 @@
 /**
  * Canvas drawing of the piano roll, the keyboard, the velocity lane and the arrangement lanes
- * (ARQUITECTURA.md, 8), with the colours and sizes of DIRECCION_ARTISTICA.md (2.9, 4, 5).
+ * (docs/architecture.md, 8), with the colours and sizes of docs/design.md (2.9, 4, 5).
  */
 import { type Meter, type Note, type Song, type Track, barAt, barStart, barTicks, beatTicks, keyAt, orderedSections, songEnd } from "@fourhands/core";
 import { type NoteNames, isBlack, noteName } from "../music.js";
@@ -44,7 +44,7 @@ function visibleRows(v: RollView): { top: number; bottom: number } {
 // ---------------------------------------------------------------------------
 // Keyboard
 
-/** What the active track's library card says about the keys (Fran, 05/11/2026). */
+/** What the active track's library card says about the keys (05/11/2026). */
 export interface KeyboardCard {
   range?: { low: number; high: number };
   keyswitches: ReadonlyArray<{ pitch: number; name: string }>;
@@ -113,7 +113,7 @@ export interface NotesLayer {
   selected: ReadonlySet<string>;
   authorship: boolean;
   /**
-   * Colour of the notes with the authorship layer off: the track's own colour (H3.2, Fran,
+   * Colour of the notes with the authorship layer off: the track's own colour (H3.2,
    * 15/10/2026; before, the neutral `--author-off`). Ghosts stay thin and faint, so they still read
    * as the other tracks.
    */
@@ -377,7 +377,7 @@ export function drawArrangement(s: Surface, song: Song, tracks: readonly Track[]
     const range = Math.max(hi - lo, 1);
     const color = layout.colors.get(track.id) ?? T.text2;
     {
-      // Colour as a surface (H3.2, option C, Fran 15/10/2026): a tinted block for each section where
+      // Colour as a surface (H3.2, option C, 15/10/2026): a tinted block for each section where
       // the track plays, or one block from its first to its last bar when the song has no sections.
       for (const [from, to] of trackBlocks(song, notes)) {
         const x0 = X(from) + 1;

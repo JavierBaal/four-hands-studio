@@ -1,5 +1,5 @@
 /**
- * Sound in the window: SoundFont, transport, the computer keyboard as a piano (ESPEC_PIANO_ROLL.md,
+ * Sound in the window: SoundFont, transport, the computer keyboard as a piano (docs/piano-roll.md,
  * 8.2), Web MIDI input and recording (ESPEC, 8). Recording is a take: everything played goes in
  * as one command at the end, so the whole take undoes in one step, and it is never quantized.
  */
@@ -49,7 +49,7 @@ export class AudioLayer {
   /** Worklet health while playing: notes that reached the audio thread late, and its worst load. */
   stats = { lateEvents: 0, maxLoad: 0, seconds: 0 };
   pianoMode = false;
-  /** The on-screen guide of the computer keyboard while it plays notes (ESPEC_PIANO_ROLL.md, 8.2). */
+  /** The on-screen guide of the computer keyboard while it plays notes (docs/piano-roll.md, 8.2). */
   keyGuide = loadGuide();
   keyboard: KeyboardState = { ...INITIAL_KEYBOARD };
   countInBars = 1;
@@ -63,7 +63,7 @@ export class AudioLayer {
   private trackSignature = "";
   private mixSignature = "";
   /**
-   * F2.2 parte B: the engine's load for «Carga» (read every second while the engine runs), and when
+   * F2.2 part B: the engine's load for «Carga» (read every second while the engine runs), and when
    * the audio was last cut (the indicator says so for a while).
    */
   engineLoad: EngineLoad | null = null;
@@ -72,7 +72,7 @@ export class AudioLayer {
   lastDropoutAt = 0;
   private loadTimer: ReturnType<typeof setInterval> | null = null;
   /**
-   * F2.2 parte C: the chain last sent for each strip (-1: the Master), and the effects that failed to
+   * F2.2 part C: the chain last sent for each strip (-1: the Master), and the effects that failed to
    * load (id → why), for the console.
    */
   private chainsSent = new Map<number, string>();
@@ -106,7 +106,7 @@ export class AudioLayer {
   private router: SoundRouter | null = null;
   private outSides = new Map<string, string>();
   /**
-   * The native engine (fase 2, prueba S2): its state, which plugin each slot has, and the last
+   * The native engine (phase 2, test S2): its state, which plugin each slot has, and the last
    * plugin that could not load (with why). A plugin that failed is not tried again on its own.
    */
   engineStatus: EngineStatus = { ...ENGINE_OFF };
@@ -116,7 +116,7 @@ export class AudioLayer {
    * neutral at the next mix (their track went).
    */
   private strips = new StripMap();
-  /** F2.2 parte D: each bus's place in the engine, and the routing last sent (with its engine run). */
+  /** F2.2 part D: each bus's place in the engine, and the routing last sent (with its engine run). */
   private buses = new BusMap();
   private routingSent = "";
   private stripReset: number[] = [];
@@ -128,10 +128,10 @@ export class AudioLayer {
   pluginScan: EngineScanProgress | null = null;
   /** The Sonidos browser's marks: favourites, recents, hidden plugins, moved categories. */
   soundPrefs: SoundPrefs = { ...NO_SOUND_PREFS };
-  /** The user's library cards (Fran, 05/11/2026), shared by every song. */
+  /** The user's library cards (05/11/2026), shared by every song. */
   libraries: LibraryCatalog = { cards: [] };
   /**
-   * F2.1 (Fran, 01/11/2026): the built-in sounds play in the engine once its banks are there (the
+   * F2.1 (01/11/2026): the built-in sounds play in the engine once its banks are there (the
    * same banks, at the same bank select offsets as the window's synth). Until then, and if the
    * engine is not built or stops, they play here as before. `builtinWhere` comes from
    * ajustes.json (`builtinSounds`); the banks loaded are kept per engine generation.
@@ -200,8 +200,8 @@ export class AudioLayer {
         const tr = this.replica.song.tracks[id];
         return tr ? `${this.stripOf(tr)}:${tr.output ?? ""}:${tr.channel}:${tr.program}:${tr.volume}:${tr.pan}:${reverbLevel(this.replica.song, tr)}:${tr.sound ? `${tr.sound.bank}/${tr.sound.bankMSB}/${tr.sound.program}` : ""}` : "";
       }).join("|");
-      // F2.2 parte B: mute, solo and the master fader go to the engine (they do not re-set the player);
-      // parte D: so do the buses and where every track goes.
+      // F2.2 part B: mute, solo and the master fader go to the engine (they do not re-set the player);
+      // part D: so do the buses and where every track goes.
       const song = this.replica.song;
       const mixSig = `${song.masterVolume ?? 1}|${song.trackOrder.map((id) => {
         const tr = song.tracks[id];
@@ -215,7 +215,7 @@ export class AudioLayer {
         this.sendMix();
       }
       this.mixSignature = mixSig;
-      // F2.2 parte C: the chains that changed go to the engine.
+      // F2.2 part C: the chains that changed go to the engine.
       this.syncInserts();
       if (sig !== this.trackSignature) {
         this.trackSignature = sig;
@@ -297,7 +297,7 @@ export class AudioLayer {
     return buildCatalog({ lang, banks: this.banks, plugins: this.pluginList?.plugins ?? [], prefs: this.soundPrefs, builtInLabel });
   }
 
-  /** Every insert effect: Four Hands' own and the plugin effects (F2.2 parte C, the Sonidos tab). */
+  /** Every insert effect: Four Hands' own and the plugin effects (F2.2 part C, the Sonidos tab). */
   effectCatalog(lang: Lang, ownLabel: string): EffectItem[] {
     const names = { eq: OWN_EFFECTS.eq.name[lang], compressor: OWN_EFFECTS.compressor.name[lang], limiter: OWN_EFFECTS.limiter.name[lang], reverb: OWN_EFFECTS.reverb.name[lang], delay: OWN_EFFECTS.delay.name[lang] };
     return buildEffectCatalog({ lang, plugins: this.pluginList?.plugins ?? [], prefs: this.soundPrefs, ownLabel, ownNames: names });
@@ -324,7 +324,7 @@ export class AudioLayer {
   }
 
   // -------------------------------------------------------------------------
-  // The native engine (fase 2, prueba S2): tracks that sound through a plugin
+  // The native engine (phase 2, test S2): tracks that sound through a plugin
 
   private engineChanged(status: EngineStatus): void {
     // A new engine (it started, or started again after a crash) has no plugins yet.
@@ -393,7 +393,7 @@ export class AudioLayer {
 
   /**
    * F2.2: the engine's strips for the song's tracks (fader, balance, on or off), the master fader,
-   * and (parte D) the buses' faders and the whole routing when it changed.
+   * and (part D) the buses' faders and the whole routing when it changed.
    */
   private sendMix(): void {
     if (this.engineStatus.state !== "ready") return;
@@ -413,7 +413,7 @@ export class AudioLayer {
     }
   }
 
-  /** F2.2 parte D: every bus of the song (and of the song heard) keeps its place in the engine. */
+  /** F2.2 part D: every bus of the song (and of the song heard) keeps its place in the engine. */
   private syncBuses(): void {
     const ids = new Set<string>();
     for (const song of [this.replica.song, this.heard()]) for (const id of song.busOrder ?? []) ids.add(id);
@@ -427,7 +427,7 @@ export class AudioLayer {
   }
 
   /**
-   * F2.2 parte C: every strip's effect chain to the engine, only where it changed (`force`: all of
+   * F2.2 part C: every strip's effect chain to the engine, only where it changed (`force`: all of
    * them, a new engine). From the song heard, so Con / Sin and proposals reach the effects too.
    */
   private syncInserts(force = false): void {
@@ -479,7 +479,7 @@ export class AudioLayer {
   }
 
   /**
-   * F2.2 parte C2: an own effect's parameters while a control moves in its window: only the sound
+   * F2.2 part C2: an own effect's parameters while a control moves in its window: only the sound
    * changes (the song changes on release, one undo step). The next sync sends the song's chain.
    */
   previewInsert(id: string, params: Record<string, number>, bypass?: boolean): void {
@@ -514,7 +514,7 @@ export class AudioLayer {
     return ok;
   }
 
-  /** F2.2 parte B: the strips' levels since the last reading, for the console (null without engine). */
+  /** F2.2 part B: the strips' levels since the last reading, for the console (null without engine). */
   async meters(): Promise<EngineLevels | null> {
     if (this.engineStatus.state !== "ready") return null;
     return this.bridge.engineMeters();
@@ -1133,7 +1133,7 @@ export class AudioLayer {
     const track = this.replica.song.tracks[trackId];
     if (!track) return;
     this.player.previewMix({ ch: track.channel, strip: this.stripOf(track) }, volume, pan);
-    // The strip's fader is audio in the engine (parte D: the built-in sounds' too): move it there.
+    // The strip's fader is audio in the engine (part D: the built-in sounds' too): move it there.
     if (track.output !== "external" && this.engineStatus.state === "ready") {
       const tracks = this.heardTracks().map((t) => (t.id === trackId ? { ...t, volume, pan } : t));
       const mine = engineStrips(tracks.map((t) => ({ ...t, strip: this.stripOf(t) })), [], audible(this.heard())).filter((st) => st.track === trackId);
@@ -1141,7 +1141,7 @@ export class AudioLayer {
     }
   }
 
-  /** F2.2 parte D: a send's level while it moves (the song changes on release; 0: as if gone). */
+  /** F2.2 part D: a send's level while it moves (the song changes on release; 0: as if gone). */
   previewSend(sourceId: string, busId: string, level: number, pre?: boolean): void {
     if (this.engineStatus.state !== "ready") return;
     const song = this.heard();
@@ -1159,7 +1159,7 @@ export class AudioLayer {
     this.bridge.engineRouting(routing);
   }
 
-  /** F2.2 parte D: a bus's fader or pan while it moves (the song changes on release). */
+  /** F2.2 part D: a bus's fader or pan while it moves (the song changes on release). */
   previewBus(busId: string, volume: number, pan: number): void {
     if (this.engineStatus.state !== "ready") return;
     const song = this.heard();
@@ -1169,7 +1169,7 @@ export class AudioLayer {
     this.bridge.engineMix([], undefined, engineBuses(changed, (id) => this.busIndexOf(id), audible(song)).filter((b) => b.id === busId));
   }
 
-  /** F2.2 parte B: the master fader while it moves (the song changes on release). */
+  /** F2.2 part B: the master fader while it moves (the song changes on release). */
   previewMaster(volume: number): void {
     if (this.engineStatus.state === "ready") this.bridge.engineMix([], masterGain(volume));
   }

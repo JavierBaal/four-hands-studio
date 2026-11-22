@@ -1,7 +1,7 @@
 /**
  * What the user is looking at and holding: tool, grid, zoom, scroll, layers, panel.
  * Lives only in the window. Selection, loop, cursor and active track do not live here: they are
- * part of the shared context in the song, because the AI reads them (ESTUDIO_INTERFAZ.md, 8.7).
+ * part of the shared context in the song, because the AI reads them.
  */
 import type { GridValue } from "./roll/geometry.js";
 import type { NoteNames } from "./music.js";
@@ -24,31 +24,31 @@ export interface ViewState {
   authorship: boolean;
   scale: boolean;
   panelOpen: boolean;
-  /** The tab of the side column (ESTUDIO_INTERFAZ_2.md, 5.1): the active track, or the AI's activity. */
+  /** The tab of the side column: the active track, or the AI's activity. */
   panelTab: PanelTab;
   /** Below 1000 px the column opens over the piano roll, only when asked for. */
   compactPanel: boolean;
   /**
    * The column was folded and something opened it for a moment (a track's sound): it folds again
-   * once the sound is chosen, unless the user starts working in it (Fran, 29/10/2026).
+   * once the sound is chosen, unless the user starts working in it (29/10/2026).
    */
   panelPeek: boolean;
   noteNames: NoteNames;
-  /** Ctrl/Cmd held: the arrow works as a pencil (ESPEC_PIANO_ROLL.md, 3). */
+  /** Ctrl/Cmd held: the arrow works as a pencil (docs/piano-roll.md, 3). */
   pencilHeld: boolean;
   /** Track whose notes the vertical scroll was last centred on (centred once per track). */
   centredTrack: string | null;
-  /** Which lane shows under the piano roll (ESPEC_PIANO_ROLL.md, 7). */
+  /** Which lane shows under the piano roll (docs/piano-roll.md, 7). */
   lane: "velocity" | "pedal" | "expression" | "modulation";
   /**
-   * Layout the user dragged (Fran, 15/10/2026). The sizes of DIRECCION_ARTISTICA.md are the
+   * Layout the user dragged (15/10/2026). The sizes of docs/design.md are the
    * defaults; `arrHeight` null means "as tall as the tracks need".
    */
   headerWidth: number;
   panelWidth: number;
   arrHeight: number | null;
   /**
-   * F2.2 parte B (Fran, 03/11/2026): what fills the piano roll's place, as in Studio One: the editor
+   * F2.2 part B (03/11/2026): what fills the piano roll's place, as in Studio One: the editor
    * (F2) or the console (F3). With the console, the arrangement keeps its own height (`mixArrHeight`,
    * null: a default that leaves the console room) and «Ampliar» hides it (`mixMax`). «Estrecho»
    * makes every strip narrow.
@@ -73,7 +73,7 @@ export function savedLayout(): Layout {
     const num = (v: unknown, d: number) => (typeof v === "number" && Number.isFinite(v) ? v : d);
     return {
       headerWidth: num(raw.headerWidth, LAYOUT_DEFAULTS.headerWidth),
-      // Never narrower than the tabs and the fold arrow need (Fran, 29/10/2026).
+      // Never narrower than the tabs and the fold arrow need (29/10/2026).
       panelWidth: Math.max(260, num(raw.panelWidth, LAYOUT_DEFAULTS.panelWidth)),
       arrHeight: typeof raw.arrHeight === "number" && Number.isFinite(raw.arrHeight) ? raw.arrHeight : null,
       rowHeight: Math.max(12, Math.min(24, num(raw.rowHeight, LAYOUT_DEFAULTS.rowHeight))),

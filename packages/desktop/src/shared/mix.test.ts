@@ -80,7 +80,7 @@ describe("reverb send (H4)", () => {
 });
 
 describe("the engine's strips (F2.2, 03/11/2026)", () => {
-  it("gives every track its fader in the dB the window shows; a plugin also its balance (parte D)", () => {
+  it("gives every track its fader in the dB the window shows; a plugin also its balance (part D)", () => {
     expect(stripGain(1)).toBe(1);
     expect(20 * Math.log10(stripGain(0.8))).toBeCloseTo(volumeToDb(0.8), 6);
     expect(stripGain(0)).toBe(0);
@@ -107,7 +107,7 @@ describe("the engine's strips (F2.2, 03/11/2026)", () => {
   });
 });
 
-describe("mute, solo and the master in the engine (F2.2 parte B)", () => {
+describe("mute, solo and the master in the engine (F2.2 part B)", () => {
   it("turns off muted strips, and with a solo every strip but the soloed ones; built-in sounds too", () => {
     const tracks = [
       { channel: 0, output: "plugin", volume: 1, pan: 0, mute: true },
@@ -163,7 +163,7 @@ describe("the levels the engine measured (F2.2)", () => {
   });
 });
 
-describe("buses in the engine (F2.2 parte D)", () => {
+describe("buses in the engine (F2.2 part D)", () => {
   function song() {
     const doc = new SongDocument(withDefaultBuses(starterSong("Buses")), { now: () => 0 });
     doc.transact({ actor: USER, label: "buses" }, (tx) => {

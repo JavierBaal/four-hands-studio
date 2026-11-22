@@ -51,7 +51,7 @@ describe(".fourhands", () => {
     expect(Object.values(again.song.notes).some((n) => n.pitch === 64)).toBe(true);
   });
 
-  it("opens a song from before the buses that used track reverb with the «Reverb» bus and each track's reverb as its send (F2.2 parte D)", () => {
+  it("opens a song from before the buses that used track reverb with the «Reverb» bus and each track's reverb as its send (F2.2 part D)", () => {
     const doc = sampleDoc();
     doc.transact({ actor: USER, label: "EQ" }, (tx) => addInsert(tx, "t1", { kind: "eq" }));
     const old = JSON.parse(serializeSong({ song: doc.song, history: doc.history, proposals: [] }));
@@ -70,7 +70,7 @@ describe(".fourhands", () => {
     // Saved again, it stays as it is (no second bus).
     const again = parseSongFile(serializeSong(opened));
     expect(again.song.busOrder).toEqual(["b1"]);
-    // A song from before with no reverb on its tracks opens without buses (Fran, 04/11/2026).
+    // A song from before with no reverb on its tracks opens without buses (04/11/2026).
     const dry = JSON.parse(serializeSong({ song: sampleDoc().song, history: [], proposals: [] }));
     dry.version = 1;
     const plain = parseSongFile(JSON.stringify(dry));
@@ -173,7 +173,7 @@ describe(".fourhands", () => {
   });
 });
 
-describe("library cards (Fran, 05/11/2026)", () => {
+describe("library cards (05/11/2026)", () => {
   it("a track links a card of the user's catalog, saves the link and unlinks it, one undo each", () => {
     const doc = new SongDocument(emptySong("Fichas"), { now: () => 1 });
     const t = doc.transact({ actor: USER, label: "Pista" }, (tx) => addTrack(tx, { name: "Violas" }));

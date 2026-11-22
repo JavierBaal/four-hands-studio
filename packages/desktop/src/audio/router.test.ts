@@ -52,7 +52,7 @@ describe("MIDI out to another program (H4)", () => {
   });
 });
 
-describe("never listen to our own output (loopMIDI feedback, Fran 20/10/2026)", () => {
+describe("never listen to our own output (loopMIDI feedback, 20/10/2026)", () => {
   it("recognises the other end of the chosen port, also with a number added", () => {
     expect(isOwnLoopback("Four Hands", "Four Hands")).toBe(true);
     expect(isOwnLoopback("four hands 2", "Four Hands")).toBe(true);
@@ -61,7 +61,7 @@ describe("never listen to our own output (loopMIDI feedback, Fran 20/10/2026)", 
   });
 });
 
-describe("tracks through a plugin of the engine (prueba S2)", () => {
+describe("tracks through a plugin of the engine (test S2)", () => {
   function withEngine() {
     const inner = { ctx: { currentTime: 10 }, nowed: [] as SynthEvent[], scheduled: [] as { time: number; ev: SynthEvent }[], panics: 0 };
     const batches: { slot: number; delay: number; data: number[] }[][] = [];
@@ -107,7 +107,7 @@ describe("tracks through a plugin of the engine (prueba S2)", () => {
   });
 });
 
-describe("the built-in sounds in the engine (F2.1, Fran 01/11/2026)", () => {
+describe("the built-in sounds in the engine (F2.1, 01/11/2026)", () => {
   function withEngine(ready: { value: boolean }) {
     const inner = { ctx: { currentTime: 10 }, nowed: [] as SynthEvent[], scheduled: [] as { time: number; ev: SynthEvent }[], panics: 0 };
     const midi: EngineMidiEvent[] = [];

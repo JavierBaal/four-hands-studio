@@ -67,7 +67,7 @@ const server = net.createServer((socket) => {
           send({ type: "stats", blocks: midi, maxLoad: 0.3, avgLoad: 0.2, late: 0, overruns: 0, xruns: -1 });
           break;
         case "inserts":
-          // F2.2 parte C: a chain; an unknown plugin is reported, own effects always load.
+          // F2.2 part C: a chain; an unknown plugin is reported, own effects always load.
           send({ type: "insertsSet", strip: m.strip, latency: (m.chain ?? []).some((x) => x.kind === "limiter") ? 240 : 0, compensation: 0, errors: (m.chain ?? []).filter((x) => x.kind === "plugin" && x.plugin !== "VST3-Fake").map((x) => ({ id: x.id, error: `Unknown plugin: ${x.plugin}` })) });
           break;
         case "params":

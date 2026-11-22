@@ -1,5 +1,5 @@
 /**
- * The user's library cards on disk (Fran, 05/11/2026): `libraries.json` in the app's data folder,
+ * The user's library cards on disk (05/11/2026): `libraries.json` in the app's data folder,
  * outside any song, so the same card serves all of them. Written whole and atomically (a temporary
  * file, then rename), so a crash never leaves half a catalog.
  */

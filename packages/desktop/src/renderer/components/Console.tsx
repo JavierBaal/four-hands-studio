@@ -1,6 +1,6 @@
 /**
- * The mixing console (F2.2 parte B, 03/11/2026), on the approved sketch (rama `bocetos-mezclador`;
- * DIRECCION_ARTISTICA.md, 13; capturas `bocetos/propuestas/mezcla_1` a `mezcla_4`).
+ * The mixing console (F2.2 part B, 03/11/2026), on the approved sketch (branch `sketches-mezclador`;
+ * docs/design.md, 13; capturas `sketches/propuestas/mezcla_1` a `mezcla_4`).
  *
  * It takes the piano roll's place, as in Studio One (F2 the editor, F3 the console); «Ampliar» hides
  * the arrangement. A strip, top to bottom: the track's colour, insert effects, sends, output, pan,
@@ -190,7 +190,7 @@ function VFader({ value, reset, label, valueText, onInput, onCommit }: { value: 
 }
 
 /**
- * A value typed in place (Fran, 03/11/2026): one click opens the field; Enter or leaving it writes
+ * A value typed in place (03/11/2026): one click opens the field; Enter or leaving it writes
  * it, Esc cancels. `commit` returns false when the text cannot be read (the value stays as it was).
  */
 function Typed({ text, className, title, commit }: { text: string; className: string; title: string; commit(text: string): boolean }) {
@@ -219,7 +219,7 @@ function Typed({ text, className, title, commit }: { text: string; className: st
 const FX_DRAG = "application/x-fourhands-effect";
 
 /**
- * A strip's effect chain (F2.2 parte C): one slot per effect, in order, and «+» at the end. Click
+ * A strip's effect chain (F2.2 part C): one slot per effect, in order, and «+» at the end. Click
  * selects (Supr removes), double click opens a plugin's window, right click has the rest; dragging
  * reorders, also onto another strip. In «Estrecho», only how many.
  */
@@ -236,7 +236,7 @@ function FxChain({ audio, target, inserts, narrow }: { audio: AudioLayer; target
       </button>
     );
   }
-  // A slot being moved, or a new effect from the Sonidos tab (Fran, 04/11/2026).
+  // A slot being moved, or a new effect from the Sonidos tab (04/11/2026).
   const ours = (e: React.DragEvent) => e.dataTransfer.types.includes(FX_DRAG) || e.dataTransfer.types.includes(EFFECT_DRAG);
   const drop = (index: number) => (e: React.DragEvent) => {
     if (!ours(e)) return;
@@ -250,7 +250,7 @@ function FxChain({ audio, target, inserts, narrow }: { audio: AudioLayer; target
     }
     actions.moveEffect(e.dataTransfer.getData(FX_DRAG), at(index, e), target);
   };
-  // Over a slot, the upper half drops before it and the lower half after it (Fran, 04/11/2026:
+  // Over a slot, the upper half drops before it and the lower half after it (04/11/2026:
   // dragging down onto the next slot did nothing, as «before it» was where it already was).
   const at = (index: number, e: React.DragEvent) => {
     if (index >= inserts.length) return inserts.length;
@@ -328,7 +328,7 @@ function FxChain({ audio, target, inserts, narrow }: { audio: AudioLayer; target
 }
 
 /**
- * A strip's sends (F2.2 parte D): the bus's name over a bar with its level. Dragging across it
+ * A strip's sends (F2.2 part D): the bus's name over a bar with its level. Dragging across it
  * changes the level (heard at once, the song on release); double click types it; right click has
  * before or after the fader and remove. «+ envío» at the end.
  */
@@ -420,7 +420,7 @@ function Sends({ source, sends }: { source: string; sends: readonly Send[] }) {
   );
 }
 
-/** Where a strip's sound goes: «→ Máster» or «→ Voces»; a click chooses (F2.2 parte D). */
+/** Where a strip's sound goes: «→ Máster» or «→ Voces»; a click chooses (F2.2 part D). */
 function Output({ source, bus }: { source: string; bus: string | undefined }) {
   const { t } = useApp();
   const actions = useActions();
@@ -546,7 +546,7 @@ interface BusStripProps {
   onClearClip(): void;
 }
 
-/** A bus (F2.2 parte D): like a track's strip, with its colour, effects, sends, output and fader. */
+/** A bus (F2.2 part D): like a track's strip, with its colour, effects, sends, output and fader. */
 function BusStrip({ audio, bus, narrow, silenced, meter, onClearClip }: BusStripProps) {
   const { t, lang } = useApp();
   const actions = useActions();
@@ -717,7 +717,7 @@ export function Console({ audio, onSelectTrack, onToggle }: ConsoleProps) {
   useEffect(() => {
     if (!audio.pluginList && !audio.pluginScan && audio.engineStatus.state !== "missing") void audio.loadPlugins(false);
   }, [audio]);
-  // Who sounds (parte D: a solo keeps on the buses a soloed track goes through or sends to).
+  // Who sounds (part D: a solo keeps on the buses a soloed track goes through or sends to).
   const on = audible(song);
   const engineOn = audio.engineStatus.state === "ready";
   return (

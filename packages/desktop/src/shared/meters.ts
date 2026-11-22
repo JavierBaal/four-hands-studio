@@ -1,5 +1,5 @@
 /**
- * The console's meters (F2.2 parte B, 03/11/2026): what the engine measured since the last reading
+ * The console's meters (F2.2 part B, 03/11/2026): what the engine measured since the last reading
  * (linear peak and RMS per strip) turned into what the eye reads, as the DAWs do:
  * - the bar (RMS) rises at once and falls about 20 dB a second;
  * - the peak line holds 1.5 s, then falls at the same speed;

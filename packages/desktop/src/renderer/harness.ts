@@ -1,6 +1,6 @@
 /**
  * Songs for the browser harness (no Electron): the window runs against `memoryBridge`.
- * - `?song=boceto`: the data of the approved sketch (bocetos/lienzo/dil.json), to compare the
+ * - `?song=sketch`: the data of the approved sketch (sketches/lienzo/dil.json), to compare the
  *   window with capture 01 under the same conditions.
  * - otherwise: Dilatacion.mid imported, as the app opens it the first time.
  */
