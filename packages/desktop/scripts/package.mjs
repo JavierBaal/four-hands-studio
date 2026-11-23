@@ -105,6 +105,8 @@ const platform = process.platform === "win32" ? Platform.WINDOWS : process.platf
 console.log(`Packaging Four Hands Studio ${pkg.version} (Electron ${electronVersion}, ${target})…`);
 await builder({
   targets: platform.createTarget(target),
+  // Never publish from here: releases are drafted by the workflow, and published by a person.
+  publish: "never",
   config: {
     appId: "com.fourhandsstudio.app",
     productName: "Four Hands Studio",
