@@ -38,7 +38,7 @@ jobs:
       - name: Build the engine
         shell: pwsh
         run: |
-          cmake -S engine -B C:\fhbuild -G "Visual Studio 17 2022" -A x64 -DFH_TEST_PLUGIN=ON
+          cmake -S engine -B C:\fhbuild -A x64 -DFH_TEST_PLUGIN=ON
           cmake --build C:\fhbuild --config Release --parallel
           if (-not (Test-Path "C:\fhbuild\FourHandsEngine_artefacts\Release\Four Hands Engine.exe")) { throw "The engine was not built" }
 

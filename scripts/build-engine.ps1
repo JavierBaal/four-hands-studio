@@ -1,5 +1,5 @@
 # Four Hands Studio: builds the native audio engine on Windows and checks that it plays.
-# Needs Build Tools for Visual Studio 2022 with "Desktop development with C++" (it includes CMake).
+# Needs Build Tools for Visual Studio (2022 or newer) with "Desktop development with C++" (it includes CMake).
 # Usage, from the repository root:  powershell -ExecutionPolicy Bypass -File scripts\build-engine.ps1
 # Leaves "Four Hands Engine.exe" in engine\build\FourHandsEngine_artefacts\Release, where the app looks for it.
 $ErrorActionPreference = 'Stop'
@@ -12,7 +12,7 @@ $target = Join-Path $source 'build\FourHandsEngine_artefacts\Release'
 try {
   Write-Host "`n== Build tools ==" -ForegroundColor Cyan
   $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
-  if (-not (Test-Path $vswhere)) { throw "Visual Studio Build Tools not found. Install 'Build Tools for Visual Studio 2022' with 'Desktop development with C++' (https://visualstudio.microsoft.com/visual-cpp-build-tools/)." }
+  if (-not (Test-Path $vswhere)) { throw "Visual Studio Build Tools not found. Install 'Build Tools for Visual Studio' with 'Desktop development with C++' (https://visualstudio.microsoft.com/visual-cpp-build-tools/)." }
   $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
   if (-not $vs) { throw "Visual Studio is installed, but without the C++ compiler. Open the Visual Studio Installer and add 'Desktop development with C++'." }
   Write-Host "Visual Studio: $vs"
@@ -24,7 +24,7 @@ try {
   & $cmake --version | Select-Object -First 1 | Out-Host
 
   Write-Host "`n== Configuring (the first time downloads JUCE: a few minutes) ==" -ForegroundColor Cyan
-  & $cmake -S $source -B $build -G "Visual Studio 17 2022" -A x64 -DFH_TEST_PLUGIN=ON
+  & $cmake -S $source -B $build -A x64 -DFH_TEST_PLUGIN=ON
   if ($LASTEXITCODE -ne 0) { throw "Configuring (cmake) failed." }
 
   Write-Host "`n== Building (the first time takes 5 to 15 minutes) ==" -ForegroundColor Cyan

@@ -40,7 +40,7 @@ The three files, exactly as the installer ships them, are also assets of this re
 ## 3. The audio engine (Windows)
 
 **Requirements:**
-- [Build Tools for Visual Studio 2022](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with **Desktop development with C++** (it includes CMake). Or CMake 3.22+ and any C++20 compiler.
+- [Build Tools for Visual Studio](https://visualstudio.microsoft.com/visual-cpp-build-tools/) 2022 or newer, with **Desktop development with C++** (it includes CMake). Or CMake 3.22+ and any C++20 compiler.
 - An internet connection the first time: CMake downloads [JUCE](https://github.com/juce-framework/JUCE) 8.
 
 **The easy way** (PowerShell, from the repository root):
@@ -54,7 +54,7 @@ It finds Visual Studio and CMake, builds in `%LOCALAPPDATA%\FourHandsEngine\buil
 **By hand:**
 
 ```bash
-cmake -S engine -B engine/build -G "Visual Studio 17 2022" -A x64 -DFH_TEST_PLUGIN=ON
+cmake -S engine -B engine/build -A x64 -DFH_TEST_PLUGIN=ON
 cmake --build engine/build --config Release --parallel
 ```
 
