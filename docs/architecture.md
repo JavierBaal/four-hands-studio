@@ -228,7 +228,7 @@ Two measurements: the latency the audio system declares (`baseLatency` + `output
 
 | Step | Windows | macOS |
 |---|---|---|
-| Installer | `.exe` | Not built yet |
+| Installer | `.exe`, per user, with the engine, the sound banks and the demo ([BUILDING.md](../BUILDING.md), 4) | Not built yet |
 | Unsigned | SmartScreen warning: "More info > Run anyway" | The first opening has to be allowed in System Settings > Privacy & Security |
 | Connecting the AI | "Connect with Claude" button | The same button; not tested yet |
 | MIDI keyboard | Detected automatically; without one, the computer keyboard | Same |

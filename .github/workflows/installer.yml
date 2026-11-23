@@ -1,0 +1,97 @@
+name: Windows installer
+
+# Builds the Windows installer: the native engine, the app, the bridge, the sound banks and the demo.
+# - Manually (Actions > Windows installer > Run workflow) or on a push to the "installer" branch:
+#   the installer is kept as a workflow artifact for a week.
+# - On a version tag (v0.1.0…): also a draft release with the installer, for the maintainer to publish.
+#
+# The sound banks are not in the repository. They are assets of the release "sound-banks-v1" of this
+# repository (BUILDING.md, 2) and are checked against the hashes below before packaging.
+on:
+  workflow_dispatch:
+  push:
+    branches: [installer]
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+env:
+  SOUND_BANKS_RELEASE: sound-banks-v1
+
+jobs:
+  installer:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run check
+
+      - name: Build the engine
+        shell: pwsh
+        run: |
+          cmake -S engine -B C:\fhbuild -G "Visual Studio 17 2022" -A x64 -DFH_TEST_PLUGIN=ON
+          cmake --build C:\fhbuild --config Release --parallel
+          if (-not (Test-Path "C:\fhbuild\FourHandsEngine_artefacts\Release\Four Hands Engine.exe")) { throw "The engine was not built" }
+
+      - name: Engine self test
+        # A hosted runner may have no audio device; the result is shown, not required.
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath "C:\fhbuild\FourHandsEngine_artefacts\Release\Four Hands Engine.exe" -ArgumentList @('--selftest', '"C:\fhbuild\test-synth\FourHandsTestSynth_artefacts\Release\VST3"') -Wait -PassThru -RedirectStandardOutput selftest.txt -NoNewWindow
+          Get-Content selftest.txt
+          exit $p.ExitCode
+
+      - name: Cache the sound banks
+        id: banks-cache
+        uses: actions/cache@v4
+        with:
+          path: soundfonts
+          key: ${{ env.SOUND_BANKS_RELEASE }}
+
+      - name: Download the sound banks
+        if: steps.banks-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download $env:SOUND_BANKS_RELEASE --repo ${{ github.repository }} --dir soundfonts --pattern "*.sf2" --pattern "*.sf3"
+
+      - name: Check the sound banks
+        shell: pwsh
+        run: |
+          $expected = @{
+            'MuseScore_General.sf3'            = '5b85b6c2c61d10b2b91cddd41efcce7b25cd31c8271d511c73afafbef20b6fa3'
+            'Sonatina_Symphonic_Orchestra.sf2' = 'c95351ccc95947687ec78478cd45127d00e3adf75db887b767a48acdad236761'
+            'YDP-GrandPiano-20160804.sf2'      = '8757076aecf80abdad1e8f8f6168370399b06f94481796986e6e75ceca09ad21'
+          }
+          foreach ($f in $expected.Keys) {
+            $hash = (Get-FileHash -Algorithm SHA256 (Join-Path soundfonts $f)).Hash.ToLower()
+            if ($hash -ne $expected[$f]) { throw "$f does not match: $hash" }
+            Write-Host "ok  $f"
+          }
+
+      - name: Package
+        run: npm run package -- --engine "C:\fhbuild\FourHandsEngine_artefacts\Release" --soundfonts soundfonts
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Four-Hands-Studio-Setup
+          path: packages/desktop/out/installer/*.exe
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Draft release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${{ github.ref_name }}" (Get-Item packages/desktop/out/installer/*.exe).FullName --repo ${{ github.repository }} --draft --title "Four Hands Studio ${{ github.ref_name }}" --notes "Windows installer. See README.md for what is new and how to connect your AI."

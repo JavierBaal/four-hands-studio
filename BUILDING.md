@@ -35,7 +35,7 @@ some-folder/
 | `Sonatina_Symphonic_Orchestra.sf2` | Orchestral sounds of the demo song | The SF2 version, from the [MuseScore handbook's list](https://musescore.org/en/handbook/soundfonts) (original library: [sso.mattiaswestlund.net](http://sso.mattiaswestlund.net)) |
 | `YDP-GrandPiano-20160804.sf2` | The demo's piano | [FreePats: acoustic grand piano](https://freepats.zenvoid.org/Piano/acoustic-grand-piano.html) |
 
-You can also point to the built-in bank with the `FH_SOUNDFONT` environment variable. Any other SF2 or SF3 you put in `Documents/Four Hands/Sonidos` appears in the app's sound browser. Licences: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+The three files, exactly as the installer ships them, are also assets of this repository's [`sound-banks-v1` release](https://github.com/JavierBaal/four-hands-studio/releases/tag/sound-banks-v1). You can also point to the built-in bank with the `FH_SOUNDFONT` environment variable. Any other SF2 or SF3 you put in `Documents/Four Hands/Sonidos` appears in the app's sound browser. Licences: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## 3. The audio engine (Windows)
 
@@ -68,7 +68,17 @@ The engine also builds on Linux (used for its automated tests); macOS is planned
 
 **Licence:** the engine is AGPLv3 and JUCE is used under its AGPLv3 option ([docs/audio-engine.md](docs/audio-engine.md), 4).
 
-## 4. Tests
+## 4. The Windows installer
+
+```powershell
+npm run package -- --engine <folder with "Four Hands Engine.exe"> --soundfonts <folder with the three banks>
+```
+
+It builds the app and the bridge and writes `packages/desktop/out/installer/Four-Hands-Studio-Setup-<version>.exe`: a per-user installer (no administrator rights) with the engine, the three sound banks, the bridge, the demo song, the skills and the licences, which also opens `.fourhands` files. `--dir` makes the unpacked app instead (on any system, to check what goes inside).
+
+The [Windows installer workflow](.github/workflows/installer.yml) does all of it on GitHub: it builds the engine, downloads the sound banks from this repository's `sound-banks-v1` release and checks their SHA-256, and packages. Run it from *Actions > Windows installer > Run workflow*; pushing a version tag (`v0.1.0`) also creates a draft release with the installer.
+
+## 5. Tests
 
 ```bash
 npm run check        # type checks and unit tests (core, MCP tools, app)

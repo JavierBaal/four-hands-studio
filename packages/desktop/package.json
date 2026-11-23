@@ -1,6 +1,6 @@
 {
   "name": "@fourhands/desktop",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "license": "MIT",
   "private": true,
   "description": "Four Hands desktop app (Electron): the song in the main process, the window, sound and recording.",
@@ -26,6 +26,7 @@
     "@types/react-dom": "18.3.1",
     "@types/ws": "^8.18.1",
     "electron": "44.7.0",
+    "electron-builder": "^26.18.0",
     "playwright-core": "1.56.1"
   }
 }

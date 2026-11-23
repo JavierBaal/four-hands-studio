@@ -34,6 +34,8 @@ const packageDir = path.resolve(here, "..");
 const repoRoot = path.resolve(packageDir, "..", "..");
 // In a development checkout the repo may live in <project>/codigo, next to <project>/recursos.
 const projectRoot = fs.existsSync(path.join(repoRoot, "..", "recursos")) ? path.resolve(repoRoot, "..") : null;
+/** In the installed app: what the installer puts next to the app (engine, sound banks, bridge). */
+const resources = app.isPackaged ? process.resourcesPath : null;
 
 const SF_NAME = "MuseScore_General.sf3";
 const lang: Lang = langFrom(process.env.FH_LANG ?? app.getLocale());
@@ -117,6 +119,7 @@ function writeSettings(changes: Settings): void {
 function findSoundFont(): string | null {
   const candidates = [
     process.env.FH_SOUNDFONT,
+    resources && path.join(resources, "soundfonts", SF_NAME),
     projectRoot && path.join(projectRoot, "recursos", "soundfonts", SF_NAME),
     path.join(repoRoot, "recursos", "soundfonts", SF_NAME),
   ].filter((p): p is string => !!p);
@@ -129,7 +132,7 @@ const soundsDir = () => path.join(songsDir(), "Sonidos");
 const userSkillsDir = () => path.join(songsDir(), "Skills");
 
 function makeLibrary(): SoundLibrary {
-  const extra = [projectRoot && path.join(projectRoot, "recursos", "soundfonts"), path.join(repoRoot, "recursos", "soundfonts"), soundFontPath && path.dirname(soundFontPath)].filter(
+  const extra = [resources && path.join(resources, "soundfonts"), projectRoot && path.join(projectRoot, "recursos", "soundfonts"), path.join(repoRoot, "recursos", "soundfonts"), soundFontPath && path.dirname(soundFontPath)].filter(
     (d): d is string => !!d,
   );
   return new SoundLibrary(soundsDir(), [...new Set(extra)], soundFontPath);
@@ -142,13 +145,14 @@ function soundFontCandidates(): string[] {
 }
 
 /**
- * The native engine (phase 2, test S2), if it has been built: FH_ENGINE, the copy that
+ * The native engine, if it is there: FH_ENGINE, the one the installer ships, the copy that
  * «Compilar motor.bat» leaves in <project>/motor, or the build folder of the repo.
  */
 function findEngine(): string | null {
   const exe = process.platform === "win32" ? "Four Hands Engine.exe" : "Four Hands Engine";
   const candidates = [
     process.env.FH_ENGINE,
+    resources && path.join(resources, "engine", exe),
     projectRoot && path.join(projectRoot, "motor", exe),
     path.join(repoRoot, "engine", "build", "FourHandsEngine_artefacts", "Release", exe),
   ].filter((p): p is string => !!p);
@@ -621,7 +625,7 @@ function importSkills(files: string[]): SkillImportResult {
 
 /** Help > Connect with Claude: opens the extension in Claude Desktop. */
 async function connectWithClaude(): Promise<void> {
-  const mcpb = findMcpb([path.join(repoRoot, "packages", "bridge", "dist"), projectRoot ?? "", path.join(here, "..")]);
+  const mcpb = findMcpb([resources ?? "", path.join(repoRoot, "packages", "bridge", "dist"), projectRoot ?? "", path.join(here, "..")]);
   if (!mcpb) {
     dialog.showErrorBox(t("connectFailed"), t("connectNoFile"));
     appendLog({ type: "connect_button", ok: false, reason: "no mcpb" });

@@ -30,7 +30,7 @@ Runtime dependencies bundled with the app and the bridge. All are permissive.
 
 The full list, with versions, is in `package-lock.json`; `npm ls --omit=dev` shows it. The app's build writes each bundled package's licence comments to `*.LEGAL.txt` files next to the bundles.
 
-Development tools (TypeScript, esbuild, Vitest, Electron, Playwright, `@anthropic-ai/mcpb`) are not part of the source distributed here; Electron ships with the installer under its MIT licence and Chromium's licences.
+Development tools (TypeScript, esbuild, Vitest, Electron, electron-builder, Playwright, `@anthropic-ai/mcpb`) are not part of the source distributed here; Electron ships with the installer under its MIT licence and Chromium's licences.
 
 ## Sound banks
 

@@ -15,6 +15,7 @@
     "typecheck": "tsc -b packages/core packages/mcp-tools packages/bridge packages/desktop && tsc -p packages/core/tsconfig.tests.json",
     "test": "vitest run",
     "build:bridge": "npm run build -w @fourhands/bridge",
+    "package": "npm run build:bridge && node packages/desktop/scripts/package.mjs",
     "check": "npm run typecheck && npm test",
     "s0": "npm run start -w @fourhands/desktop -- --s0",
     "app": "npm run start -w @fourhands/desktop",

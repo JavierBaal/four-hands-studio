@@ -1,0 +1,11 @@
+This is the Sonatina Symphonic Orchestra in SF2 format created by "Symphony2" http://musescore.org/en/user/49541. 
+
+There are a few known flaws with it:
+* The flutes (piccolo, concert flute, not alto flute) will probably play an octave higher. If you don't want this for playback only, select the flute or piccolo staff and transpose it an octave lower.
+* To access certain percussion, you may have to write the parts on treble or bass staves.
+* Strings will not playback with certain articulations (pizz). As far as that goes, you have the choice of pizz or arco strings
+
+You may edit the soundfont and report about your changes at http://musescore.org/en/node/20378
+
+Sonatina Symphonic Orchestra is a free SFZ orchestral sample library released under Creative Commons Sampling Plus 1.0 license by Mattias Westlund
+More information http://sso.mattiaswestlund.net/
