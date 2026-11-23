@@ -271,7 +271,8 @@ TypeScript, React, esbuild, Vitest, Playwright, Electron and `@anthropic-ai/mcpb
 | **H3. The AI's hand** | The complete bridge, reading and writing tools, shared context, several clients |
 | **H4. Collaboration** | Interventions, signed history, With / Without, proposal mode, analysis, skills, tempo and key changes, expression curves, MIDI output |
 | **S2 → F2.3. Phase 2** | The native engine: VST3 instruments, mixing console, insert effects, buses and sends, and the AI's ears (loudness and spectrum measured per track) ([audio-engine.md](audio-engine.md)) |
-| **Next** | Automation and audio export (F2.4), the Windows installer, macOS |
+| **Installer** | A per-user Windows installer with the engine, the sound banks and the demo, built on CI (version 0.1.0) |
+| **Next** | Automation and audio export (F2.4), a signed installer, macOS |
 
 ## 13. Risks
 

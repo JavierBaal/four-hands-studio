@@ -1,8 +1,8 @@
 name: Windows installer
 
 # Builds the Windows installer: the native engine, the app, the bridge, the sound banks and the demo.
-# - Manually (Actions > Windows installer > Run workflow) or on a push to the "installer" branch:
-#   the installer is kept as a workflow artifact for a week.
+# - Manually (Actions > Windows installer > Run workflow): the installer is kept as a workflow
+#   artifact for a week.
 # - On a version tag (v0.1.0…): also a draft release with the installer, for the maintainer to publish.
 #
 # The sound banks are not in the repository. They are assets of the release "sound-banks-v1" of this
@@ -10,7 +10,6 @@ name: Windows installer
 on:
   workflow_dispatch:
   push:
-    branches: [installer]
     tags: ["v*"]
 
 permissions:

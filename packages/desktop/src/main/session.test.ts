@@ -32,6 +32,11 @@ function options(extra: Partial<SessionOptions> = {}): SessionOptions {
 }
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** Waits until `done()` holds (a save on a slow CI machine can take longer than the autosave delay). */
+async function until(done: () => boolean, timeoutMs = 5000): Promise<void> {
+  const end = Date.now() + timeoutMs;
+  while (!done() && Date.now() < end) await wait(10);
+}
 
 beforeEach(() => {
   root = fs.mkdtempSync(path.join(os.tmpdir(), "fh-session-"));
@@ -123,7 +128,7 @@ describe("SongSession", () => {
     expect(files.at(-1)).toMatchObject({ dirty: true });
     s.run("Nota", [{ type: "addNotes", trackId: "t1", notes: [{ pitch: 60, start: 0, duration: PPQ, velocity: 80 }] }]);
     expect(Object.keys(parseSongFile(fs.readFileSync(s.path, "utf8")).song.notes)).toHaveLength(0);
-    await wait(60);
+    await until(() => files.at(-1)?.dirty === false);
     const saved = parseSongFile(fs.readFileSync(s.path, "utf8"));
     expect(Object.keys(saved.song.notes)).toEqual(["n1"]);
     expect(saved.history.map((h) => h.label)).toEqual(["Pista", "Nota"]);

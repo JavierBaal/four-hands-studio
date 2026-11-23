@@ -32,16 +32,9 @@ The first time you open Four Hands, it opens **Invasion**, a demo song with four
 
 **Requirements:** Windows 10 or 11 (macOS is planned but untested), and [Claude Desktop](https://claude.ai/download) for the AI. Any MCP client that runs local stdio servers can use the bridge.
 
-**From source** (there is no packaged installer yet):
+**Install:** download `Four-Hands-Studio-Setup-<version>.exe` from the [latest release](https://github.com/JavierBaal/four-hands-studio/releases/latest) and run it. It installs for your user only (no administrator rights) and includes the audio engine, the sound banks and the demo song. The installer is not signed yet, so Windows SmartScreen warns about it: choose *More info > Run anyway*.
 
-```bash
-git clone https://github.com/JavierBaal/four-hands-studio.git
-cd four-hands-studio
-npm install        # needs Node 24 (npm 11)
-npm run app
-```
-
-To play plugins and use the mixer, build the audio engine too, and put the sound banks next to the repository. Step by step: [BUILDING.md](BUILDING.md).
+**From source:** see [BUILDING.md](BUILDING.md) (Node 24, and Visual Studio Build Tools for the audio engine).
 
 **Connecting your AI:** in the app, *Help > How to connect your AI*, then *Connect with Claude*. Claude Desktop shows its installation window for the Four Hands extension; confirm it. Then ask Claude to compose with you: it will load the Four Hands skills by itself.
 
@@ -60,7 +53,7 @@ To play plugins and use the mixer, build the audio engine too, and put the sound
 
 ## Roadmap
 
-- **Next:** automation, export to WAV (mix and stems), a Windows installer.
+- **Next:** automation, export to WAV (mix and stems), a signed installer.
 - **Later:** macOS, keyswitch writing for orchestral libraries, a plugin that links Four Hands with your DAW.
 
 ## Licence

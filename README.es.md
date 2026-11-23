@@ -32,16 +32,9 @@ La primera vez que abres Four Hands se abre **Invasion**, una canción de demost
 
 **Requisitos:** Windows 10 u 11 (macOS está previsto, pero sin probar) y [Claude Desktop](https://claude.ai/download) para la IA. Cualquier cliente MCP que ejecute servidores locales por stdio puede usar el puente.
 
-**Desde el código** (todavía no hay instalador):
+**Instalar:** descarga `Four-Hands-Studio-Setup-<versión>.exe` de la [última versión publicada](https://github.com/JavierBaal/four-hands-studio/releases/latest) y ejecútalo. Se instala solo para tu usuario (sin permisos de administrador) e incluye el motor de audio, los bancos de sonido y la canción de demostración. El instalador todavía no está firmado, así que Windows SmartScreen avisará: elige *Más información > Ejecutar de todas formas*.
 
-```bash
-git clone https://github.com/JavierBaal/four-hands-studio.git
-cd four-hands-studio
-npm install        # necesita Node 24 (npm 11)
-npm run app
-```
-
-Para tocar plugins y usar la mezcla, compila también el motor de audio y pon los bancos de sonido junto al repositorio. Paso a paso: [BUILDING.md](BUILDING.md).
+**Desde el código:** mira [BUILDING.md](BUILDING.md) (Node 24, y Visual Studio Build Tools para el motor de audio).
 
 **Conectar tu IA:** en la app, *Ayuda > Cómo conectar tu IA* y después *Conectar con Claude*. Claude Desktop muestra su ventana de instalación de la extensión de Four Hands; confírmala. Después pídele a Claude que componga contigo: cargará solo las skills de Four Hands.
 
@@ -64,7 +57,7 @@ La interfaz de la app está en español y en inglés. Se aceptan contribuciones 
 
 ## Hoja de ruta
 
-- **Lo siguiente:** automatización, exportar a WAV (mezcla y pistas sueltas) y un instalador para Windows.
+- **Lo siguiente:** automatización, exportar a WAV (mezcla y pistas sueltas) y un instalador firmado.
 - **Más adelante:** macOS, escritura de keyswitches para librerías orquestales y un plugin que enlace Four Hands con tu DAW.
 
 ## Licencia
