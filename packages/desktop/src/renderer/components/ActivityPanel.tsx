@@ -7,7 +7,8 @@
  */
 import { useState } from "react";
 import type { HistoryEntry, Song } from "@fourhands/core";
-import type { Translate } from "../../shared/i18n.js";
+import type { Lang, Translate } from "../../shared/i18n.js";
+import { fullTime, relativeTime } from "../../shared/when.js";
 import { barAt, barStart } from "@fourhands/core";
 import type { AiRecent } from "../../shared/protocol.js";
 import { activeTrack, useAi, useApp, useClock, useSong, useView } from "../context.js";
@@ -17,12 +18,6 @@ import { ConceptCard } from "./Concept.js";
 import { AiIcon, ChevronLeft, LibraryIcon, TrackIcon } from "./Icons.js";
 import type { PanelTab } from "../view.js";
 
-function ago(t: Translate, at: number, now: number): string {
-  const min = Math.floor((now - at) / 60_000);
-  if (min < 1) return t("now");
-  if (min < 60) return t("minutesAgo", { n: min });
-  return t("hoursAgo", { n: Math.floor(min / 60) });
-}
 
 function historyText(t: Translate, h: HistoryEntry): { who: string; what: string; ai: boolean } {
   const ai = h.actor.by === "ai";
@@ -42,7 +37,7 @@ function selectionText(song: Song, t: Translate): string {
   return `${t("bars", { range: barRange(song.meter, start, end) })} · ${count}`;
 }
 
-function recentMeta(t: Translate, song: Song, r: AiRecent, now: number): string {
+function recentMeta(t: Translate, lang: Lang, song: Song, r: AiRecent, now: number): string {
   const parts: string[] = [];
   const tracks = r.trackIds.map((id) => song.tracks[id]?.name).filter(Boolean);
   if (tracks.length) parts.push(tracks.length > 2 ? t("ivTracks", { first: tracks[0]!, n: tracks.length - 1 }) : tracks.join(", "));
@@ -52,13 +47,13 @@ function recentMeta(t: Translate, song: Song, r: AiRecent, now: number): string 
   if (r.changed) counts.push(t("ivChanged", { n: r.changed }));
   if (r.removed) counts.push(t("ivRemoved", { n: r.removed }));
   if (counts.length) parts.push(t("ivNotes", { list: counts.join(", ") }));
-  parts.push(ago(t, r.at, now));
+  parts.push(relativeTime(lang, t, r.at, now));
   return parts.join(" · ");
 }
 
 /** The AI's last interventions on this song (H4), where the proposals of sketch 01 were. */
 function AiInterventions({ now }: { now: number }) {
-  const { t, view, replica } = useApp();
+  const { t, lang, view, replica } = useApp();
   const song = useSong();
   const ai = useAi();
   const recent = ai.recent ?? [];
@@ -82,7 +77,7 @@ function AiInterventions({ now }: { now: number }) {
               <span className="dot ai" />
               <div className="ivbody">
                 <div className="ivdesc">{r.description}</div>
-                <div className="hwhen">{recentMeta(t, song, r, now)}</div>
+                <div className="hwhen">{recentMeta(t, lang, song, r, now)}</div>
                 {i === 0 && comparable && (
                   <div className="ivcmp">
                     <span className="sees">{t("ivCompare")}</span>
@@ -112,7 +107,7 @@ const HISTORY_SHOWN = 30;
  * click. While the AI writes, going back waits for it to finish.
  */
 function HistoryBox({ now }: { now: number }) {
-  const { t, replica } = useApp();
+  const { t, lang, replica } = useApp();
   useSong();
   const ai = useAi();
   const [all, setAll] = useState(false);
@@ -137,8 +132,8 @@ function HistoryBox({ now }: { now: number }) {
           <span className="hline">
             <span className="hwho">{who}</span> {what}
           </span>
-          <span className="hwhen">
-            {ago(t, h.at, now)}
+          <span className="hwhen" title={fullTime(lang, h.at)}>
+            {relativeTime(lang, t, h.at, now)}
             {cur && <span className="hhere"> · {t("histHere")}</span>}
           </span>
         </span>
