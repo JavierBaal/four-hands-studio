@@ -1190,6 +1190,19 @@ Engine::ExportResult Engine::renderExport (const ExportSpec& spec, const std::fu
     const auto tailMax = (juce::int64) std::llround (juce::jlimit (0.0, 60.0, spec.maxTail) * sampleRate);
     const auto quietNeeded = (juce::int64) (sampleRate / 2);
     constexpr float silence = 3.1623e-5f; // -90 dBFS
+    // The whole song came before "export": kept here in time order, and handed to the engine a block
+    // ahead of when it sounds, so each block looks at a few events and not at all of them.
+    std::vector<Pending> queue;
+    std::vector<std::pair<juce::int64, TransportPoint>> transportQueue;
+    {
+        const juce::SpinLock::ScopedLockType sl (lock);
+        queue.swap (pending);
+        transportQueue.swap (pendingTransport);
+    }
+    std::stable_sort (queue.begin(), queue.end(), [] (const Pending& a, const Pending& b) { return a.at < b.at; });
+    std::stable_sort (transportQueue.begin(), transportQueue.end(), [] (const auto& a, const auto& b) { return a.first < b.first; });
+    size_t nextEvent = 0, nextPoint = 0;
+
     juce::AudioBuffer<float> block (2, blockSize);
     juce::Random dither;
     juce::int64 done = 0, quiet = 0, reported = 0;
@@ -1207,6 +1220,13 @@ Engine::ExportResult Engine::renderExport (const ExportSpec& spec, const std::fu
         for (int waited = 0; analyzer.backlog() > 8 && waited < 2000; ++waited)
             juce::Thread::sleep (1);
         const int n = blockSize;
+        {
+            const juce::SpinLock::ScopedLockType sl (lock);
+            while (nextEvent < queue.size() && queue[nextEvent].at < position.load() + n)
+                pending.push_back (queue[nextEvent++]);
+            while (nextPoint < transportQueue.size() && transportQueue[nextPoint].first < position.load() + n)
+                pendingTransport.push_back (transportQueue[nextPoint++]);
+        }
         block.clear();
         std::array<float*, 2> ptrs { block.getWritePointer (0), block.getWritePointer (1) };
         process (ptrs.data(), 2, n);

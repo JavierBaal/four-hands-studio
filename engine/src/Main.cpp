@@ -642,6 +642,45 @@ int selfTest (const juce::String& folder)
             return 46;
         }
     }
+    // A long song arrives whole before the export: 3 minutes of sixteenths (5,760 events, given
+    // in reverse order) render in order and in a reasonable time.
+    {
+        engine.beginExport (48000.0);
+        int events = 0;
+        for (int i = 4 * 720 - 1; i >= 0; --i)
+        {
+            const double t = i * 0.0625;
+            const int pitch = 48 + (i % 4) * 4 + (i / 64) % 12;
+            engine.schedule (300, t + 0.05, juce::MidiMessage::noteOff (1, pitch));
+            engine.schedule (300, t, juce::MidiMessage::noteOn (1, pitch, (juce::uint8) 80));
+            events += 2;
+        }
+        fh::Engine::ExportSpec spec;
+        spec.file = exportDir.getChildFile ("long.wav");
+        spec.seconds = 180.0;
+        spec.maxTail = 2.0;
+        const auto started = juce::Time::getMillisecondCounterHiRes();
+        const auto result = engine.renderExport (spec, nullptr);
+        const auto took = (juce::Time::getMillisecondCounterHiRes() - started) / 1000.0;
+        engine.endExport();
+        std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (spec.file));
+        float middle = 0, end = 1;
+        if (reader != nullptr)
+        {
+            juce::AudioBuffer<float> b (2, 48000);
+            reader->read (&b, 0, 48000, 90 * 48000, true, true);
+            middle = b.getRMSLevel (0, 0, 48000);
+            const auto length = (int) reader->lengthInSamples;
+            reader->read (&b, 0, 4800, length - 4800, true, true);
+            end = b.getMagnitude (0, 0, 4800);
+        }
+        std::cout << "long export: " << events << " events, " << result.seconds << " s in " << took << " s, rms at 1:30 " << middle << ", end " << end << std::endl;
+        if (result.error.isNotEmpty() || reader == nullptr || result.seconds < 180.0 || middle < 0.01f || end > 0.001f || took > 60.0)
+        {
+            std::cout << "FAIL long export" << std::endl;
+            return 47;
+        }
+    }
     exportDir.deleteRecursively();
 
     std::cout << "OK" << std::endl;
