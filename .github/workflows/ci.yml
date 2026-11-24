@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      macos:
+        description: Also check on macOS
+        type: boolean
+        default: false
 
 jobs:
   check:
@@ -13,7 +18,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        # macOS only when asked by hand: nobody runs the app on a Mac yet, and GitHub often has no
+        # macOS runner free, which left every change marked as failed.
+        os: ${{ fromJSON(inputs.macos && '["ubuntu-latest", "windows-latest", "macos-latest"]' || '["ubuntu-latest", "windows-latest"]') }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
