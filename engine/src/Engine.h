@@ -210,6 +210,39 @@ public:
     bool pluginHasTransport (int slot) const { return slot >= 0 && slot < kSlots && slots[(size_t) slot] != nullptr && slots[(size_t) slot]->getPlayHead() == &transport; }
 
     // -------------------------------------------------------------------------
+    // Export (F2.4, docs/audio-engine.md, 5): the song to a WAV file, faster than real time.
+    //
+    // beginExport lets go of the device and prepares everything at the export's rate, with the
+    // plugins in non-realtime mode (Kontakt then loads every sample whole) and the song at its start.
+    // Four Hands then sends the whole song with the usual "midi" and "transport" messages, timed from
+    // the start; renderExport renders it, with the tail, into the file; endExport goes back to the
+    // device. While exporting, the device's callback is off: nothing else processes audio.
+
+    struct ExportSpec
+    {
+        juce::File file;
+        /** The song's length; then the tail, until it is silent (below -90 dBFS for half a second) or maxTail. */
+        double seconds = 0, maxTail = 10;
+        /** 16 (with TPDF dither) or 24. */
+        int bits = 24;
+        juce::String title, artist;
+    };
+    struct ExportResult
+    {
+        juce::String error;
+        bool cancelled = false;
+        double seconds = 0;
+    };
+    /** Message thread. Returns an error, or an empty string. */
+    juce::String beginExport (double rate);
+    /** On a thread of its own (not the message thread). `progress` gets the seconds rendered. */
+    ExportResult renderExport (const ExportSpec& spec, const std::function<void (double)>& progress);
+    void cancelExport() { exportCancelled.store (true); }
+    bool exporting() const { return exportActive.load(); }
+    /** Message thread: real time again, at the device's rate. */
+    void endExport();
+
+    // -------------------------------------------------------------------------
     // Offline (tests): renders into `out` as the device would, without a device.
 
     void prepareOffline (double rate, int block);
@@ -267,6 +300,12 @@ private:
 
     juce::AudioDeviceManager device;
     juce::String lastDeviceError;
+    std::atomic<bool> exportActive { false }, exportCancelled { false };
+    /** The rate and block the engine had before an export, to go back to them without a device (tests). */
+    double rateBeforeExport = 0;
+    int blockBeforeExport = 0;
+    /** Every hosted plugin (instruments, built-in sounds, effects) to non-realtime mode or back. */
+    void setNonRealtime (bool offline);
     juce::AudioPluginFormatManager formatManager;
     juce::KnownPluginList knownPlugins;
 

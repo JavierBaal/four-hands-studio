@@ -73,7 +73,8 @@ void Engine::followDefaultOutput (std::function<void (const juce::String&, doubl
 
 void Engine::checkDefaultOutput (bool rescan)
 {
-    if (checkingDevice)
+    // An export has let go of the device; it is checked again when the export ends (F2.4).
+    if (checkingDevice || exportActive.load())
         return;
     auto* type = device.getCurrentDeviceTypeObject();
     if (type == nullptr)
@@ -128,6 +129,9 @@ double Engine::outputLatencySeconds() const
 
 void Engine::audioDeviceAboutToStart (juce::AudioIODevice* d)
 {
+    // Never while exporting: the export has the engine prepared at its own rate (F2.4).
+    if (exportActive.load())
+        return;
     lastBlockStart = 0;
     prepare (d->getCurrentSampleRate(), d->getCurrentBufferSizeSamples());
 }
@@ -1097,6 +1101,178 @@ void Engine::renderOffline (juce::AudioBuffer<float>& out)
     }
 }
 
+
+// -----------------------------------------------------------------------------
+// Export (F2.4)
+
+void Engine::setNonRealtime (bool offline)
+{
+    for (auto& p : slots)
+        if (p != nullptr)
+            p->setNonRealtime (offline);
+    for (auto& c : chains)
+        if (c != nullptr)
+            for (auto& x : c->inserts)
+                if (x->plugin != nullptr)
+                    x->plugin->setNonRealtime (offline);
+}
+
+juce::String Engine::beginExport (double rate)
+{
+    if (rate < 8000.0 || rate > 192000.0)
+        return "Unsupported sample rate";
+    if (exportActive.exchange (true))
+        return "An export is already under way";
+    exportCancelled = false;
+    rateBeforeExport = sampleRate;
+    blockBeforeExport = blockSize;
+    // The device's callback goes first (removeAudioCallback waits for the block under way); then
+    // every plugin is prepared again at the export's rate, as when the output changes, and runs in
+    // non-realtime mode: a sampler loads each sample whole instead of streaming it from disk.
+    device.removeAudioCallback (this);
+    for (auto& p : slots)
+        if (p != nullptr)
+            p->releaseResources();
+    for (auto& c : chains)
+        if (c != nullptr)
+            for (auto& x : c->inserts)
+                if (x->plugin != nullptr)
+                    x->plugin->releaseResources();
+    setNonRealtime (true);
+    prepare (rate, 512);
+    {
+        // The song starts at sample 0 with nothing pending and the transport stopped.
+        const juce::SpinLock::ScopedLockType sl (lock);
+        pending.clear();
+        pendingTransport.clear();
+        current = {};
+        position = 0;
+    }
+    // Notes left sounding by the last playback, off before the first note of the song.
+    panic();
+    resetLevels();
+    return {};
+}
+
+Engine::ExportResult Engine::renderExport (const ExportSpec& spec, const std::function<void (double)>& progress)
+{
+    ExportResult result;
+    if (! exportActive.load())
+    {
+        result.error = "beginExport first";
+        return result;
+    }
+    // Written beside the file and renamed at the end: a cancelled or failed export leaves nothing.
+    const auto part = spec.file.getSiblingFile (spec.file.getFileName() + ".part");
+    spec.file.getParentDirectory().createDirectory();
+    part.deleteFile();
+    const int bits = spec.bits == 16 ? 16 : 24;
+    auto options = juce::AudioFormatWriterOptions{}.withSampleRate (sampleRate).withNumChannels (2).withBitsPerSample (bits).withMetadata (juce::WavAudioFormat::riffInfoSoftware, "Four Hands Studio");
+    if (spec.title.isNotEmpty())
+        options = options.withMetadata (juce::WavAudioFormat::riffInfoTitle, spec.title);
+    if (spec.artist.isNotEmpty())
+        options = options.withMetadata (juce::WavAudioFormat::riffInfoArtist, spec.artist);
+    std::unique_ptr<juce::OutputStream> stream = std::make_unique<juce::FileOutputStream> (part);
+    if (! static_cast<juce::FileOutputStream&> (*stream).openedOk())
+    {
+        result.error = "Cannot write " + part.getFullPathName();
+        return result;
+    }
+    juce::WavAudioFormat format;
+    auto writer = format.createWriterFor (stream, options);
+    if (writer == nullptr)
+    {
+        result.error = "Cannot create the WAV file";
+        return result;
+    }
+
+    const auto body = (juce::int64) std::llround (juce::jmax (0.0, spec.seconds) * sampleRate);
+    const auto tailMax = (juce::int64) std::llround (juce::jlimit (0.0, 60.0, spec.maxTail) * sampleRate);
+    const auto quietNeeded = (juce::int64) (sampleRate / 2);
+    constexpr float silence = 3.1623e-5f; // -90 dBFS
+    juce::AudioBuffer<float> block (2, blockSize);
+    juce::Random dither;
+    juce::int64 done = 0, quiet = 0, reported = 0;
+    while (true)
+    {
+        if (exportCancelled.load())
+        {
+            result.cancelled = true;
+            break;
+        }
+        if (done >= body && (quiet >= quietNeeded || done >= body + tailMax))
+            break;
+        // The AI's ear measures every block (LUFS, true peak, bands): wait for it when it falls behind,
+        // so the export's measurements are whole.
+        for (int waited = 0; analyzer.backlog() > 8 && waited < 2000; ++waited)
+            juce::Thread::sleep (1);
+        const int n = blockSize;
+        block.clear();
+        std::array<float*, 2> ptrs { block.getWritePointer (0), block.getWritePointer (1) };
+        process (ptrs.data(), 2, n);
+        if (done >= body)
+            quiet = block.getMagnitude (0, n) < silence ? quiet + n : 0;
+        if (bits == 16)
+        {
+            // TPDF dither of one least significant bit before the 16-bit rounding.
+            constexpr float lsb = 1.0f / 32768.0f;
+            for (int c = 0; c < 2; ++c)
+            {
+                auto* x = block.getWritePointer (c);
+                for (int i = 0; i < n; ++i)
+                    x[i] += (dither.nextFloat() - dither.nextFloat()) * lsb;
+            }
+        }
+        if (! writer->writeFromFloatArrays (block.getArrayOfReadPointers(), 2, n))
+        {
+            result.error = "Cannot write the WAV file (is the disk full?)";
+            break;
+        }
+        done += n;
+        if (progress != nullptr && done - reported >= (juce::int64) (sampleRate / 4))
+        {
+            reported = done;
+            progress ((double) done / sampleRate);
+        }
+    }
+    writer.reset();
+    result.seconds = (double) done / sampleRate;
+    if (result.cancelled || result.error.isNotEmpty())
+    {
+        part.deleteFile();
+        return result;
+    }
+    // The last measurements reach the analysis before anyone reads them.
+    for (int waited = 0; analyzer.backlog() > 0 && waited < 5000; ++waited)
+        juce::Thread::sleep (1);
+    juce::Thread::sleep (50);
+    spec.file.deleteFile();
+    if (! part.moveFileTo (spec.file))
+    {
+        part.deleteFile();
+        result.error = "Cannot rename the WAV file to " + spec.file.getFullPathName();
+    }
+    return result;
+}
+
+void Engine::endExport()
+{
+    {
+        const juce::SpinLock::ScopedLockType sl (lock);
+        pending.clear();
+        pendingTransport.clear();
+        current = {};
+    }
+    panic();
+    setNonRealtime (false);
+    exportActive = false;
+    exportCancelled = false;
+    // Back to the device: adding the callback prepares everything again at the device's rate.
+    if (device.getCurrentAudioDevice() != nullptr)
+        device.addAudioCallback (this);
+    else if (rateBeforeExport > 0)
+        prepare (rateBeforeExport, blockBeforeExport);
+}
 
 // -----------------------------------------------------------------------------
 // Insert effects (F2.2 part C)
