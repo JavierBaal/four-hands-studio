@@ -103,6 +103,9 @@ function connect(): Promise<WebSocket> {
   return connecting;
 }
 
+/** The app answers within 5 s; exporting renders the whole song (F2.4) and gets 20 minutes. */
+const callTimeoutMs = (tool: string) => (tool === "export_audio" ? 20 * 60_000 : 5000);
+
 async function callApp(tool: string, args: unknown): Promise<AppResult> {
   let sock: WebSocket;
   try {
@@ -115,7 +118,7 @@ async function callApp(tool: string, args: unknown): Promise<AppResult> {
     const t = setTimeout(() => {
       pending.delete(id);
       resolve({ ok: false, error: "Four Hands no responde. (The app did not answer in time.)" });
-    }, 5000);
+    }, callTimeoutMs(tool));
     pending.set(id, (m) => {
       clearTimeout(t);
       resolve(m);

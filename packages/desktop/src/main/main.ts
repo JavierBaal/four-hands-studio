@@ -599,6 +599,7 @@ async function startAi(): Promise<void> {
     skills: skills!,
     onState: (state) => win?.webContents.send(CH.aiState, state),
     tone: aiTone,
+    exportAudio: exportForAi,
     apply: aiApply,
     log: appendLog,
   });
@@ -832,7 +833,47 @@ async function runExport(request: ExportRequest, by: "window" | "ai"): Promise<E
   }
 }
 
+/** The AI's export_audio: the window builds what the engine plays (it knows each track's strip). */
+let planAsked = 0;
+const planWaiting = new Map<number, (reply: { plan: ExportRequest["plan"] | null; error?: string }) => void>();
+
+function planFromWindow(range: ExportRequest["range"]): Promise<{ plan: ExportRequest["plan"] | null; error?: string }> {
+  if (!win) return Promise.resolve({ plan: null, error: "no window" });
+  const id = ++planAsked;
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      planWaiting.delete(id);
+      resolve({ plan: null, error: "the window did not answer" });
+    }, 10_000);
+    planWaiting.set(id, (reply) => {
+      clearTimeout(timer);
+      resolve(reply);
+    });
+    win!.webContents.send(CH.exportPlanRequest, { id, range });
+  });
+}
+
+async function exportForAi(choices: { range: "song" | "loop"; wav: WavQuality | null; mp3: boolean; title?: string | undefined }): Promise<ExportResult> {
+  const failed = (error: string): ExportResult => ({ ok: false, error, files: [], seconds: 0, lufs: -100, truePeak: -120 });
+  if (exportJob) return failed("An export is already under way");
+  if (!engine || engine.current.state !== "ready") return failed("The audio engine is not running");
+  // The engine may still be loading the built-in sounds or a track's plugin: wait for it a while.
+  let made = await planFromWindow(choices.range);
+  for (let waited = 0; !made.plan && /sounds|plugins still loading/.test(made.error ?? "") && waited < 30; waited++) {
+    await new Promise((r) => setTimeout(r, 1000));
+    made = await planFromWindow(choices.range);
+  }
+  if (!made.plan) return failed(made.error ?? "no plan");
+  const song = songs?.snapshot().song;
+  return runExport({ ...choices, title: choices.title?.trim() || song?.title || "Four Hands", artist: readSettings().userName ?? "", plan: made.plan }, "ai");
+}
+
 function registerExport(): void {
+  ipcMain.on(CH.exportPlanReply, (_e, reply: { id: number; plan: ExportRequest["plan"] | null; error?: string }) => {
+    const waiting = planWaiting.get(reply?.id);
+    planWaiting.delete(reply?.id);
+    waiting?.({ plan: reply.plan, ...(reply.error ? { error: reply.error } : {}) });
+  });
   ipcMain.handle(CH.exportDefaults, () => exportDefaults());
   ipcMain.handle(CH.exportPickFolder, async (_e, current: unknown) => {
     if (!win) return null;

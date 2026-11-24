@@ -4,6 +4,7 @@ import path from "node:path";
 import { PPQ, USER, barStart, formatNotes, notesOf, orderedTracks } from "@fourhands/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { AiState, PatchMessage, SoundBankInfo } from "../../shared/protocol.js";
+import type { ExportResult } from "../../shared/export.js";
 import { SongSession } from "../session.js";
 import { AiDesk, type ToolReply } from "./desk.js";
 import { SkillLibrary } from "./skills.js";
@@ -37,6 +38,9 @@ const BANKS: SoundBankInfo[] = [
   },
 ];
 
+/** F2.4: what export_audio asked for, and what the export answers. */
+const exportCalls: unknown[] = [];
+let exportAnswer: ExportResult = { ok: true, files: [], seconds: 0, lufs: -100, truePeak: -120 };
 let tone: "direct" | "gentle" = "direct";
 let apply: "direct" | "proposal" = "direct";
 
@@ -69,6 +73,10 @@ async function open(file = DILATACION): Promise<void> {
     tone: () => tone,
     apply: () => apply,
     log: (e) => logs.push(e),
+    exportAudio: async (choices) => {
+      exportCalls.push(choices);
+      return exportAnswer;
+    },
   });
   desk.connect("c1", "claude-ai");
 }
@@ -920,6 +928,46 @@ describe("the master fader for the AI (F2.2 part B)", () => {
     session.handle({ type: "undo" });
     expect(session.song.masterVolume).toBeUndefined();
     expect(session.song.tracks.t1!.volume).toBe(0.8);
+  });
+});
+
+describe("export_audio (F2.4)", () => {
+  it("exports with the window's choices, says where and how loud, and refuses what cannot be", async () => {
+    exportCalls.length = 0;
+    exportAnswer = {
+      ok: true,
+      files: [
+        { path: "C:\\Users\\fran\\Documents\\Four Hands\\Exportaciones\\Dilatacion.wav", format: "wav", bytes: 21_869_818 },
+        { path: "C:\\Users\\fran\\Documents\\Four Hands\\Exportaciones\\Dilatacion.mp3", format: "mp3", bytes: 3_038_529 },
+      ],
+      seconds: 75.94,
+      lufs: -14.24,
+      truePeak: -1.05,
+    };
+    const r = await desk.callAsync("c1", "export_audio", {});
+    if (!r.ok) throw new Error(r.error);
+    expect(exportCalls[0]).toEqual({ range: "song", wav: { rate: 48000, bits: 24 }, mp3: true, title: undefined });
+    expect(r.text).toMatch(/whole song \(1:16 with the tail\)/);
+    expect(r.text).toMatch(/Dilatacion\.wav \(WAV, 21\.9 MB\)/);
+    expect(r.text).toMatch(/Dilatacion\.mp3 \(MP3 320 kbps, 3\.0 MB\)/);
+    expect(r.text).toMatch(/-14\.2 LUFS, true peak -1\.1 dBTP\. Not normalised/);
+
+    await desk.callAsync("c1", "export_audio", { range: "loop", format: "wav", quality: "cd", title: "Toma 2" });
+    expect(exportCalls[1]).toEqual({ range: "loop", wav: { rate: 44100, bits: 16 }, mp3: false, title: "Toma 2" });
+    await desk.callAsync("c1", "export_audio", { format: "mp3" });
+    expect(exportCalls[2]).toMatchObject({ wav: null, mp3: true });
+
+    const bad = await desk.callAsync("c1", "export_audio", { format: "flac" });
+    expect(bad.ok).toBe(false);
+    expect(exportCalls).toHaveLength(3);
+    exportAnswer = { ok: false, cancelled: true, files: [], seconds: 0, lufs: -100, truePeak: -120 };
+    const cancelled = await desk.callAsync("c1", "export_audio", {});
+    expect(cancelled.ok ? "" : cancelled.error).toMatch(/cancelled the export\. Nothing was written\.$/);
+    exportAnswer = { ok: false, error: "The audio engine is not running", files: [], seconds: 0, lufs: -100, truePeak: -120 };
+    const off = await desk.callAsync("c1", "export_audio", {});
+    expect(off.ok ? "" : off.error).toMatch(/ask the user to play the song once/);
+    // Exporting does not touch the song.
+    expect(session.handle({ type: "undo" })).toBeDefined();
   });
 });
 

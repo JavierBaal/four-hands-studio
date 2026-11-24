@@ -107,6 +107,7 @@ import type { EnginePlugin } from "../../shared/engine.js";
 import type { BankPreset } from "../../shared/soundbank-info.js";
 import { type LibraryCard, type LibraryStore, cardText, emptyCard, newCardId, parseKeyswitches, parseRange, parseResponse } from "../../shared/library-cards.js";
 import { SkillError, type SkillSource, skillText, skillsFooter, skillsListText } from "./skills.js";
+import type { ExportResult, WavQuality } from "../../shared/export.js";
 import { DEFAULT_WINDOW, type WindowInfo, bankText, chainText, effectText, instrumentsText, mixText, overviewText, paletteItem, spanText, userContextText } from "./texts.js";
 
 export type ToolReply = { ok: true; text: string } | { ok: false; error: string };
@@ -146,6 +147,11 @@ export interface AiDeskOptions {
    */
   effectParams?: (insertId: string) => Promise<EffectParam[] | null>;
   setEffectParam?: (insertId: string, index: number, text: string) => Promise<{ ok: boolean; text: string; value: number } | null>;
+  /**
+   * F2.4: export_audio. Renders the song (or its loop) to files; the window builds what the engine
+   * plays. Absent without the app's window.
+   */
+  exportAudio?: (choices: { range: "song" | "loop"; wav: WavQuality | null; mp3: boolean; title?: string | undefined }) => Promise<ExportResult>;
   now?: () => number;
   /** 5 minutes (docs/mcp.md, 5.1). */
   autoCloseMs?: number;
@@ -1877,6 +1883,20 @@ export class AiDesk {
 
   /** Tools that may wait for the engine: a plugin effect's parameters. Own effects answer at once. */
   private readonly asyncHandlers: Record<string, (conn: Connection, args: Record<string, unknown>) => Promise<string>> = {
+    // F2.4: the mix to WAV and MP3, as File > Exportar audio does.
+    export_audio: async (_conn, args) => {
+      if (!this.options.exportAudio) throw new MusicError("This copy of Four Hands cannot export audio");
+      const range = this.str(args, "range", false) ?? "song";
+      const format = this.str(args, "format", false) ?? "both";
+      const quality = this.str(args, "quality", false) ?? "studio";
+      if (range !== "song" && range !== "loop") throw new MusicError("range is 'song' or 'loop'");
+      if (!["wav", "mp3", "both"].includes(format)) throw new MusicError("format is 'wav', 'mp3' or 'both'");
+      if (quality !== "studio" && quality !== "cd") throw new MusicError("quality is 'studio' or 'cd'");
+      const wav: WavQuality = quality === "cd" ? { rate: 44100, bits: 16 } : { rate: 48000, bits: 24 };
+      const result = await this.options.exportAudio({ range, wav: format === "mp3" ? null : wav, mp3: format !== "wav", title: this.str(args, "title", false) });
+      return exportText(result, range);
+    },
+
     list_effect_parameters: async (_conn, args) => {
       const found = this.effect(this.str(args, "effect")!);
       const search = fold(this.str(args, "search", false) ?? "");
@@ -2075,4 +2095,24 @@ function describeTrack(song: Song, id: string): string {
   else parts.push(`program ${t.program}`);
   parts.push(`volume ${Math.round(t.volume * 100)}`, `pan ${Math.round(t.pan * 100)}`, `color ${trackColorId(t.color)}`);
   return parts.join(" · ");
+}
+
+/** F2.4: export_audio's answer, or why not (in words the AI can pass on). */
+export function exportText(result: ExportResult, range: "song" | "loop"): string {
+  if (result.cancelled) throw new MusicError("The user cancelled the export. Nothing was written");
+  if (!result.ok) {
+    const why = result.error ?? "unknown error";
+    if (/not running/.test(why)) throw new MusicError("The audio engine is not running: ask the user to play the song once (it starts the engine), then try again");
+    if (/plugins still loading|sounds/.test(why)) throw new MusicError(`The audio engine is still loading (${why}): try again in a few seconds`);
+    if (/empty/.test(why)) throw new MusicError(range === "loop" ? "There is no loop set: ask the user to set one, or export the song" : "The song has no notes: nothing to export");
+    throw new MusicError(`The export failed: ${why}. Nothing was written`);
+  }
+  const mb = (b: number) => `${(b / 1_000_000).toFixed(1)} MB`;
+  const whole = Math.round(result.seconds);
+  const length = `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`;
+  return [
+    `Exported the ${range === "loop" ? "loop" : "whole song"} (${length} with the tail):`,
+    ...result.files.map((f) => `- ${f.path} (${f.format === "wav" ? "WAV" : "MP3 320 kbps"}, ${mb(f.bytes)})`),
+    `Integrated loudness ${result.lufs.toFixed(1)} LUFS, true peak ${result.truePeak.toFixed(1)} dBTP. Not normalised.`,
+  ].join("\n");
 }

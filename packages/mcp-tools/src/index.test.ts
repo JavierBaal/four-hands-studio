@@ -60,7 +60,17 @@ describe("tool definitions", () => {
 
   it("every write tool needs an intervention", () => {
     for (const n of NEED_INTERVENTION) expect(Object.keys(byName[n]?.inputSchema ?? {}), n).toContain("intervention_id");
-    expect(TOOLS.length).toBe(READ_ONLY.length + NEED_INTERVENTION.length + 1); // + begin_intervention
+    // + begin_intervention and export_audio (it writes a file, not the song).
+    expect(TOOLS.length).toBe(READ_ONLY.length + NEED_INTERVENTION.length + 2);
+  });
+
+  it("export_audio writes files only, never over an earlier export, and does not normalise (F2.4)", () => {
+    const t = byName.export_audio!;
+    expect(Object.keys(t.inputSchema)).not.toContain("intervention_id");
+    expect(t.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: false });
+    expect(t.description).toMatch(/never over an earlier export/);
+    expect(t.description).toMatch(/never normalises/);
+    expect(t.description).toMatch(/Only when the user asks for a file/);
   });
 
   it("the instructions ask to load the basics skill before writing", () => {
