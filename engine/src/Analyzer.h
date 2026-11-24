@@ -64,6 +64,8 @@ public:
     std::vector<Result> results();
     /** Blocks that could not be measured (the analysis thread fell behind). */
     int gaps() const { return dropped.load(); }
+    /** Blocks written and not measured yet: an export waits on it so nothing is dropped (F2.4). */
+    int backlog() const { return infoFifo.getNumReady(); }
 
 private:
     void run() override;

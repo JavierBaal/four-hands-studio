@@ -15,7 +15,7 @@ Four Hands Studio is largely written with AI coding agents. These are the rules 
 - **Ticks never leave the core** (960 per quarter note). The deviation from the grid is computed when reading, never stored.
 - **MCP tools are defined only in `packages/mcp-tools`.** No tool composes: they read, write, analyze and transform mechanically. Answers are compact text only, without `structuredContent` (docs/architecture.md, 6.2). A change to the tools raises `TOOLS_VERSION` and the bridge's version.
 - **Every product rule has its test** (authorship, deviation when moving, conflicts, proposals). `npm run check` must pass before anything is committed.
-- **Licences:** only MIT, Apache, BSD, ISC or OFL dependencies in the app, the bridge and the core. The engine is AGPLv3 because of JUCE; nothing in `packages/` may depend on engine code.
+- **Licences:** only MIT, Apache, BSD, ISC or OFL dependencies in the app, the bridge and the core. The one exception is LAME for MP3 export (LGPL-3.0), shipped as its own replaceable file and never bundled (THIRD_PARTY_NOTICES.md); do not import it from app code. The engine is AGPLv3 because of JUCE; nothing in `packages/` may depend on engine code.
 - **Comments say why.** When citing a document, use `docs/<name>.md, <section>`; the numbering of those documents is stable.
 
 ## Visual changes

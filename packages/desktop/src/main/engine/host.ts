@@ -58,6 +58,10 @@ export class EngineHost {
   /** While starting: gives up (the process ended before it was ready). */
   private abortStart: ((why: string) => void) | null = null;
   private chatterLines = 0;
+  /** Listeners of the engine's events besides `onEvent` (an export waiting for its end). */
+  private listeners = new Set<(event: Reply) => void>();
+  /** F2.4: the running engine can export (its hello says so; an older one cannot). */
+  canExport = false;
 
   constructor(private readonly options: EngineHostOptions) {}
 
@@ -146,6 +150,7 @@ export class EngineHost {
               return;
             }
             settled = true;
+            this.canExport = hello.export === true;
             this.abortStart = null;
             clearTimeout(timer);
             const device = String(hello.device ?? "");
@@ -213,6 +218,7 @@ export class EngineHost {
     }
     if (m.type === "event") {
       this.options.onEvent?.(m);
+      for (const l of this.listeners) l(m);
       return;
     }
     const next = this.waiting.shift();
@@ -246,7 +252,14 @@ export class EngineHost {
     return true;
   }
 
+  /** Listens to the engine's events; "engineLost" when the link closes. Returns how to stop. */
+  listen(listener: (event: Reply) => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
   private rejectAll(why: string): void {
+    for (const l of [...this.listeners]) l({ type: "event", event: "engineLost", why });
     const waiting = this.waiting;
     this.waiting = [];
     for (const w of waiting) w.reject(new EngineError(why));

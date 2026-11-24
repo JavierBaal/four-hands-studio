@@ -27,6 +27,8 @@ async function windowBundle(dir) {
 
 await Promise.all([
   build({ ...common, entryPoints: [path.join(src, "main", "main.ts")], outfile: path.join(out, "main.mjs"), platform: "node", format: "esm", target: "node22", external: ["electron"], banner: { js: "import { createRequire as __fhCreateRequire } from 'node:module'; const require = __fhCreateRequire(import.meta.url);" } }),
+  // F2.4: the MP3 on a thread of its own. LAME (LGPL-3.0) is not in it: it is loaded from dist/lame.
+  build({ ...common, entryPoints: [path.join(src, "main", "export", "mp3-worker.ts")], outfile: path.join(out, "mp3-worker.mjs"), platform: "node", format: "esm", target: "node22" }),
   build({ ...common, entryPoints: [path.join(src, "main", "preload.ts")], outfile: path.join(out, "preload.cjs"), platform: "node", format: "cjs", target: "node22", external: ["electron"] }),
   windowBundle(path.join(out, "renderer")),
   // Blind listening of SoundFonts (Ayuda > Escucha a ciegas de sonidos).
@@ -60,6 +62,14 @@ for (const entry of fs.readdirSync(skillsSrc, { withFileTypes: true })) {
     fs.cpSync(path.join(skillsSrc, entry.name), path.join(out, "skills", entry.name), { recursive: true });
   }
 }
+
+// LAME for the MP3 export (F2.4): its own file, unmodified, with its licence, so it can be replaced
+// (LGPL-3.0, third-party/lamejs/README.txt). Never bundled into the app.
+const lame = path.join(out, "lame");
+fs.mkdirSync(lame, { recursive: true });
+fs.copyFileSync(path.join(here, "..", "..", "node_modules", "@breezystack", "lamejs", "dist", "lamejs.js"), path.join(lame, "lamejs.mjs"));
+fs.copyFileSync(path.join(here, "..", "..", "node_modules", "@breezystack", "lamejs", "LICENSE"), path.join(lame, "LICENSE"));
+for (const f of fs.readdirSync(path.join(here, "third-party", "lamejs"))) fs.copyFileSync(path.join(here, "third-party", "lamejs", f), path.join(lame, f));
 
 // The demo song: what the app opens the first time, and Help > Open the demo song (src/main/demo.ts).
 fs.copyFileSync(path.join(here, "demo", "Invasion.fourhands"), path.join(out, "Invasion.fourhands"));

@@ -1,7 +1,7 @@
 // Four Hands Engine: entry point.
 //
 //   FourHandsEngine --port 0 --token <t> --cache <file>   normal use: Four Hands starts it
-//   FourHandsEngine --selftest <folder with VST3>          loads the first instrument, plays a note
+//   FourHandsEngine --selftest <folder with VST3>          loads the first instrument, plays a note, exports
 //                                                          offline and checks it sounds (exit code)
 //   FourHandsEngine --render <bank> <song.mid> <out.wav>   plays a MIDI file with the built-in sounds
 //                                                          offline, to compare them with the app's
@@ -543,6 +543,146 @@ int selfTest (const juce::String& folder)
         std::cout << "FAIL panic did not silence channel 3" << std::endl;
         return 36;
     }
+
+    // F2.4: export. Two notes to a WAV file at 48 kHz / 24 bit, then at 44.1 kHz / 16 bit, read back.
+    const auto exportDir = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("fh-engine-selftest-export");
+    exportDir.deleteRecursively();
+    exportDir.createDirectory();
+    juce::AudioFormatManager formats;
+    formats.registerBasicFormats();
+    const std::pair<double, int> exports[] = { { 48000.0, 24 }, { 44100.0, 16 } };
+    for (const auto& [rate, bits] : exports)
+    {
+        if (const auto e = engine.beginExport (rate); e.isNotEmpty())
+        {
+            std::cout << "FAIL beginExport: " << e << std::endl;
+            return 40;
+        }
+        engine.scheduleTransport (0.0, { true, 0.0, 120.0, 4, 4, 0.0 });
+        engine.schedule (300, 0.0, juce::MidiMessage::noteOn (1, 60, (juce::uint8) 100));
+        engine.schedule (300, 1.0, juce::MidiMessage::noteOff (1, 60));
+        engine.schedule (300, 1.0, juce::MidiMessage::noteOn (1, 67, (juce::uint8) 100));
+        engine.schedule (300, 1.9, juce::MidiMessage::noteOff (1, 67));
+        fh::Engine::ExportSpec spec;
+        spec.file = exportDir.getChildFile ("export-" + juce::String (bits) + ".wav");
+        spec.seconds = 2.0;
+        spec.maxTail = 3.0;
+        spec.bits = bits;
+        spec.title = "Selftest";
+        spec.artist = "Four Hands";
+        int reports = 0;
+        const auto result = engine.renderExport (spec, [&reports] (double) { ++reports; });
+        double lufs = -100;
+        for (const auto& r : engine.analysis())
+            if (r.key == fh::Engine::kMasterChain)
+                lufs = r.integrated;
+        engine.endExport();
+        if (result.error.isNotEmpty() || result.cancelled)
+        {
+            std::cout << "FAIL export: " << result.error << (result.cancelled ? " (cancelled)" : "") << std::endl;
+            return 41;
+        }
+        std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (spec.file));
+        if (reader == nullptr)
+        {
+            std::cout << "FAIL export: cannot read " << spec.file.getFullPathName() << std::endl;
+            return 42;
+        }
+        const auto length = (double) reader->lengthInSamples / reader->sampleRate;
+        juce::AudioBuffer<float> got (2, (int) reader->lengthInSamples);
+        reader->read (&got, 0, (int) reader->lengthInSamples, 0, true, true);
+        const auto playing = got.getRMSLevel (0, (int) (0.2 * rate), (int) (0.6 * rate));
+        const auto last = got.getMagnitude (0, got.getNumSamples() - (int) (0.1 * rate), (int) (0.1 * rate));
+        const auto title = reader->metadataValues.getValue (juce::WavAudioFormat::riffInfoTitle, "");
+        std::cout << "export " << rate << " Hz " << bits << " bit: " << length << " s, rms " << playing << ", end " << last << ", title '" << title
+                  << "', " << reports << " progress reports, " << lufs << " LUFS" << std::endl;
+        if (reader->sampleRate != rate || (int) reader->bitsPerSample != bits || reader->numChannels != 2)
+        {
+            std::cout << "FAIL export format: " << reader->sampleRate << " Hz, " << (int) reader->bitsPerSample << " bit, " << (int) reader->numChannels << " channels" << std::endl;
+            return 43;
+        }
+        // The song's 2 s, then the tail until half a second of silence (the test instrument stops at once).
+        if (length < 2.0 || length > 3.2 || playing < 0.001f || last > 0.001f)
+        {
+            std::cout << "FAIL export content" << std::endl;
+            return 44;
+        }
+        if (title != "Selftest" || reports < 4 || lufs < -70.0 || spec.file.getSiblingFile (spec.file.getFileName() + ".part").exists())
+        {
+            std::cout << "FAIL export metadata, progress, loudness or leftovers" << std::endl;
+            return 45;
+        }
+    }
+
+    // A cancelled export leaves no file, and the engine plays again at its own rate.
+    {
+        engine.beginExport (48000.0);
+        engine.schedule (300, 0.0, juce::MidiMessage::noteOn (1, 60, (juce::uint8) 100));
+        fh::Engine::ExportSpec spec;
+        spec.file = exportDir.getChildFile ("cancelled.wav");
+        spec.seconds = 30.0;
+        engine.cancelExport();
+        const auto result = engine.renderExport (spec, nullptr);
+        engine.endExport();
+        engine.panic();
+        juce::AudioBuffer<float> again (2, 24000);
+        again.clear();
+        engine.renderOffline (again);
+        engine.schedule (300, 0.0, juce::MidiMessage::noteOn (1, 60, (juce::uint8) 100));
+        engine.schedule (300, 0.3, juce::MidiMessage::noteOff (1, 60));
+        again.clear();
+        engine.renderOffline (again);
+        const auto rmsAfter = again.getRMSLevel (0, 2400, 9600);
+        std::cout << "export cancelled: " << (result.cancelled ? "yes" : "no") << ", file " << (spec.file.exists() ? "left" : "none") << ", then plays at "
+                  << engine.getSampleRate() << " Hz with rms " << rmsAfter << std::endl;
+        if (! result.cancelled || spec.file.exists() || spec.file.getSiblingFile ("cancelled.wav.part").exists() || engine.exporting()
+            || engine.getSampleRate() != 48000.0 || rmsAfter < 0.001f)
+        {
+            std::cout << "FAIL export cancel" << std::endl;
+            return 46;
+        }
+    }
+    // A long song arrives whole before the export: 3 minutes of sixteenths (5,760 events, given
+    // in reverse order) render in order and in a reasonable time.
+    {
+        engine.beginExport (48000.0);
+        int events = 0;
+        for (int i = 4 * 720 - 1; i >= 0; --i)
+        {
+            const double t = i * 0.0625;
+            const int pitch = 48 + (i % 4) * 4 + (i / 64) % 12;
+            engine.schedule (300, t + 0.05, juce::MidiMessage::noteOff (1, pitch));
+            engine.schedule (300, t, juce::MidiMessage::noteOn (1, pitch, (juce::uint8) 80));
+            events += 2;
+        }
+        fh::Engine::ExportSpec spec;
+        spec.file = exportDir.getChildFile ("long.wav");
+        spec.seconds = 180.0;
+        spec.maxTail = 2.0;
+        const auto started = juce::Time::getMillisecondCounterHiRes();
+        const auto result = engine.renderExport (spec, nullptr);
+        const auto took = (juce::Time::getMillisecondCounterHiRes() - started) / 1000.0;
+        engine.endExport();
+        std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (spec.file));
+        float middle = 0, end = 1;
+        if (reader != nullptr)
+        {
+            juce::AudioBuffer<float> b (2, 48000);
+            reader->read (&b, 0, 48000, 90 * 48000, true, true);
+            middle = b.getRMSLevel (0, 0, 48000);
+            const auto length = (int) reader->lengthInSamples;
+            reader->read (&b, 0, 4800, length - 4800, true, true);
+            end = b.getMagnitude (0, 0, 4800);
+        }
+        std::cout << "long export: " << events << " events, " << result.seconds << " s in " << took << " s, rms at 1:30 " << middle << ", end " << end << std::endl;
+        if (result.error.isNotEmpty() || reader == nullptr || result.seconds < 180.0 || middle < 0.01f || end > 0.001f || took > 60.0)
+        {
+            std::cout << "FAIL long export" << std::endl;
+            return 47;
+        }
+    }
+    exportDir.deleteRecursively();
+
     std::cout << "OK" << std::endl;
     return 0;
 }

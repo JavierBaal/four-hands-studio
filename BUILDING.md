@@ -84,6 +84,7 @@ The [Windows installer workflow](.github/workflows/installer.yml) does all of it
 npm run check        # type checks and unit tests (core, MCP tools, app)
 npm run arranque     # the real Electron app: first run, editing, saving, reopening
 npm run puente       # the app with the packed bridge and a real MCP client
+npm run exportar     # the app with the engine: exports the demo to WAV and MP3 (FH_ENGINE=<engine>)
 ```
 
 `arranque` and `puente` need a display; on Linux run them under `xvfb-run` (`npm run puente` already does). More in [packages/desktop/README.md](packages/desktop/README.md).

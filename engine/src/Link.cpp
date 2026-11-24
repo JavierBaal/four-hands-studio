@@ -92,6 +92,8 @@ Link::Link (Engine& e, juce::String token, juce::File cache) : engine (e), expec
 
 Link::~Link()
 {
+    engine.cancelExport();
+    exporter.removeAllJobs (true, 30000);
     loader.removeAllJobs (true, 30000);
     stop();
     connections.clear();
@@ -131,7 +133,13 @@ double Link::takeMessageStall()
 void Link::lost (Connection* c)
 {
     if (current == c)
+    {
         current = nullptr;
+        // Four Hands went away: an export nobody waits for stops, and the engine goes back to the device.
+        engine.cancelExport();
+        if (engine.exporting() && exporter.getNumJobs() == 0)
+            engine.endExport();
+    }
     // Deleted later: we are inside its own callback.
     juce::MessageManager::callAsync ([this, c] {
         connections.erase (std::remove_if (connections.begin(), connections.end(), [c] (auto& p) { return p.get() == c; }), connections.end());
@@ -185,7 +193,9 @@ juce::var Link::handle (const juce::var& m, Connection& from)
                       // A2 (03/11/2026): strips numbered by Four Hands, not by MIDI channel.
                       { "strips", kStrips },
                       // F2.2 part D: buses, and an engine that can route (older ones ignore "routing").
-                      { "buses", kBuses } });
+                      { "buses", kBuses },
+                      // F2.4: it exports to WAV ("exportBegin", "export", "exportCancel").
+                      { "export", true } });
 
     if (type == "plugins")
         return pluginList();
@@ -520,6 +530,73 @@ juce::var Link::handle (const juce::var& m, Connection& from)
         float after = 0;
         const auto text = engine.setParameter (m["id"].toString(), m.hasProperty ("slot") ? (int) m["slot"] : -1, (int) m["index"], (float) (double) m["value"], m["text"].toString(), ok, &after);
         return obj ({ { "type", "paramSet" }, { "ok", ok }, { "text", text }, { "value", after } });
+    }
+
+    if (type == "exportBegin")
+    {
+        // F2.4: { rate }. The device is let go and everything prepared at that rate, at the song's
+        // start; then Four Hands sends the whole song ("midi", "transport", delays from the start).
+        const auto problem = engine.beginExport ((double) m.getProperty ("rate", 48000.0));
+        if (problem.isNotEmpty())
+            return error ("exportBegin", problem);
+        return obj ({ { "type", "exportReady" }, { "sampleRate", engine.getSampleRate() } });
+    }
+
+    if (type == "export")
+    {
+        // { path, seconds, tail, bits, title, artist }: renders on a thread of its own. Events:
+        // "exportProgress" { seconds } a few times a second, then "exportDone" { path, seconds,
+        // cancelled, error, lufs, truePeak } with the engine back on the device.
+        if (! engine.exporting())
+            return error ("export", "exportBegin first");
+        const auto path = m["path"].toString();
+        Engine::ExportSpec spec;
+        if (juce::File::isAbsolutePath (path))
+            spec.file = juce::File (path);
+        spec.seconds = (double) m["seconds"];
+        spec.maxTail = (double) m.getProperty ("tail", 10.0);
+        spec.bits = (int) m.getProperty ("bits", 24);
+        spec.title = m["title"].toString();
+        spec.artist = m["artist"].toString();
+        if (spec.file == juce::File() || spec.seconds <= 0)
+        {
+            engine.endExport();
+            return error ("export", "A full path and a length are needed");
+        }
+        exporter.addJob ([this, spec] {
+            const auto result = engine.renderExport (spec, [this] (double seconds) {
+                notify (obj ({ { "type", "event" }, { "event", "exportProgress" }, { "seconds", seconds } }));
+            });
+            juce::MessageManager::callAsync ([this, spec, result] {
+                // What the export measured, read before the engine goes back to the device.
+                double lufs = -100, truePeak = -120;
+                for (const auto& r : engine.analysis())
+                    if (r.key == Engine::kMasterChain)
+                    {
+                        lufs = std::round (r.integrated * 10.0) / 10.0;
+                        truePeak = r.truePeak > 1e-9 ? std::round (200.0 * std::log10 (r.truePeak)) / 10.0 : -120.0;
+                    }
+                engine.endExport();
+                notify (obj ({ { "type", "event" },
+                               { "event", "exportDone" },
+                               { "path", spec.file.getFullPathName() },
+                               { "seconds", result.seconds },
+                               { "cancelled", result.cancelled },
+                               { "error", result.error },
+                               { "lufs", lufs },
+                               { "truePeak", truePeak } }));
+            });
+        });
+        return obj ({ { "type", "exportStarted" } });
+    }
+
+    if (type == "exportCancel")
+    {
+        // While rendering, it stops and "exportDone" says so; before rendering, the engine goes back now.
+        engine.cancelExport();
+        if (engine.exporting() && exporter.getNumJobs() == 0)
+            engine.endExport();
+        return {};
     }
 
     if (type == "quit")

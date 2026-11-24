@@ -68,7 +68,8 @@ The goal is to finish a piece without leaving Four Hands: your own instruments (
 | **F2.2 Mixing** | Mixing console: a strip per track (volume, pan, mute, solo, meter), insert effects (VST3 and Four Hands' own EQ, compressor, limiter, reverb and delay), latency compensation, buses and sends, master. The AI's tools for all of it | Done |
 | **F2.3 The AI's ears** | Measurement per track, bus and master; `analyze_mix` reads it with the score; a mixing skill | Done |
 | **Load** | Measuring where the audio time goes, spreading tracks across cores, never letting audio wait for the app | In progress |
-| **F2.4 Automation and export** | Automating plugin and mix parameters; exporting the mix and stems to WAV; freezing tracks | Next |
+| **F2.4 Export** | The mix to WAV and MP3, offline, from the window and from the AI (section 10) | In progress |
+| Later in F2.4 | Stems, normalising to a target, freezing tracks; automating plugin and mix parameters | Next |
 | Later | macOS (VST3 and AU), audio tracks | — |
 
 ## 6. What the AI gains
@@ -112,3 +113,16 @@ It works without paid plugins, with Four Hands' own EQ, compressor, limiter, rev
 ## 9. Building
 
 See [BUILDING.md](../BUILDING.md). In short: CMake 3.22+, a C++20 compiler (Visual Studio Build Tools on Windows) and JUCE 8, fetched by CMake or taken from a local copy (`-DFH_JUCE_DIR=…`). `-DFH_TEST_PLUGIN=ON` also builds a tiny sine-wave VST3 instrument for testing hosting without third-party plugins.
+
+## 10. Export to WAV and MP3
+
+Approved by Fran on 24/11/2026. *File › Export audio…* (Ctrl+E) or the AI's `export_audio` tool write the mix of the whole song, or of its loop, to WAV, MP3 or both.
+
+- **Offline, in the engine.** The window builds the song's events exactly as playback does (`audio/export-plan.ts`, with `schedule.ts` and the router's translations), timed from the start of the range. The engine leaves the audio device, prepares every plugin again at the export's rate in non-realtime mode (a sampler loads each sample whole), renders block by block to `<file>.part` and renames it at the end, then goes back to the device. Nothing else reaches the engine while it exports.
+- **What sounds is what you hear:** mute and solo are respected; tracks sent by MIDI to another program are left out; a pending proposal is not in the song. The tail runs until the sound stays under −90 dBFS for half a second, 10 seconds at most.
+- **WAV** at 48 kHz / 24 bit (the default) or 44.1 kHz / 16 bit with TPDF dither, with the title and artist (*Settings › Folders › Your name*) in its INFO chunk.
+- **MP3** at 320 kbps, made from the engine's WAV on a thread of its own (`main/export/mp3-worker.ts`) with LAME. LAME is LGPL-3.0: it is loaded from its own unmodified file (`dist/lame/lamejs.mjs`, outside `app.asar` in the installer) so it can be replaced, and is never bundled into the app (THIRD_PARTY_NOTICES.md). The title and artist go in an ID3v2.3 tag.
+- **Where:** `Documents/Four Hands/Exportaciones/<title>.wav` by default, or a folder the user picks; never over an earlier export (`<title> (2)`). A cancelled or failed export leaves no files.
+- **When done:** the files, the integrated loudness (LUFS) and the true peak (dBTP) of the whole export, and *Show in folder*. Nothing is normalised.
+- **Link messages:** `exportBegin {rate}` → `exportReady`; then the song as `midi` and `transport` messages; `export {path, seconds, tail, bits, title, artist}` → `exportStarted`, with events `exportProgress {seconds}` and `exportDone {path, seconds, cancelled, error, lufs, truePeak}`; `exportCancel`. The engine's `hello` says `export: true`.
+- **Tests:** the engine's `--selftest` (both formats, a long song, cancelling), the app's unit tests (`export-plan.test.ts`, `main/export/export.test.ts`) and the real app with the engine (`npm run exportar`).

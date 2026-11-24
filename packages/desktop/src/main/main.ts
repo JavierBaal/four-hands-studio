@@ -28,6 +28,11 @@ import { EngineHost } from "./engine/host.js";
 import { type EngineLevels, type EngineLoad, engineLoad } from "../shared/mix.js";
 import type { EngineLoadResult, EngineMidiEvent, EnginePlugin, EngineSoundsResult } from "../shared/engine.js";
 import { CATEGORIES, RECENT_MAX, type SoundCategory, type SoundPrefs } from "../shared/sound-catalog.js";
+import { Worker } from "node:worker_threads";
+import { type ExportDefaults, type ExportProgress, type ExportRequest, type ExportResult, type WavQuality, WAV_QUALITIES } from "../shared/export.js";
+import { type ExportDeps, ExportJob } from "./export/job.js";
+import { defaultExportFolder } from "./export/files.js";
+import type { Mp3Message } from "./export/mp3-worker.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url)); // packages/desktop/dist
 const packageDir = path.resolve(here, "..");
@@ -94,6 +99,10 @@ interface Settings {
    * something sounds wrong. With no engine built they play in the window either way.
    */
   builtinSounds?: "engine" | "app";
+  /** Ajustes > Tu nombre (F2.4): the artist written in exported files. */
+  userName?: string;
+  /** The export window as it was left (F2.4). No folder: the default one. */
+  exportPrefs?: { folder?: string | undefined; wav: WavQuality | null; mp3: boolean };
 }
 
 const aiTone = (): AiTone => (readSettings().aiTone === "gentle" ? "gentle" : DEFAULT_AI_TONE);
@@ -490,7 +499,9 @@ function buildMenu(): void {
         // The window takes Ctrl+S itself (shortcut table) and asks for it; the menu shows the key.
         { label: t("menuSave"), accelerator: "CmdOrCtrl+S", registerAccelerator: false, click: () => void save() },
         { label: t("menuSaveAs"), accelerator: "CmdOrCtrl+Shift+S", click: () => void saveAs() },
-        { label: t("menuExport"), accelerator: "CmdOrCtrl+E", click: () => void exportMidi() },
+        // F2.4: Ctrl+E exports audio (the window takes the key itself, as Ctrl+S); MIDI moved to Ctrl+Shift+E.
+        { label: t("menuExportAudio"), accelerator: "CmdOrCtrl+E", registerAccelerator: false, click: () => sendMenu("exportAudio") },
+        { label: t("menuExport"), accelerator: "CmdOrCtrl+Shift+E", click: () => void exportMidi() },
         { label: t("menuShowFolder"), click: () => songs && shell.showItemInFolder(songs.path) },
         { type: "separator" },
         // Ajustes: what the Help menu used to hold. The window takes Ctrl+, itself.
@@ -588,6 +599,7 @@ async function startAi(): Promise<void> {
     skills: skills!,
     onState: (state) => win?.webContents.send(CH.aiState, state),
     tone: aiTone,
+    exportAudio: exportForAi,
     apply: aiApply,
     log: appendLog,
   });
@@ -675,7 +687,7 @@ function cleanSoundPrefs(raw: unknown): SoundPrefs {
 }
 
 function userFolders(): Record<FolderKind, string> {
-  return { songs: songsDir(), backups: path.join(dataDir(), "copias"), sounds: soundsDir(), skills: userSkillsDir() };
+  return { songs: songsDir(), exports: exportDefaults().folder, backups: path.join(dataDir(), "copias"), sounds: soundsDir(), skills: userSkillsDir() };
 }
 
 async function openBlindListening(): Promise<void> {
@@ -736,6 +748,149 @@ async function createWindow(): Promise<void> {
   updateTitle();
   await win.loadFile(path.join(here, "renderer", "index.html"));
   if (process.env.FH_DEVTOOLS) win.webContents.openDevTools({ mode: "detach" });
+}
+
+// ---------------------------------------------------------------------------
+// Export to WAV and MP3 (F2.4, docs/audio-engine.md, 10). The window builds what the engine plays
+// (it knows each track's strip); here the engine renders it and the MP3 is made on its own thread.
+
+let exportJob: ExportJob | null = null;
+
+function exportDefaults(): ExportDefaults {
+  const settings = readSettings();
+  const prefs = settings.exportPrefs;
+  const defaultFolder = defaultExportFolder(songsDir());
+  const wav = prefs?.wav === null ? null : WAV_QUALITIES.find((q) => q.rate === prefs?.wav?.rate && q.bits === prefs.wav.bits) ?? WAV_QUALITIES[0]!;
+  const folder = prefs?.folder && fs.existsSync(prefs.folder) ? prefs.folder : defaultFolder;
+  return { folder, defaultFolder, artist: settings.userName ?? "", wav, mp3: prefs?.mp3 ?? true };
+}
+
+/** Packaged, the MP3 thread and LAME are outside app.asar (package.mjs, asarUnpack). */
+const unpacked = (p: string) => p.replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`);
+
+const mp3Encoding: ExportDeps["mp3"] = (job, progress) => {
+  const dist = unpacked(here + path.sep).slice(0, -1);
+  const worker = new Worker(path.join(dist, "mp3-worker.mjs"), { workerData: { ...job, lame: path.join(dist, "lame", "lamejs.mjs") } });
+  const done = new Promise<{ bytes: number } | null>((resolve, reject) => {
+    worker.on("message", (m: Mp3Message) => {
+      if (m.type === "progress") progress(m.fraction);
+      else if (m.type === "done") resolve({ bytes: m.bytes });
+      else if (m.type === "cancelled") resolve(null);
+      else reject(new Error(m.message));
+    });
+    worker.on("error", reject);
+    // Stopped (cancel) before saying anything: nothing was written.
+    worker.on("exit", () => resolve(null));
+  });
+  return { done, cancel: () => void worker.terminate() };
+};
+
+/** One export at a time, by the window or by the AI. */
+async function runExport(request: ExportRequest, by: "window" | "ai"): Promise<ExportResult> {
+  const failed = (error: string): ExportResult => ({ ok: false, error, files: [], seconds: 0, lufs: -100, truePeak: -120 });
+  if (exportJob) return failed("An export is already under way");
+  const host = engine;
+  if (!host || host.current.state !== "ready") return failed("The audio engine is not running");
+  if (!host.canExport) return failed("This engine was built before export: build it again");
+  const defaults = exportDefaults();
+  const folder = request.folder || defaults.folder;
+  if (by === "window") {
+    writeSettings({
+      userName: request.artist.trim(),
+      exportPrefs: { folder: folder === defaults.defaultFolder ? undefined : folder, wav: request.wav, mp3: request.mp3 },
+    });
+  }
+  const job = new ExportJob(
+    { ...request, folder },
+    {
+      engine: { request: (m) => host.request(m), send: (m) => host.send(m), listen: (l) => host.listen(l) },
+      mp3: mp3Encoding,
+      tempDir: app.getPath("temp"),
+      progress: (p: ExportProgress) => win?.webContents.send(CH.exportProgress, p),
+    },
+  );
+  exportJob = job;
+  const started = Date.now();
+  try {
+    const result = await job.run();
+    appendLog({
+      type: "export",
+      by,
+      ok: result.ok,
+      cancelled: result.cancelled,
+      error: result.error,
+      ms: Date.now() - started,
+      range: request.range,
+      seconds: result.seconds,
+      events: request.plan.midi.length,
+      files: result.files.map((f) => ({ format: f.format, bytes: f.bytes })),
+      lufs: result.lufs,
+      truePeak: result.truePeak,
+    });
+    return result;
+  } finally {
+    exportJob = null;
+  }
+}
+
+/** The AI's export_audio: the window builds what the engine plays (it knows each track's strip). */
+let planAsked = 0;
+const planWaiting = new Map<number, (reply: { plan: ExportRequest["plan"] | null; error?: string }) => void>();
+
+function planFromWindow(range: ExportRequest["range"]): Promise<{ plan: ExportRequest["plan"] | null; error?: string }> {
+  if (!win) return Promise.resolve({ plan: null, error: "no window" });
+  const id = ++planAsked;
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      planWaiting.delete(id);
+      resolve({ plan: null, error: "the window did not answer" });
+    }, 10_000);
+    planWaiting.set(id, (reply) => {
+      clearTimeout(timer);
+      resolve(reply);
+    });
+    win!.webContents.send(CH.exportPlanRequest, { id, range });
+  });
+}
+
+async function exportForAi(choices: { range: "song" | "loop"; wav: WavQuality | null; mp3: boolean; title?: string | undefined }): Promise<ExportResult> {
+  const failed = (error: string): ExportResult => ({ ok: false, error, files: [], seconds: 0, lufs: -100, truePeak: -120 });
+  if (exportJob) return failed("An export is already under way");
+  if (!engine || engine.current.state !== "ready") return failed("The audio engine is not running");
+  // The engine may still be loading the built-in sounds or a track's plugin: wait for it a while.
+  let made = await planFromWindow(choices.range);
+  for (let waited = 0; !made.plan && /sounds|plugins still loading/.test(made.error ?? "") && waited < 30; waited++) {
+    await new Promise((r) => setTimeout(r, 1000));
+    made = await planFromWindow(choices.range);
+  }
+  if (!made.plan) return failed(made.error ?? "no plan");
+  const song = songs?.snapshot().song;
+  return runExport({ ...choices, title: choices.title?.trim() || song?.title || "Four Hands", artist: readSettings().userName ?? "", plan: made.plan }, "ai");
+}
+
+function registerExport(): void {
+  ipcMain.on(CH.exportPlanReply, (_e, reply: { id: number; plan: ExportRequest["plan"] | null; error?: string }) => {
+    const waiting = planWaiting.get(reply?.id);
+    planWaiting.delete(reply?.id);
+    waiting?.({ plan: reply.plan, ...(reply.error ? { error: reply.error } : {}) });
+  });
+  ipcMain.handle(CH.exportDefaults, () => exportDefaults());
+  ipcMain.handle(CH.exportPickFolder, async (_e, current: unknown) => {
+    if (!win) return null;
+    const pick = await dialog.showOpenDialog(win, { defaultPath: String(current || exportDefaults().folder), properties: ["openDirectory", "createDirectory"] });
+    return pick.canceled || !pick.filePaths[0] ? null : pick.filePaths[0];
+  });
+  ipcMain.handle(CH.exportAudio, (_e, request: ExportRequest) => runExport(request, "window"));
+  ipcMain.on(CH.exportCancel, () => exportJob?.cancel());
+  ipcMain.on(CH.exportShow, (_e, file: unknown) => {
+    if (typeof file === "string" && fs.existsSync(file)) shell.showItemInFolder(file);
+  });
+  ipcMain.handle(CH.userName, () => readSettings().userName ?? "");
+  ipcMain.handle(CH.userNameSet, (_e, name: unknown) => {
+    const clean = String(name ?? "").trim().slice(0, 200);
+    writeSettings({ userName: clean });
+    return clean;
+  });
 }
 
 function registerIpc(): void {
@@ -892,13 +1047,15 @@ function registerIpc(): void {
     }
   });
   // F2.2 (04/11/2026): where the song is, for the plugins' transport.
+  // While exporting, the engine plays the song from the export only (F2.4): the window's notes wait.
   ipcMain.on(CH.engineTransport, (_e, points: unknown) => {
-    if (Array.isArray(points) && points.length) engine?.send({ type: "transport", points });
+    if (!exportJob && Array.isArray(points) && points.length) engine?.send({ type: "transport", points });
   });
   ipcMain.on(CH.engineMidi, (_e, events: EngineMidiEvent[]) => {
-    if (Array.isArray(events) && events.length) engine?.send({ type: "midi", events });
+    if (!exportJob && Array.isArray(events) && events.length) engine?.send({ type: "midi", events });
   });
-  ipcMain.on(CH.enginePanic, () => engine?.send({ type: "panic" }));
+  ipcMain.on(CH.enginePanic, () => !exportJob && engine?.send({ type: "panic" }));
+  registerExport();
   // F2.1: the built-in sounds in the engine.
   ipcMain.handle(CH.engineSounds, (_e, id: unknown, offset: unknown) => loadEngineSounds(String(id), Number(offset)));
   // F2.2: levels of every strip since playback started (reset at its start), for the log and the AI.

@@ -43,7 +43,7 @@ const transport = new StdioClientTransport({ command: process.execPath, args: [b
 const client = new Client({ name: "claude-ai", version: "e2e" });
 await client.connect(transport);
 const tools = (await client.listTools()).tools;
-check("the bridge lists the tools, analyze and the skills included", tools.length === 45 && ["analyze", "add_effect", "add_bus", "remove_bus", "analyze_mix", "set_library_card", "set_effect", "list_effect_parameters", "get_levels", "remove_annotations", "list_skills", "load_skill", "get_changes_since", "get_history", "summarize"].every((n) => tools.some((t) => t.name === n)), tools.length);
+check("the bridge lists the tools, analyze and the skills included", tools.length === 46 && ["analyze", "export_audio", "add_effect", "add_bus", "remove_bus", "analyze_mix", "set_library_card", "set_effect", "list_effect_parameters", "get_levels", "remove_annotations", "list_skills", "load_skill", "get_changes_since", "get_history", "summarize"].every((n) => tools.some((t) => t.name === n)), tools.length);
 check("read tools are read-only for Claude's permissions", tools.filter((t) => t.annotations?.readOnlyHint).length === 14);
 const instructions = client.getInstructions() ?? "";
 check("the server instructions ask to load four-hands-basics first", instructions.includes('load_skill("four-hands-basics")'));
@@ -185,6 +185,15 @@ check("Ctrl+Z undoes Claude's whole intervention in one step", notesBefore - not
 const history = await win.evaluate(() => window.fh.snapshot().then((s) => s.history.map((h) => `${h.actor.by}:${h.kind}:${h.label}`)));
 check("the history is signed by Claude, one entry per intervention", history.filter((h) => h === "ai:edit:Contramelodía de chelo que respira contigo").length === 1, history.join(" | "));
 
+// --- F2.4: Claude exports the mix. With an engine (FH_ENGINE), an MP3 in Exportaciones; without, it says why.
+const exported = await call("export_audio", { format: "mp3" });
+if (process.env.FH_ENGINE) {
+  const mp3 = /^- (.+\.mp3) \(MP3 320 kbps/m.exec(exported.text)?.[1];
+  check("export_audio writes the MP3 and says its loudness", exported.ok && !!mp3 && fs.existsSync(mp3) && /LUFS, true peak .* dBTP\. Not normalised/.test(exported.text), exported.text);
+} else {
+  check("export_audio says the engine must be running", !exported.ok && /play the song once/.test(exported.text), exported.text);
+}
+
 // --- Closing: the bridge says the app is closed, and comes back with it
 await client.close();
 await win.waitForTimeout(500);
@@ -195,8 +204,9 @@ check("bridge.json removed on quit", !fs.existsSync(configFile));
 const logFile = path.join(home, ".config", "Four Hands Studio", "registro-app.jsonl");
 const log = fs.readFileSync(logFile, "utf8");
 const calls = log.split("\n").filter((l) => l.includes('"type":"ai_call"')).map((l) => JSON.parse(l));
-check("every call is in the app's log", calls.length === 26, calls.length);
-check("calls answer fast (< 200 ms in the app)", calls.every((c) => c.ms < 200), JSON.stringify(calls.map((c) => c.ms)));
+check("every call is in the app's log", calls.length === 27, calls.length);
+// Exporting renders the whole song: it is the one call that takes its time.
+check("calls answer fast (< 200 ms in the app)", calls.filter((c) => c.tool !== "export_audio").every((c) => c.ms < 200), JSON.stringify(calls.map((c) => c.ms)));
 check("no page errors", errors.length === 0, errors.join("\n"));
 fs.copyFileSync(logFile, path.join(shots, "registro-app.jsonl"));
 fs.rmSync(home, { recursive: true, force: true });

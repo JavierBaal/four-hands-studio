@@ -14,6 +14,7 @@ You cannot hear. Four Hands gives you an ear on the audio instead: `analyze_mix`
 3. **Read `analyze_mix`** with the target. Read the overview (`get_song_overview`) too: tracks, buses, effects and where each track goes.
 4. **Fix one thing at a time, biggest first,** in one intervention, and say what and why in a sentence each.
 5. **Ask the user to play again and measure again.** Compare with the previous reading. Undo what did not help.
+6. **Deliver with `export_audio`** when the user asks for the file ("pásamelo en MP3", "expórtalo"): WAV and MP3 by default, `quality: "cd"` for a CD or a distributor. It renders offline with every plugin and reports the file's LUFS and true peak: tell the user whether that meets the destination. It never normalises; reaching the target is the mix's job.
 
 ## What to fix, in this order
 

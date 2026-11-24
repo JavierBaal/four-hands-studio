@@ -62,6 +62,8 @@ private:
     bool connected = false;
     /** Loads sound banks one at a time, off the message thread (an SF3 takes seconds). */
     juce::ThreadPool loader { 1 };
+    /** Renders an export (F2.4) off the message thread, so the link keeps answering. */
+    juce::ThreadPool exporter { 1 };
     /** Ticks every 10 ms on the message thread; a late tick is how long it was busy. */
     struct StallWatch final : juce::Timer
     {

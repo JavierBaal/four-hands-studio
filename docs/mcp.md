@@ -192,6 +192,7 @@ All need `intervention_id`.
 | Tool | What it does |
 |---|---|
 | `point_to` | Points the user to a place (range, tracks, notes) with a short reason. A mark appears on their screen; if they click it, the app takes them there. It changes nothing and does not move the view |
+| `export_audio` | Writes the mix of the song or its loop to WAV, MP3 or both in the user's Exportaciones folder, rendered offline in the engine, as File › Export audio does (docs/audio-engine.md, 10). Answers where the files are and their loudness and true peak. It changes nothing in the song, never overwrites a file and never normalises |
 
 ## 8. What is missing on purpose
 

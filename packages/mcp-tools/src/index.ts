@@ -15,7 +15,7 @@
 import { z } from "zod";
 
 /** Bumped whenever a tool, its parameters or its meaning changes. The app refuses other bridges. */
-export const TOOLS_VERSION = 24;
+export const TOOLS_VERSION = 25;
 
 /**
  * Track colours by name (H3.2). The app's palette (desktop/src/shared/track-colors.ts) has the same
@@ -192,6 +192,24 @@ export const TOOLS: readonly ToolDefinition[] = [
       bars: z.string().optional().describe("Only these bars ('37-44') or this section ('Coro')"),
     },
     annotations: readOnly,
+  },
+  {
+    name: "export_audio",
+    title: "Export audio",
+    description:
+      "Writes the mix to audio files, as File > Export audio does (F2.4): the whole song or its loop, rendered offline in the audio engine with every plugin, effect, fader and bus, " +
+      "mute and solo respected (tracks sent by MIDI to another program are left out), plus the tail until the sound dies away. " +
+      "'format': 'wav', 'mp3' (320 kbps) or 'both' (default). 'quality' for the WAV: 'studio' (48 kHz, 24 bit, the default) or 'cd' (44.1 kHz, 16 bit). " +
+      "The files go to the user's Exportaciones folder (Documents/Four Hands), named after the song, never over an earlier export. " +
+      "It answers where they are, how long, and their integrated loudness (LUFS) and true peak (dBTP). It never changes the song and never normalises the volume. " +
+      "Only when the user asks for a file: it takes about as long as the song, and the engine is silent meanwhile. To judge the mix, use analyze_mix; this delivers it.",
+    inputSchema: {
+      range: z.enum(["song", "loop"]).optional().describe("'song' (default) or 'loop': the loop the user set"),
+      format: z.enum(["wav", "mp3", "both"]).optional().describe("Default 'both'"),
+      quality: z.enum(["studio", "cd"]).optional().describe("The WAV's: 'studio' 48 kHz/24 bit (default) or 'cd' 44.1 kHz/16 bit"),
+      title: z.string().max(200).optional().describe("The title in the files and their name; default the song's title"),
+    },
+    annotations: write,
   },
   {
     name: "analyze",

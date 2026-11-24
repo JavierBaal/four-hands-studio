@@ -29,6 +29,7 @@ export type Action =
   | "zoomIn"
   | "zoomRowsOut"
   | "save"
+  | "exportAudio"
   | "settings"
   | "panelTrack"
   | "panelSounds"
@@ -56,6 +57,8 @@ export interface Combo {
 
 export const DEFAULT_SHORTCUTS: Record<Action, Combo[]> = {
   save: [{ key: "s", mod: true }],
+  // F2.4: File › Exportar audio… (Exportar MIDI… moved to Ctrl+Shift+E, in the menu).
+  exportAudio: [{ key: "e", mod: true }],
   settings: [{ key: ",", mod: true }],
   panelTrack: [{ code: "F4" }],
   panelSounds: [{ code: "F5" }],
@@ -119,6 +122,7 @@ export const PIANO_MODE_ALLOWED: ReadonlySet<Action> = new Set<Action>([
   "toolEraser",
   "toolZoom",
   "save",
+  "exportAudio",
   "settings",
   "panelTrack",
   "panelSounds",

@@ -19,6 +19,7 @@ import { EffectWindow } from "./components/EffectWindow.js";
 import { KeyGuide } from "./components/KeyGuide.js";
 import { Notice } from "./components/SoundsHelp.js";
 import { Settings } from "./components/Settings.js";
+import { ExportDialog } from "./components/ExportDialog.js";
 import { SongActions } from "./song-actions.js";
 import { Editor } from "./editor.js";
 import { type RollView, centerOnPitches, clampScrollY, stepRow, zoomAt, zoomRowsAt } from "./roll/geometry.js";
@@ -249,6 +250,9 @@ export function App({ audio, onEditor }: AppProps) {
           return true;
         case "settings":
           actions.openSettings(actions.settings ? null : "ai");
+          return true;
+        case "exportAudio":
+          actions.openExport(!actions.exportOpen);
           return true;
         case "toolZoom":
           view.set({ tool: "zoom" });
@@ -495,6 +499,7 @@ export function App({ audio, onEditor }: AppProps) {
       <Mixer />
       <EffectWindow audio={audio} />
       <Settings audio={audio} />
+      <ExportDialog audio={audio} />
       <Notice />
     </div>
     </ActionsCtx.Provider>

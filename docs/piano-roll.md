@@ -131,6 +131,7 @@ Tools and actions in the same menu serve all three audiences: in Cubase right-cl
 | Shift + G / H | Vertical zoom: lower / taller rows, in steps of 12, 15, 18, 21 and 24 px (15 by default) | [ours] |
 | Alt + wheel | Vertical zoom in steps, around the note under the mouse | Studio One |
 | Ctrl/Cmd + S | Save now (the song saves itself a second after each change; if it still has a provisional name, opens "Save as") | [common] |
+| Ctrl/Cmd + E | Export audio (WAV and MP3). Export MIDI is Ctrl/Cmd + Shift + E | [ours] |
 | Wheel | Vertical scroll | [common] |
 | Shift + wheel | Horizontal scroll | [ours] |
 | Ctrl/Cmd + wheel, or pinch on a trackpad | Horizontal zoom centred on the mouse | [ours] |
