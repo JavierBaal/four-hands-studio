@@ -92,6 +92,7 @@ fs.copyFileSync(path.join(repo, "LICENSE"), path.join(licenses, "LICENSE.txt"));
 fs.copyFileSync(path.join(repo, "engine", "LICENSE"), path.join(licenses, "LICENSE-engine-AGPL-3.0.txt"));
 fs.copyFileSync(path.join(repo, "THIRD_PARTY_NOTICES.md"), path.join(licenses, "THIRD_PARTY_NOTICES.md"));
 fs.cpSync(path.join(pkgDir, "installer", "licenses"), path.join(licenses, "soundfonts"), { recursive: true });
+fs.cpSync(path.join(pkgDir, "third-party", "lamejs"), path.join(licenses, "lamejs"), { recursive: true });
 
 const extraResources = [
   { from: path.join(bridgeDir, mcpb), to: mcpb },
@@ -116,6 +117,8 @@ await builder({
     files: ["**/*"],
     npmRebuild: false,
     asar: true,
+    // F2.4: LAME (LGPL-3.0) stays a file the user can replace, and the thread that loads it beside it.
+    asarUnpack: ["dist/lame/**", "dist/mp3-worker.mjs"],
     extraResources,
     fileAssociations: [{ ext: "fourhands", name: "Four Hands Studio song", description: "Four Hands Studio song", role: "Editor" }],
     win: { target: target === "dir" ? "dir" : "nsis", icon: path.join(pkgDir, "installer", "icon.png") },

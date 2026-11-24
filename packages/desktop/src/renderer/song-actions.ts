@@ -244,6 +244,18 @@ export class SongActions {
     return null;
   }
 
+  /** F2.4: the Exportar audio window (File › Exportar audio…, Ctrl+E). */
+  exportOpen = false;
+
+  openExport(open: boolean): void {
+    this.exportOpen = open;
+    if (open) {
+      this.editor.closeMenus();
+      this.settings = null;
+    }
+    this.changed();
+  }
+
   openSettings(section: SettingsSection | null): void {
     this.settings = section;
     if (section) this.editor.closeMenus();

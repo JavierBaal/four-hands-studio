@@ -1,5 +1,5 @@
 /**
- * Export (F2.4, docs/audio-engine.md, 5): the whole song, or the loop, as the engine messages that
+ * Export (F2.4, docs/audio-engine.md, 10): the whole song, or the loop, as the engine messages that
  * play it, timed from the start of the export. The same events and the same translation as playback
  * (schedule.ts, router.ts), so the file sounds as Four Hands sounds: only "now" becomes "the start".
  * Tracks sent to another program by MIDI are not in the file.
@@ -7,10 +7,11 @@
 import { type Song, PPQ, barAt, barStart, bpmAt, secondsBetween, songEnd } from "@fourhands/core";
 import type { SynthEvent } from "../shared/messages.js";
 import { type EngineMidiEvent, type EngineTransportPoint, SOUNDS_SLOT } from "../shared/engine.js";
+import type { ExportPlan, ExportRangeKind } from "../shared/export.js";
 import { engineBytes, soundsBytes } from "./router.js";
 import { type SoundResolver, type StripResolver, curveStateEvents, noteEvents, setupEvents } from "./schedule.js";
 
-export type ExportRangeKind = "song" | "loop";
+export type { ExportRangeKind } from "../shared/export.js";
 
 /** Song ticks: from `from` to `to` (the tail comes after, in the engine). */
 export interface ExportRange {
@@ -39,12 +40,8 @@ export interface ExportRouting {
   metronomeStrip?: number;
 }
 
-export interface ExportMessages {
-  midi: EngineMidiEvent[];
-  transport: EngineTransportPoint[];
-  /** The range's length in seconds, with the tempo map. */
-  seconds: number;
-}
+/** The range's events and transport, and its length in seconds (with the tempo map). */
+export type ExportMessages = ExportPlan;
 
 /** The plugins' transport at a song tick, `delay` seconds after the start of the export. */
 function transportAt(song: Song, tick: number, delay: number): EngineTransportPoint {

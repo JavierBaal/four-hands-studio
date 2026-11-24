@@ -12,6 +12,9 @@ import { HIDDEN_LOOKAHEAD, Player, type Target } from "../audio/player.js";
 import { type EnginePort, type MidiPort, SoundRouter, isOwnLoopback } from "../audio/router.js";
 import { type EngineCost, type EngineLevels, type EngineLoad, addCost, costReport, busChainKey, engineBuses, engineChain, engineRouting, engineStrips, levelsReport, masterGain } from "../shared/mix.js";
 import { BusMap, METRONOME_KEY, StripMap } from "../shared/strips.js";
+import type { ExportPlan, ExportRangeKind } from "../shared/export.js";
+import { exportMessages, exportRange } from "../audio/export-plan.js";
+import { audibleTracks } from "../audio/schedule.js";
 import type { LibraryCard, LibraryCatalog } from "../shared/library-cards.js";
 import { type EffectItem, NO_SOUND_PREFS, type SoundItem, type SoundPrefs, buildCatalog, buildEffectCatalog, withRecent } from "../shared/sound-catalog.js";
 import { ENGINE_OFF, type EnginePluginList, type EngineScanProgress, type EngineStatus } from "../shared/engine.js";
@@ -376,6 +379,37 @@ export class AudioLayer {
   stripOf(track: Pick<Track, "id" | "channel">): number {
     if (!this.strips.has(track.id)) this.syncStrips();
     return this.strips.of(track.id, track.channel);
+  }
+
+  /**
+   * F2.4: what the engine plays to export the song or its loop (the song as it is: a pending
+   * proposal is not in it). Stops playback. Says why not when the engine is not ready for it: the
+   * built-in sounds or a track's plugin still loading in the engine.
+   */
+  exportPlan(kind: ExportRangeKind): { plan: ExportPlan } | { error: "empty" | "engine" | "sounds" | "plugins"; tracks?: string[] } {
+    const song = this.replica.song;
+    const range = exportRange(song, kind);
+    if (!range) return { error: "empty" };
+    if (this.engineStatus.state !== "ready") return { error: "engine" };
+    if (this.player.playing) this.stop();
+    const audible = audibleTracks(song);
+    const tracks = [...audible].map((id) => song.tracks[id]!).filter(Boolean);
+    const waiting = tracks.filter((t) => t.output === "plugin" && t.plugin && !this.pluginReady(t.id, t.plugin.id)).map((t) => t.name);
+    if (waiting.length) return { error: "plugins", tracks: waiting };
+    if (tracks.some((t) => t.output !== "plugin" && t.output !== "external") && !this.soundsInEngine()) return { error: "sounds" };
+    const plan = exportMessages(song, range, {
+      stripOf: (t) => this.stripOf(t),
+      soundFor: this.player.soundFor,
+      plugin: this.pluginStrips(),
+      external: this.externalStrips(),
+      metronomeStrip: this.strips.of(METRONOME_KEY, 15),
+    });
+    return { plan };
+  }
+
+  /** Starts the engine (asking for its plugins does); its status comes back as it changes. */
+  startEngine(): void {
+    void this.bridge.enginePlugins(false);
   }
 
   /** Strips of the tracks that sound through a plugin. */

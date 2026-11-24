@@ -179,17 +179,42 @@ function PluginSettings({ audio }: { audio: AudioLayer }) {
 
 const FOLDERS: { kind: FolderKind; label: keyof Strings }[] = [
   { kind: "songs", label: "setFolderSongs" },
+  { kind: "exports", label: "setFolderExports" },
   { kind: "backups", label: "setFolderBackups" },
   { kind: "sounds", label: "setFolderSounds" },
   { kind: "skills", label: "setFolderSkills" },
 ];
 
-/** Ajustes › Carpetas: where the songs, copies, sounds and skills are, each with "Abrir". */
+/**
+ * Ajustes › Carpetas: your name for the exported files (F2.4), then where the songs, exports, copies,
+ * sounds and skills are, each with "Abrir".
+ */
 function FolderSettings() {
   const { t, bridge } = useApp();
   const [folders, setFolders] = useState<Folders | null>(null);
-  useEffect(() => void bridge.folders().then(setFolders), []);
+  const [name, setName] = useState<string | null>(null);
+  useEffect(() => {
+    void bridge.folders().then(setFolders);
+    void bridge.userName().then(setName);
+  }, []);
+  const saveName = () => name !== null && void bridge.setUserName(name).then(setName);
   return (
+    <>
+    <div className="setcard">
+      <label className="setrow setname-row">
+        <span>{t("setUserName")}</span>
+        <input
+          className="setinput"
+          value={name ?? ""}
+          placeholder={t("setUserNamePlaceholder")}
+          onChange={(e) => setName(e.target.value)}
+          onBlur={saveName}
+          onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+          spellCheck={false}
+        />
+      </label>
+      <div className="hint">{t("setUserNameHint")}</div>
+    </div>
     <ul className="setlist setfolders">
       {FOLDERS.map((f) => (
         <li key={f.kind}>
@@ -203,6 +228,7 @@ function FolderSettings() {
         </li>
       ))}
     </ul>
+    </>
   );
 }
 

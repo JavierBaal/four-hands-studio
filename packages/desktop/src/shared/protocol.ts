@@ -243,10 +243,21 @@ export const CH = {
   libraries: "fh:libraries",
   librarySave: "fh:library-save",
   librariesChanged: "fh:libraries-changed",
+  // F2.4: export to WAV and MP3.
+  exportDefaults: "fh:export-defaults",
+  exportPickFolder: "fh:export-pick-folder",
+  exportAudio: "fh:export-audio",
+  exportCancel: "fh:export-cancel",
+  exportProgress: "fh:export-progress",
+  exportShow: "fh:export-show",
+  exportPlanRequest: "fh:export-plan-request",
+  exportPlanReply: "fh:export-plan-reply",
+  userName: "fh:user-name",
+  userNameSet: "fh:user-name-set",
 } as const;
 
 /** The user's folders (Ajustes › Carpetas). */
-export type FolderKind = "songs" | "backups" | "sounds" | "skills";
+export type FolderKind = "songs" | "exports" | "backups" | "sounds" | "skills";
 export type Folders = Record<FolderKind, string>;
 /** Ajustes › Avanzado: the test windows and the developer tools. */
 export type ToolKind = "soundTest" | "blind" | "devTools";
@@ -279,4 +290,4 @@ export interface SkillImportResult {
 }
 
 /** Menu commands handled by the window (edit and view actions live there). */
-export type MenuAction = "undo" | "redo" | "cut" | "copy" | "paste" | "duplicate" | "delete" | "selectAll" | "toggleAuthorship" | "togglePanel" | "zoomIn" | "zoomOut" | "zoomRowsIn" | "zoomRowsOut" | "resetLayout" | "skills" | "midiOut" | "settings" | "panelTrack" | "panelSounds" | "panelAi" | "showEditor" | "showMix";
+export type MenuAction = "undo" | "redo" | "cut" | "copy" | "paste" | "duplicate" | "delete" | "selectAll" | "toggleAuthorship" | "togglePanel" | "zoomIn" | "zoomOut" | "zoomRowsIn" | "zoomRowsOut" | "resetLayout" | "skills" | "midiOut" | "settings" | "panelTrack" | "panelSounds" | "panelAi" | "showEditor" | "showMix" | "exportAudio";

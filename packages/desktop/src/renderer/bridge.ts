@@ -7,6 +7,7 @@ import { ENGINE_OFF, type EngineLoadResult, type EngineMidiEvent, type EnginePlu
 import { NO_SOUND_PREFS, type SoundPrefs } from "../shared/sound-catalog.js";
 import { type LibraryCard, type LibraryCatalog, cleanCard } from "../shared/library-cards.js";
 import { SongDocument, USER, runCommands, type Song } from "@fourhands/core";
+import type { ExportDefaults, ExportPlan, ExportProgress, ExportRangeKind, ExportRequest, ExportResult } from "../shared/export.js";
 import { type AiApply, type AiState, type AiTone, DEFAULT_AI_APPLY, DEFAULT_AI_TONE, type FileState, type FolderKind, type Folders, type MenuAction, type ToolKind, NO_AI, type PatchMessage, type Reply, type Request, type SkillCardInfo, type SkillImportResult, type Snapshot, type SoundBankInfo, type ViewInfo, undoStateOf } from "../shared/protocol.js";
 
 export interface AppInfo {
@@ -131,6 +132,22 @@ export interface Bridge {
   /** Adds or replaces a card; gives it as saved (null if it was not valid). */
   saveLibrary(card: LibraryCard): Promise<LibraryCard | null>;
   onLibrariesChanged(listener: (catalog: LibraryCatalog) => void): () => void;
+  /** F2.4: export to WAV and MP3. The window's last choices and the default folder. */
+  exportDefaults(): Promise<ExportDefaults>;
+  /** The system's folder dialog; null if cancelled. */
+  exportPickFolder(current: string): Promise<string | null>;
+  /** Renders and writes the files; resolves when done, cancelled or failed. */
+  exportAudio(request: ExportRequest): Promise<ExportResult>;
+  exportCancel(): void;
+  onExportProgress(listener: (progress: ExportProgress) => void): () => void;
+  /** Shows the file in the system's file manager. */
+  exportShow(file: string): void;
+  /** The AI's export_audio: the main process asks the window for what the engine plays. */
+  onExportPlanRequest(listener: (request: { id: number; range: ExportRangeKind }) => void): () => void;
+  exportPlanReply(reply: { id: number; plan: ExportPlan | null; error?: string }): void;
+  /** Ajustes › Carpetas › Tu nombre: the artist of exported files. */
+  userName(): Promise<string>;
+  setUserName(name: string): Promise<string>;
 }
 
 export function windowBridge(): Bridge | null {
@@ -153,7 +170,7 @@ export function memoryBridge(
     /** The user's library cards at start. */
     libraries?: LibraryCard[];
   } = {},
-): Bridge & { doc: SongDocument; setAi(state: AiState): void; closed: string[]; engine: { loaded: Map<number, string>; midi: EngineMidiEvent[]; shown: number[]; mix: EngineStrip[]; buses: EngineBusMix[]; routing?: EngineRouting; master?: number; meters?: EngineLevels; load?: EngineLoad; inserts: Map<number, EngineInsert[]>; shownInserts: string[]; failPlugin?: string; params: Array<[string, number, number]>; reduction?: number; transport: EngineTransportPoint[] } } {
+): Bridge & { doc: SongDocument; setAi(state: AiState): void; closed: string[]; exportState: { defaults: ExportDefaults; requests: ExportRequest[]; cancelled: boolean; stepMs: number }; engine: { loaded: Map<number, string>; midi: EngineMidiEvent[]; shown: number[]; mix: EngineStrip[]; buses: EngineBusMix[]; routing?: EngineRouting; master?: number; meters?: EngineLevels; load?: EngineLoad; inserts: Map<number, EngineInsert[]>; shownInserts: string[]; failPlugin?: string; params: Array<[string, number, number]>; reduction?: number; transport: EngineTransportPoint[] } } {
   const now = options.now ?? Date.now;
   const doc = new SongDocument(song, { now });
   const patchListeners = new Set<(m: PatchMessage) => void>();
@@ -182,6 +199,14 @@ export function memoryBridge(
   let soundPrefs: SoundPrefs = structuredClone(NO_SOUND_PREFS);
   let catalog: LibraryCatalog = { cards: structuredClone(options.libraries ?? []) };
   const libraryListeners = new Set<(c: LibraryCatalog) => void>();
+  const exportProgress = new Set<(p: ExportProgress) => void>();
+  const exportFolder = "C:\\Users\\fran\\Documents\\Four Hands\\Exportaciones";
+  const exportState = {
+    defaults: { folder: exportFolder, defaultFolder: exportFolder, artist: "", wav: { rate: 48000, bits: 24 }, mp3: true } as ExportDefaults,
+    requests: [] as ExportRequest[],
+    cancelled: false,
+    stepMs: 400,
+  };
   const pluginState = (): PluginFolders => ({ system: ["C:\\Program Files\\Common Files\\VST3"], user: [...pluginDirs] });
   const on = <T>(set: Set<T>, l: T) => {
     set.add(l);
@@ -315,7 +340,7 @@ export function memoryBridge(
       engine.shownInserts.push(id);
       return true;
     },
-    folders: async () => ({ songs: "C:\\Users\\fran\\Documents\\Four Hands", backups: "C:\\Users\\fran\\AppData\\Roaming\\Four Hands Studio\\copias", sounds: "C:\\Users\\fran\\Documents\\Four Hands\\Sonidos", skills: "C:\\Users\\fran\\Documents\\Four Hands\\Skills" }),
+    folders: async () => ({ songs: "C:\\Users\\fran\\Documents\\Four Hands", exports: "C:\\Users\\fran\\Documents\\Four Hands\\Exportaciones", backups: "C:\\Users\\fran\\AppData\\Roaming\\Four Hands Studio\\copias", sounds: "C:\\Users\\fran\\Documents\\Four Hands\\Sonidos", skills: "C:\\Users\\fran\\Documents\\Four Hands\\Skills" }),
     openFolder: (kind) => console.log("[fh] open folder", kind),
     openTool: (kind) => console.log("[fh] open tool", kind),
     pluginFolders: async () => pluginState(),
@@ -331,6 +356,35 @@ export function memoryBridge(
       return structuredClone(card);
     },
     onLibrariesChanged: (l) => on(libraryListeners, l),
+    // F2.4: the harness exports in a few steps, as the engine would (scripts/capturas.mjs).
+    exportDefaults: async () => ({ ...exportState.defaults }),
+    exportPickFolder: async () => "D:\\Mezclas",
+    exportAudio: async (request) => {
+      exportState.requests.push(structuredClone(request));
+      const total = request.plan.seconds;
+      for (const fraction of [0.2, 0.46, 0.8, 1]) {
+        if (exportState.cancelled) break;
+        await new Promise((r) => setTimeout(r, exportState.stepMs));
+        exportProgress.forEach((l) => l({ phase: "render", seconds: total * fraction, total, fraction }));
+      }
+      if (exportState.cancelled) {
+        exportState.cancelled = false;
+        return { ok: false, cancelled: true, files: [], seconds: 0, lufs: -100, truePeak: -120 };
+      }
+      const folder = request.folder ?? exportState.defaults.folder;
+      const files: ExportResult["files"] = [];
+      if (request.wav) files.push({ path: `${folder}\\${request.title}.wav`, format: "wav", bytes: Math.round((total + 2) * request.wav.rate * 2 * (request.wav.bits / 8)) });
+      if (request.mp3) files.push({ path: `${folder}\\${request.title}.mp3`, format: "mp3", bytes: Math.round(((total + 2) * 320_000) / 8) });
+      exportState.defaults = { ...exportState.defaults, artist: request.artist, wav: request.wav, mp3: request.mp3, folder };
+      return { ok: true, files, seconds: total + 2, lufs: -15.8, truePeak: -1.4 };
+    },
+    exportCancel: () => void (exportState.cancelled = true),
+    onExportProgress: (l) => on(exportProgress, l),
+    exportShow: (file) => console.log("[fh] show", file),
+    onExportPlanRequest: () => () => {},
+    exportPlanReply: () => {},
+    userName: async () => exportState.defaults.artist,
+    setUserName: async (name) => (exportState.defaults.artist = name.trim()),
     removePluginFolder: async (dir) => (pluginDirs = pluginDirs.filter((d) => d !== dir), pluginState()),
     save: () => {
       file.savedAt = now();
@@ -342,5 +396,6 @@ export function memoryBridge(
       aiListeners.forEach((l) => l(structuredClone(aiState)));
     },
     closed,
+    exportState,
   };
 }

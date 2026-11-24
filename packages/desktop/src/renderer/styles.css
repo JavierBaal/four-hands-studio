@@ -440,6 +440,67 @@ input.inline.mixval { height: 16px; padding: 0 2px; font-size: 10px; text-align:
 .aichip .chipbtn { color: var(--text); }
 .aichip .chipbtn:hover { background: var(--bg-control-hover); }
 .setveil { position: fixed; inset: 0; z-index: 30; background: rgba(10, 9, 8, .55); display: grid; place-items: center; }
+/* F2.4: Exportar audio (bocetos/propuestas/exportar_audio.png, approved 24/11/2026). */
+.expdlg { width: min(440px, calc(100vw - 32px)); max-height: calc(100vh - 48px); overflow-y: auto; background: var(--bg-panel); border: 1px solid var(--line-strong); border-radius: 14px; box-shadow: 0 24px 60px rgba(0, 0, 0, .5); font-size: 13px; line-height: 1.45; user-select: text; -webkit-user-select: text; }
+.exphead { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px 10px 20px; }
+.exphead h2 { margin: 0; font-size: 16px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.exphead .ibtn { min-width: 30px; height: 30px; }
+.expbody { padding: 4px 20px 16px; display: flex; flex-direction: column; gap: 16px; }
+.expsec { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.exph { color: var(--text-2); font-size: 12px; }
+.expopt, .exptop { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.expopt { padding: 9px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg-card); }
+.expopt.on { border-color: var(--line-on); background: var(--bg-control-on); }
+.expopt:disabled { opacity: .5; cursor: default; }
+.expopt:focus-visible, .exptop:focus-visible, .expsegb:focus-visible { outline: 2px solid var(--proposal-line); outline-offset: 1px; }
+.expt { flex: 1; min-width: 0; }
+.expm { color: var(--text-2); font-size: 12px; white-space: nowrap; }
+.expradio { width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid var(--line-on); flex: none; display: grid; place-items: center; box-sizing: border-box; }
+.on > .expradio { border-color: var(--text); }
+.on > .expradio::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--text); }
+.expcheck { width: 16px; height: 16px; border-radius: 4px; border: 1.5px solid var(--line-on); flex: none; display: grid; place-items: center; box-sizing: border-box; }
+.on > .expcheck, .on > .exptop > .expcheck { background: var(--text); border-color: var(--text); }
+.expcheck svg { width: 11px; height: 11px; stroke: var(--text-on-light); stroke-width: 2.2; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.expcol { display: flex; flex-direction: column; gap: 8px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg-card); }
+.expcol.on { border-color: var(--line-on); background: var(--bg-control-on); padding-bottom: 11px; }
+.expseg { display: inline-flex; align-self: flex-start; margin-left: 26px; border: 1px solid var(--line-strong); border-radius: 8px; overflow: hidden; }
+.expsegb { all: unset; height: 26px; padding: 0 10px; font-size: 12px; color: var(--text-2); display: flex; align-items: center; cursor: pointer; }
+.expsegb + .expsegb { border-left: 1px solid var(--line-strong); }
+.expsegb.on { background: var(--bg-control-hover); color: var(--text); }
+.exphint { color: var(--text-2); font-size: 12px; margin: 0; }
+.expcol .exphint { margin-left: 26px; }
+.exptwo { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.expinput, .setinput { height: 32px; border-radius: 8px; border: 1px solid var(--line-control); background: var(--bg-app); color: var(--text); padding: 0 10px; font: inherit; min-width: 0; }
+.expinput:focus, .setinput:focus { outline: 2px solid var(--proposal-line); outline-offset: -1px; }
+.setinput { width: 240px; }
+.expwhere { display: flex; align-items: center; gap: 10px; }
+.exppath { flex: 1; min-width: 0; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.expnote { display: flex; gap: 8px; align-items: flex-start; padding: 8px 10px; border-radius: 8px; background: var(--bg-card); color: var(--text-2); font-size: 12px; }
+.expnote .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-2); margin-top: 6px; flex: none; }
+.expnote.warn { color: var(--text); }
+.expnote.warn .dot { background: var(--author-user); }
+.expfoot { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 12px 16px 16px; border-top: 1px solid var(--line-soft); }
+.expprog { height: 6px; border-radius: 3px; background: var(--bg-control-on); overflow: hidden; }
+.expprog i { display: block; height: 100%; background: var(--author-user); transition: width .3s; }
+.exppline { display: flex; justify-content: space-between; color: var(--text-2); font-size: 12px; }
+.exppline b { color: var(--text); font-weight: 500; }
+.expsteps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
+.expsteps li { display: flex; gap: 8px; align-items: center; color: var(--text-2); }
+.expsteps li.now { color: var(--text); }
+.exps { width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid var(--line-on); flex: none; box-sizing: border-box; }
+.expsteps li.now .exps { border-color: var(--author-user); border-top-color: transparent; animation: expspin 1s linear infinite; }
+.expsteps li.past .exps { background: var(--text-2); border-color: var(--text-2); }
+@keyframes expspin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .expsteps li.now .exps { animation: none; } }
+.expfiles { list-style: none; margin: 0; padding: 0; }
+.expfiles li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--line-soft); }
+.expfiles li:first-child { border-top: 0; padding-top: 2px; }
+.expname { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.expmeas { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.expmcard { padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg-card); }
+.expv { font-size: 22px; font-weight: 500; line-height: 1.2; }
+.expv small { font-size: 12px; color: var(--text-2); font-weight: 400; margin-left: 4px; }
+.expk { color: var(--text-2); font-size: 12px; }
 .settings { width: min(780px, calc(100vw - 32px)); height: min(600px, calc(100vh - 48px)); display: grid; grid-template-columns: 196px minmax(0, 1fr); background: var(--bg-panel); border: 1px solid var(--line-strong); border-radius: 14px; overflow: hidden; box-shadow: 0 24px 60px rgba(0, 0, 0, .5); font-size: 13px; line-height: 1.45; user-select: text; -webkit-user-select: text; }
 .setnav { background: var(--bg-bar); border-right: 1px solid var(--line); padding: 16px 10px; display: flex; flex-direction: column; gap: 2px; }
 .settitle { font-size: 15px; font-weight: 600; padding: 0 8px 12px; }

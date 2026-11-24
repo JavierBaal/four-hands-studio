@@ -28,6 +28,8 @@ Runtime dependencies bundled with the app and the bridge. All are permissive.
 | [IBM Plex Sans and IBM Plex Mono](https://github.com/IBM/plex) (via @fontsource) | SIL Open Font License 1.1 |
 | The MCP SDK's own dependencies (express, hono, ajv, jose and others) | MIT, ISC, BSD-2-Clause, BSD-3-Clause |
 
+**One exception, approved for MP3 export (F2.4, docs/audio-engine.md, 10):** [lamejs](https://github.com/BreezyStack/lamejs) (`@breezystack/lamejs` 1.2.7), a JavaScript port of the [LAME](https://lame.sourceforge.io) MP3 encoder, under the **GNU LGPL-3.0**. It is not bundled into the app: it ships unmodified as its own file, `dist/lame/lamejs.mjs` (in the installed app, `resources/app.asar.unpacked/dist/lame/`), loaded only when an MP3 is made, so it can be replaced with a modified version. Its licence texts (LGPL-3.0 and the GPL-3.0 it refers to) are next to it and in the installer's `licenses/lamejs` folder ([packages/desktop/third-party/lamejs](packages/desktop/third-party/lamejs)).
+
 The full list, with versions, is in `package-lock.json`; `npm ls --omit=dev` shows it. The app's build writes each bundled package's licence comments to `*.LEGAL.txt` files next to the bundles.
 
 Development tools (TypeScript, esbuild, Vitest, Electron, electron-builder, Playwright, `@anthropic-ai/mcpb`) are not part of the source distributed here; Electron ships with the installer under its MIT licence and Chromium's licences.
